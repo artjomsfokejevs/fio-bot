@@ -15,6 +15,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code (data/ is excluded via .dockerignore -- comes from volume)
 COPY . .
 
+# Seed config files into a non-volume path. The persistent volume mounts at
+# /app/data and would otherwise hide ledger_schema.json + accounting_rules.json
+# baked into the image. app.py copies them into /app/data/ on startup if missing.
+RUN mkdir -p /app/seed \
+    && cp data/ledger_schema.json /app/seed/ \
+    && cp data/accounting_rules.json /app/seed/
+
 # Fly.io maps the persistent volume to /app/data
 RUN mkdir -p /app/data/intake /app/data/vies_cache
 

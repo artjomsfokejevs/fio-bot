@@ -42,6 +42,32 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_FILE_SIZE_MB * 1024 * 1024
 
+
+def _seed_data_volume() -> None:
+    """Copy seed config files into data/ if missing.
+
+    On Fly.io the persistent volume mounts at /app/data and masks any files
+    baked into the image at that path. A /app/seed/ directory in the image
+    (populated by Dockerfile) holds the canonical ledger_schema.json and
+    accounting_rules.json; we replicate them into the live volume on first
+    boot so that local dev (no volume) and prod behave identically.
+    """
+    import shutil
+    seed_dir = os.path.join(os.path.dirname(__file__), "seed")
+    if not os.path.isdir(seed_dir):
+        return
+    target_dir = os.path.dirname(config.LEDGER_FILE)
+    os.makedirs(target_dir, exist_ok=True)
+    for name in ("ledger_schema.json", "accounting_rules.json"):
+        seed = os.path.join(seed_dir, name)
+        target = os.path.join(target_dir, name)
+        if os.path.exists(seed) and not os.path.exists(target):
+            shutil.copy2(seed, target)
+            logger.info("Seeded %s into data/", name)
+
+
+_seed_data_volume()
+
 # Initialise SQLite at import time so gunicorn workers have tables.
 # init_db() is idempotent (CREATE TABLE IF NOT EXISTS + ALTER for migrations).
 db.init_db()
