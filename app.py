@@ -151,8 +151,8 @@ def upload():
                 for i, single_doc in enumerate(parsed):
                     classification = classify_document(single_doc)
                     top_code = classification["codes"][0] if classification["codes"] else {}
-                    vendor_data = single_doc.get("vendor", "")
-                    vendor = vendor_data.get("name", str(vendor_data)) if isinstance(vendor_data, dict) else str(vendor_data)
+                    vendor_data = single_doc.get("vendor") or ""
+                    vendor = vendor_data.get("name") or "" if isinstance(vendor_data, dict) else str(vendor_data or "")
                     amount = None
                     if single_doc.get("money") and single_doc["money"].get("total_amount"):
                         amount = single_doc["money"]["total_amount"]
@@ -238,8 +238,8 @@ def upload():
                 classification = classify_document(parsed)
 
                 top_code = classification["codes"][0] if classification["codes"] else {}
-                vendor_data = parsed.get("vendor", "")
-                vendor = vendor_data.get("name", str(vendor_data)) if isinstance(vendor_data, dict) else str(vendor_data)
+                vendor_data = parsed.get("vendor") or ""
+                vendor = vendor_data.get("name") or "" if isinstance(vendor_data, dict) else str(vendor_data or "")
                 amount = None
                 if parsed.get("money") and parsed["money"].get("total_amount"):
                     amount = parsed["money"]["total_amount"]
@@ -734,11 +734,23 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
     classification = doc.get("classification_json") or {}
 
     # Extract VAT number
-    vendor_data = parsed.get("vendor", {})
+    vendor_data = parsed.get("vendor") or {}
     if isinstance(vendor_data, dict):
         doc["vat_number"] = vendor_data.get("vat_number") or None
+        # VIES enrichment fields surfaced to UI
+        doc["vies_verified"] = vendor_data.get("vies_verified")
+        doc["vies_official_name"] = vendor_data.get("vies_official_name")
+        doc["vendor_address"] = vendor_data.get("address") or vendor_data.get("vies_address")
     else:
         doc["vat_number"] = None
+        doc["vies_verified"] = None
+        doc["vies_official_name"] = None
+        doc["vendor_address"] = None
+
+    # Surface parser failure category and warnings for UI banner
+    doc["parser_failure_category"] = parsed.get("parser_failure_category")
+    doc["needs_manual_input"] = bool(parsed.get("needs_manual_input"))
+    doc["parser_warnings"] = parsed.get("warnings") or []
 
     # Extract payment method
     doc["payment_method"] = parsed.get("payment_method") or None

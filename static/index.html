@@ -1613,11 +1613,23 @@ function renderUploadTable(docs) {
       thumbHtml = '<div class="doc-thumb-placeholder" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" title="View document">&#128462;</div>';
     }
 
+    var parserBadge = '';
+    if (doc.needs_manual_input || doc.parser_failure_category) {
+      var failTitle = doc.parser_failure_category === 'llm_no_credit'
+        ? 'AI parser offline (no credits) -- fill manually'
+        : 'Parser could not extract data';
+      parserBadge = ' <span title="' + esc(failTitle) + '" style="margin-left:4px;color:#f59e0b;cursor:help;">⚠️</span>';
+    }
+    var viesBadge = '';
+    if (doc.vies_verified === true) {
+      viesBadge = ' <span title="Verified in VIES registry" style="margin-left:4px;color:#10b981;">✓</span>';
+    }
+
     return '<tr>' +
       '<td>' + thumbHtml + '</td>' +
-      '<td><span class="badge badge-' + doc.status + '">' + doc.status + '</span></td>' +
+      '<td><span class="badge badge-' + doc.status + '">' + doc.status + '</span>' + parserBadge + '</td>' +
       '<td title="' + esc(doc.original_name || doc.filename) + '">' + esc(truncate(doc.original_name || doc.filename, 35)) + '</td>' +
-      '<td>' + esc(doc.vendor || '-') + '</td>' +
+      '<td>' + esc(doc.vendor || '-') + viesBadge + '</td>' +
       '<td style="font-family:monospace;font-size:12px;">' + esc(vatNr) + '</td>' +
       '<td>' + amount + '</td>' +
       '<td>' + renderProfitCenterBadge(doc.profit_center, doc.department) + '</td>' +
@@ -2231,8 +2243,34 @@ function renderDetails(doc) {
   var vatNumber = doc.vat_number || (typeof vendorData === 'object' ? vendorData.vat_number : null) || null;
   var currency = money.currency || 'EUR';
 
+  // Parser-failure banner -- shown FIRST when LLM is unavailable / blank doc
+  var html = '';
+  if (doc.needs_manual_input || doc.parser_failure_category) {
+    var cat = doc.parser_failure_category || 'parser_unknown';
+    var bannerColor = (cat === 'llm_no_credit' || cat === 'llm_no_key') ? '#dc2626' : '#f59e0b';
+    var bannerBg = bannerColor + '15';
+    var icon = (cat === 'llm_no_credit' || cat === 'llm_no_key') ? '\u{1F6A8}' : '⚠️';
+    var msg = (doc.parser_warnings && doc.parser_warnings[0]) || 'Parser unavailable. Please fill fields manually.';
+    html += '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid ' + bannerColor + ';border-left:4px solid ' + bannerColor + ';border-radius:6px;background:' + bannerBg + ';">' +
+      '<div style="font-weight:700;color:' + bannerColor + ';margin-bottom:4px;">' + icon + ' Parser could not extract data</div>' +
+      '<div style="font-size:13px;color:var(--text);">' + esc(msg) + '</div>' +
+    '</div>';
+  }
+
+  // VIES verification badge
+  if (doc.vies_verified === true) {
+    html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #10b981;border-radius:6px;background:#10b98115;">' +
+      '<div style="font-size:12px;color:#10b981;font-weight:700;">✓ VIES verified</div>' +
+      (doc.vies_official_name ? '<div style="font-size:12px;margin-top:2px;">Official name: ' + esc(doc.vies_official_name) + '</div>' : '') +
+    '</div>';
+  } else if (doc.vies_verified === false) {
+    html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #dc2626;border-radius:6px;background:#dc262615;">' +
+      '<div style="font-size:12px;color:#dc2626;font-weight:700;">× VAT not valid in VIES registry</div>' +
+    '</div>';
+  }
+
   // Enhanced header card
-  var html = '<div class="detail-header">';
+  html += '<div class="detail-header">';
   html += '<div class="vendor-name">' + esc(vendorName) + '</div>';
   if (vatNumber) {
     html += '<div class="vat-number">VAT: ' + esc(vatNumber) + '</div>';

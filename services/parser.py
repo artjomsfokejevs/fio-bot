@@ -553,27 +553,47 @@ def _guess_vendor_from_text(text: str) -> str:
 
 
 def _mock_response(filename: str, warning: str) -> Dict[str, Any]:
-    """Return a mock parsed response for testing without API key."""
+    """Return an *empty* fallback when parsing fails.
+
+    No fake numbers -- the UI must show this as 'needs manual input', not as
+    real parsed data. Categorises the failure so the frontend can render a
+    specific banner.
+    """
+    category = "parser_unknown"
+    user_msg = warning
+    low = (warning or "").lower()
+    if "credit balance" in low or "billing" in low or "insufficient credit" in low:
+        category = "llm_no_credit"
+        user_msg = (
+            "Anthropic API credits exhausted. The AI parser is offline; "
+            "regex + VIES still try to extract VAT/address. "
+            "Please fill missing fields manually until billing is topped up."
+        )
+    elif "no api key" in low:
+        category = "llm_no_key"
+        user_msg = "ANTHROPIC_API_KEY not configured on the server."
+    elif "rate" in low and "limit" in low:
+        category = "llm_rate_limit"
+        user_msg = "AI parser rate-limited. Try again in a minute."
+    elif "empty list" in low or "blank" in low:
+        category = "blank_document"
+        user_msg = "Document looks blank or unreadable -- nothing to extract."
+    elif "vision parsing error" in low or "llm parsing error" in low:
+        category = "llm_error"
+
     return {
-        "document_type": "invoice",
-        "vendor": "Mock Vendor Ltd",
-        "dates": {
-            "document_date": datetime.utcnow().strftime("%Y-%m-%d"),
-            "due_date": None,
-        },
+        "document_type": None,
+        "vendor": None,
+        "dates": {"document_date": None, "due_date": None},
         "money": {
-            "total_amount": 1250.00,
-            "tax_amount": 250.00,
-            "net_amount": 1000.00,
+            "total_amount": None,
+            "tax_amount": None,
+            "net_amount": None,
             "currency": "EUR",
         },
-        "line_items": [
-            {
-                "description": "Sample service (mock data)",
-                "amount": 1000.00,
-                "quantity": 1,
-            }
-        ],
+        "line_items": [],
         "ledger_codes": [],
-        "warnings": [warning],
+        "needs_manual_input": True,
+        "parser_failure_category": category,
+        "warnings": [user_msg],
     }
