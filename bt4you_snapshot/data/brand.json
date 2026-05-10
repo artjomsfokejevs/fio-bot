@@ -1,0 +1,50 @@
+{
+  "_doc": "BT4YOU brand tokens — single source of truth for colors used in PDFs (reportlab) and frontend (CSS). Both backend and frontend should import from here. Updated v2.3.",
+  "primary": {
+    "deep_blue":   "#1e3a8a",
+    "indigo":      "#4f46e5",
+    "brand_dk":    "#0369a1",
+    "brand_lt":    "#0ea5e9",
+    "ink":         "#0f172a",
+    "muted":       "#64748b",
+    "border":      "#e2e8f0",
+    "soft":        "#f8fafc",
+    "card":        "#ffffff"
+  },
+  "semantic": {
+    "success":  "#059669",
+    "warning":  "#f59e0b",
+    "danger":   "#dc2626",
+    "info":     "#3b82f6",
+    "amber_lt": "#fef3c7",
+    "amber_dk": "#92400e",
+    "green_lt": "#dcfce7",
+    "red_lt":   "#fee2e2"
+  },
+  "departments": {
+    "pm":  {"name":"Product",                "from":"#7c3aed", "to":"#a855f7", "icon":"🛠️"},
+    "bd":  {"name":"Business Development",   "from":"#0ea5e9", "to":"#3b82f6", "icon":"🤝"},
+    "fa":  {"name":"Finance & Accounting",   "from":"#10b981", "to":"#059669", "icon":"💼"},
+    "ops": {"name":"Operations",             "from":"#f59e0b", "to":"#d97706", "icon":"🚀"},
+    "mkt": {"name":"Marketing",              "from":"#ec4899", "to":"#db2777", "icon":"📣"},
+    "hr":  {"name":"HR",                     "from":"#14b8a6", "to":"#0d9488", "icon":"👥"}
+  },
+  "country_tier": {
+    "A": {"color": "#16a34a", "label": "Grow"},
+    "B": {"color": "#f59e0b", "label": "Maintain"},
+    "C": {"color": "#dc2626", "label": "Review"},
+    "D": {"color": "#64748b", "label": "Cut"}
+  },
+  "channels": {
+    "B2C":  {"bg": "#dbeafe", "fg": "#1e40af"},
+    "B2B":  {"bg": "#dcfce7", "fg": "#166534"},
+    "BOTH": {"bg": "#f3e8ff", "fg": "#6d28d9"}
+  },
+  "logo_paths": {
+    "pdf_banner":   "static/img/bt4you_slack_icon.png",
+    "slack_icon":   "static/img/bt4you_slack_icon.png",
+    "favicon":      "static/img/logo.png"
+  },
+  "version": "2.3",
+  "updated_at": "2026-05-05"
+}

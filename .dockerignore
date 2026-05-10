@@ -1,0 +1,25 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.DS_Store
+.env
+.env.local
+.vscode
+.idea
+
+# Runtime data lives on the Fly volume, not in the image
+data/intake/
+data/fio.db
+data/fio.db-shm
+data/fio.db-wal
+data/vies_cache/
+
+# Logs
+*.log
+nohup.out

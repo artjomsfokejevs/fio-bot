@@ -1,0 +1,41 @@
+# Fly.io app config -- https://fly.io/docs/reference/configuration/
+# Edit `app` to a unique name across Fly. The CLI will prompt if taken.
+
+app = "fio-amitours"
+primary_region = "fra"   # Frankfurt -- closest to Latvia
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  FLASK_DEBUG = "false"
+  PORT = "8080"
+  # bt4you_sync looks for holding_config.json + brand.json under <BT4YOU_PATH>/data/
+  # Bundle them into /app/bt4you_snapshot/ at build time (outside the volume mount).
+  BT4YOU_PATH = "/app/bt4you_snapshot"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"     # save credits when idle
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"
+
+# Persistent volume for uploads, SQLite, accounting JSON, VIES cache
+[mounts]
+  source = "fio_data"
+  destination = "/app/data"
+  initial_size = "1gb"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1

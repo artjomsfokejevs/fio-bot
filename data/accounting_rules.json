@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {"vendor_contains": "Google", "description_contains": "Ads", "ledger_code": "MGG0", "profit_center": null, "confidence": 99},
+    {"vendor_contains": "Facebook", "ledger_code": "MSO0", "confidence": 95},
+    {"vendor_contains": "LinkedIn", "description_contains": "Premium", "ledger_code": "REL0", "confidence": 95},
+    {"vendor_contains": "LinkedIn", "description_contains": "Ads", "ledger_code": "MSO0", "confidence": 95},
+    {"vendor_contains": "AWS", "ledger_code": "HST0", "confidence": 95},
+    {"vendor_contains": "Hetzner", "ledger_code": "HST0", "confidence": 95},
+    {"vendor_contains": "Stripe", "ledger_code": "BNK0", "confidence": 90},
+    {"vendor_contains": "Revolut", "description_contains": "fee", "ledger_code": "BNK0", "confidence": 90},
+    {"vendor_contains": "Sebra Auto", "ledger_code": "CFS0", "profit_center": "AA", "confidence": 95},
+    {"vendor_contains": "PeopleForce", "ledger_code": "SFT0", "confidence": 90}
+  ]
+}

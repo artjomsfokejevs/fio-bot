@@ -1,0 +1,24 @@
+# Render.com blueprint -- one-click deploy.
+# After connecting the repo on render.com, this file auto-creates the service.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: fio
+    runtime: python
+    plan: free  # upgrade to "starter" ($7/mo) if you outgrow free tier
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false  # set manually in Render dashboard (Secret)
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: BT4YOU_PATH
+        sync: false  # leave unset in production -- BT4YOU is local-only
+    disk:
+      name: fio-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

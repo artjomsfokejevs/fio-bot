@@ -1,0 +1,2814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIO — Financial Intake & Orchestrator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --card: #ffffff;
+    --border: #dde3ed;
+    --text: #1e293b;
+    --muted: #64748b;
+    --accent: #1a56db;
+    --accent2: #1e40af;
+    --green: #059669;
+    --red: #dc2626;
+    --yellow: #d97706;
+    --brand-dark: #102a52;
+    --brand-blue: #1a56db;
+    --brand-light: #e8f0fe;
+    --font: 'Inter', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #102a52 0%, #1a3f7a 50%, #1a56db 100%);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  border-bottom: none;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-logo {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+.header-logo .subtitle {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  font-weight: 400;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-right .tagline {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  font-style: italic;
+}
+.header-right .bt4you-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  letter-spacing: 0.5px;
+}
+
+/* Tab bar */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 16px 24px;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Main container */
+.container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+/* Panel visibility */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Stats bar */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.stat-card .count {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+}
+.stat-card .label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.stat-pending .count { color: var(--yellow); }
+.stat-approved .count { color: var(--green); }
+.stat-rejected .count { color: var(--red); }
+.stat-posted .count { color: #0284c7; }
+
+/* Upload zone */
+.upload-zone {
+  background: var(--card);
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+  background: var(--brand-light);
+}
+.upload-zone .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+.upload-zone p { color: var(--muted); font-size: 14px; }
+.upload-zone .formats { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.upload-zone input { display: none; }
+
+/* Progress bar */
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 16px;
+  display: none;
+}
+.progress-bar .fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s;
+}
+
+/* Table */
+.table-wrapper {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.table-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.table-header h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+.table-header-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.table-header select, .filter-select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+thead th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+tbody td {
+  padding: 12px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: #f8fafc; }
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Status badge */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-pending { background: rgba(217,119,6,0.1); color: var(--yellow); }
+.badge-parsed, .badge-classified { background: rgba(26,86,219,0.1); color: var(--accent); }
+.badge-approved { background: rgba(5,150,105,0.1); color: var(--green); }
+.badge-rejected { background: rgba(220,38,38,0.1); color: var(--red); }
+.badge-posted { background: rgba(2,132,199,0.1); color: #0284c7; }
+
+/* Confidence bar */
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.confidence-bar .bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  min-width: 60px;
+}
+.confidence-bar .bar .fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.confidence-high .fill { background: var(--green); }
+.confidence-mid .fill { background: var(--yellow); }
+.confidence-low .fill { background: var(--red); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-success { background: var(--green); color: white; }
+.btn-danger { background: var(--red); color: white; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.actions { display: flex; gap: 6px; }
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 1000px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h3 { font-size: 18px; font-weight: 600; color: var(--text); }
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 24px;
+  cursor: pointer;
+}
+.modal-body {
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.modal-preview {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.modal-preview img { max-width: 100%; max-height: 500px; object-fit: contain; }
+.modal-preview embed { width: 100%; height: 500px; }
+.modal-details h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+.modal-details h4:first-child { margin-top: 0; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.detail-grid .key { color: var(--muted); }
+.detail-grid .val { color: var(--text); word-break: break-word; }
+
+/* Proposed codes */
+.code-option {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.code-option:hover { border-color: var(--accent); }
+.code-option.selected { border-color: var(--accent); background: var(--brand-light); }
+.code-option .code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.code-option .code-name { font-weight: 600; font-size: 14px; color: var(--text); }
+.code-option .reasoning { font-size: 12px; color: var(--muted); }
+
+/* Modal actions */
+.modal-actions {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.modal-actions label {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.modal-actions input[type="checkbox"] { accent-color: var(--accent); }
+
+/* Edit fields in modal */
+.edit-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.edit-row select, .edit-row input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.edit-row select { flex: 1; }
+.edit-row input { width: 100px; }
+
+/* Reject modal */
+.reject-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  margin-top: 8px;
+}
+
+/* Feedback buttons */
+.feedback-btns { display: inline-flex; gap: 4px; margin-left: 6px; }
+.feedback-btns button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.feedback-btns button:hover { background: #f1f5f9; }
+.feedback-btns button.active-up { background: rgba(5,150,105,0.15); border-color: var(--green); }
+.feedback-btns button.active-down { background: rgba(220,38,38,0.15); border-color: var(--red); }
+
+/* Feedback modal overlay */
+.feedback-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 3000;
+  display: none;
+  justify-content: center;
+  align-items: center;
+}
+.feedback-modal.active { display: flex; }
+.feedback-modal-content {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.feedback-modal-content h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+.feedback-modal-content label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text); margin-bottom: 8px; cursor: pointer;
+}
+.feedback-modal-content label input[type="checkbox"] { accent-color: var(--red); }
+.feedback-modal-content textarea {
+  width: 100%; background: #f8fafc; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); padding: 8px; font-size: 13px;
+  font-family: inherit; margin-top: 8px; min-height: 60px; resize: vertical;
+}
+.feedback-modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+/* Policy warning badges */
+.policy-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.policy-green { background: rgba(5,150,105,0.1); color: var(--green); }
+.policy-yellow { background: rgba(217,119,6,0.1); color: var(--yellow); }
+.policy-red { background: rgba(220,38,38,0.1); color: var(--red); }
+
+/* Enhanced detail header */
+.detail-header {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.detail-header .vendor-name {
+  font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px;
+}
+.detail-header .vat-number {
+  font-size: 13px; color: var(--muted); font-family: monospace;
+}
+.detail-header .amount-big {
+  font-size: 28px; font-weight: 700; color: var(--green); margin-top: 12px;
+}
+.detail-header .amount-breakdown {
+  font-size: 12px; color: var(--muted); margin-top: 4px;
+}
+
+/* Line item with translation */
+.line-item-row { padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+.line-item-original { font-size: 11px; color: var(--muted); }
+.line-item-en { font-size: 13px; color: var(--text); font-weight: 500; }
+.line-item-amount { float: right; font-weight: 600; color: var(--text); }
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 14px;
+  z-index: 2000;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  color: var(--text);
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { border-color: var(--green); }
+.toast.error { border-color: var(--red); }
+
+/* ---- Panel 2: Approve ---- */
+.approve-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.approve-header .stream-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stream-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.approve-stats {
+  display: flex;
+  gap: 24px;
+  font-size: 14px;
+}
+.approve-stats .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.approve-stats .stat-num {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+/* Document thumbnail in approve table */
+.doc-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.doc-thumb:hover { transform: scale(1.1); }
+.doc-thumb-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.doc-thumb-placeholder:hover { transform: scale(1.1); }
+
+/* ---- Panel 3: Accounting ---- */
+.stream-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stream-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  border-top: 3px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.stream-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+.stream-card.active-stream {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.stream-card .stream-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.stream-card .stream-total {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--green);
+  margin: 8px 0;
+}
+.stream-card .stream-counts {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.stream-card .stream-top-cats {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.pnl-section {
+  margin-bottom: 24px;
+}
+.pnl-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.section-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.section-card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-card-header .back-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: inherit;
+  font-weight: 600;
+}
+.section-card-header .back-btn:hover { background: #f8fafc; }
+
+.pnl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pnl-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+.pnl-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.pnl-table tr:hover { background: #f8fafc; }
+.pnl-table .subtotal-row {
+  font-weight: 700;
+  background: var(--brand-light);
+  border-top: 1px solid var(--border);
+}
+.pnl-table .subtotal-row td { border-bottom: 1px solid var(--border); }
+.pnl-table .positive { color: var(--green); }
+.pnl-table .negative { color: var(--red); }
+.pnl-table .clickable-row { cursor: pointer; }
+.pnl-table .clickable-row:hover { background: var(--brand-light); }
+.pnl-table .stmt-header-row td {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #f8fafc;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.pnl-table .stmt-header-row:hover td { background: #eef2f7; }
+.pnl-table .stmt-header-row .stmt-arrow {
+  display: inline-block;
+  transition: transform 0.2s;
+  margin-right: 6px;
+  font-size: 10px;
+}
+.pnl-table .stmt-header-row.collapsed .stmt-arrow { transform: rotate(-90deg); }
+.pnl-table .stmt-subtotal-row td {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+}
+.pnl-table .gm-row td {
+  background: rgba(5,150,105,0.06);
+  font-weight: 700;
+  color: var(--green);
+  border-top: 2px solid var(--green);
+  border-bottom: 2px solid var(--green);
+}
+.pnl-table .ebitda-row td {
+  background: rgba(26,86,219,0.06);
+  font-weight: 700;
+  color: var(--accent);
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+/* Drill-down document list */
+.drilldown-docs {
+  background: #f8fafc;
+  border-top: 1px solid var(--border);
+}
+.drilldown-docs td {
+  padding: 8px 12px 8px 36px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.drilldown-docs:hover { background: #f1f5f9; }
+.drilldown-docs .doc-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.accounting-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.accounting-toolbar h2 { font-size: 18px; font-weight: 700; color: var(--text); }
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.audit-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+.audit-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.audit-table tr:hover { background: #f8fafc; }
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) {
+  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  .modal-body { grid-template-columns: 1fr; }
+  .container { padding: 16px; }
+  .stream-cards-grid { grid-template-columns: 1fr; }
+  .header-left { flex-direction: column; gap: 8px; align-items: flex-start; }
+  .tab-bar { padding: 0 16px; }
+  .tab-btn { padding: 12px 16px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <img src="/img/logo.svg" alt="BT4YOU" style="width:36px;height:36px;filter:drop-shadow(0 1px 4px rgba(26,115,232,.35))">
+    <div style="display:flex;flex-direction:column;line-height:1.15">
+      <span style="font-size:17px;font-weight:800;color:#fff;letter-spacing:.03em">BT4YOU</span>
+      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.6)">Executive Bot</span>
+    </div>
+    <div style="width:1px;height:28px;background:rgba(255,255,255,.2);margin:0 6px"></div>
+    <div class="header-logo">
+      FIO
+      <div class="subtitle">Financial Intake &amp; Orchestrator</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="tagline">Digital Orchestrator of BT4YOU Executive Ecosystem</span>
+  </div>
+</header>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
+  <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
+  <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
+  <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Cost &amp; Spending Analytics</button>
+</nav>
+
+<div class="container">
+
+  <!-- ==================== PANEL 1: UPLOAD ==================== -->
+  <div class="panel active" id="panel-upload">
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat-card stat-pending">
+        <div class="count" id="stat-pending">0</div>
+        <div class="label">Pending Review</div>
+      </div>
+      <div class="stat-card stat-approved">
+        <div class="count" id="stat-approved">0</div>
+        <div class="label">Approved</div>
+      </div>
+      <div class="stat-card stat-rejected">
+        <div class="count" id="stat-rejected">0</div>
+        <div class="label">Rejected</div>
+      </div>
+      <div class="stat-card stat-posted">
+        <div class="count" id="stat-posted">0</div>
+        <div class="label">Auto-posted</div>
+      </div>
+    </div>
+
+    <!-- Uploader identity -->
+    <div style="max-width:560px;margin:0 auto 16px;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="font-size:18px;">\u{1F464}</span>
+        <strong style="font-size:13px;color:var(--text);">Who's uploading?</strong>
+        <span id="upload-user-status" style="margin-left:auto;font-size:11px;color:var(--muted);">Loading roster\u2026</span>
+      </div>
+      <select id="upload-user" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;cursor:pointer;">
+        <option value="">\u2014 Select your name (synced from Asana via BT4YOU) \u2014</option>
+      </select>
+    </div>
+
+    <!-- Upload -->
+    <div class="upload-zone" id="upload-zone">
+      <div class="icon">&#128196;</div>
+      <p>Drop invoices, receipts, or bank statements here</p>
+      <div class="formats">PDF, JPG, PNG, CSV, XLSX &mdash; up to 20 MB</div>
+      <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx">
+      <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
+    </div>
+
+    <div style="max-width:520px;margin:16px auto 0;padding:16px 20px;background:var(--brand-light);border-radius:12px;border:1px solid #c7d9f0;text-align:center">
+        <div style="font-size:13px;color:var(--text);line-height:1.6">
+            <span style="font-size:16px">💡</span>
+            <strong>How it works:</strong> Upload your receipts and invoices here.
+            Once reviewed and approved by your Business Owner, documents flow directly into the P&L.
+            <br><br>
+            <span style="font-size:14px">📋</span>
+            <em style="color:var(--accent)">Salary payments are processed per Profit Center only after all documentation
+            is submitted to Accounting and the P&L for your business stream is officially closed.</em>
+            <br>
+            <span style="font-size:11px;color:var(--muted)">Keep your docs flowing — the faster you submit, the faster everyone gets paid! 🚀</span>
+        </div>
+    </div>
+
+    <!-- Recent uploads -->
+    <div class="table-wrapper">
+      <div class="table-header">
+        <h2>Recent Uploads</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Preview</th>
+            <th>Status</th>
+            <th>File</th>
+            <th>Vendor</th>
+            <th>VAT Number</th>
+            <th>Amount</th>
+            <th>Profit Center</th>
+            <th>Uploaded by</th>
+            <th>Uploaded</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="upload-table-body">
+          <tr><td colspan="10" class="empty-state">No documents yet. Upload files to begin.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL 2: APPROVE ==================== -->
+  <div class="panel" id="panel-approve">
+    <div class="approve-header">
+      <div class="stream-info">
+        <select id="stream-filter" class="filter-select" onchange="loadApprovePanel()">
+          <option value="">All Streams</option>
+          <option value="AA">Alps2Alps &mdash; Artjoms Fokejevs</option>
+          <option value="BK">Skibookers &mdash; Anastasiia Lizanets</option>
+          <option value="SR">Skipasser &mdash; Serge Cymbal</option>
+          <option value="AH">Mountly &mdash; Katia Sogreeva-Peyron</option>
+          <option value="CF">MyPeak Finance &mdash; Rihards Sakovics</option>
+          <option value="AL">ALVEDA &mdash; Evgeny Arsentev</option>
+        </select>
+        <span class="stream-dot" id="stream-dot" style="display:none;"></span>
+      </div>
+      <div class="approve-stats" id="approve-stats">
+        <div class="stat-item"><span class="stat-num" id="approve-pending" style="color:var(--yellow);">0</span> pending</div>
+        <div class="stat-item"><span class="stat-num" id="approve-approved" style="color:var(--green);">0</span> approved this month</div>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <div class="table-header">
+        <h2>Documents for Approval</h2>
+        <select id="approve-status-filter" class="filter-select" onchange="loadApprovePanel()">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="classified">Classified</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="posted">Posted</option>
+        </select>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Preview</th>
+            <th>Status</th>
+            <th>File</th>
+            <th>Vendor</th>
+            <th>VAT Nr.</th>
+            <th>Amount</th>
+            <th>Ledger Code</th>
+            <th>Confidence</th>
+            <th>Approved by</th>
+            <th>Feedback</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="approve-table-body">
+          <tr><td colspan="11" class="empty-state">Select a stream to view documents.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL 3: ACCOUNTING ==================== -->
+  <div class="panel" id="panel-accounting">
+    <div class="accounting-toolbar">
+      <h2>Management &amp; Accounting</h2>
+      <div class="table-header-controls">
+        <select id="period-filter" class="filter-select" onchange="loadAccountingPanel()">
+          <!-- populated dynamically -->
+        </select>
+      </div>
+    </div>
+
+    <!-- Stream summary cards -->
+    <div class="stream-cards-grid" id="stream-cards-grid"></div>
+
+    <!-- Upload All to BT4YOU -->
+    <div style="text-align:center;margin-bottom:24px;">
+      <button class="btn btn-primary" style="padding:12px 28px;font-size:14px;" onclick="uploadAllToBT4YOU()">Upload All Business Stream Data to BT4YOU Executive Bot</button>
+    </div>
+
+    <!-- P&L Table (shown after clicking a stream card) -->
+    <div class="section-card" id="pnl-section" style="display:none;">
+      <div class="section-card-header">
+        <button class="back-btn" onclick="closePnlDrilldown()">&larr; Back</button>
+        <span id="pnl-section-title">P&amp;L by Stream</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="pnl-table" id="pnl-table">
+          <thead><tr><th>Statement</th><th>Code</th><th>Label</th><th style="text-align:right;">Amount</th></tr></thead>
+          <tbody id="pnl-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Policy violations -->
+    <div class="section-card" id="policy-violations-section" style="display:none;">
+      <div class="section-card-header">Policy Violations</div>
+      <div id="policy-violations-body" style="padding:16px;"></div>
+    </div>
+
+    <!-- Audit log -->
+    <div class="section-card">
+      <div class="section-card-header">Audit Log (Last 50)</div>
+      <div style="overflow-x:auto;">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Document</th>
+              <th>Action</th>
+              <th>By</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="audit-log-body">
+            <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL 4: COST & SPENDING ANALYTICS ==================== -->
+  <div class="panel" id="panel-analytics">
+    <div style="margin-bottom:16px;">
+      <h2 style="font-size:20px;font-weight:600;margin:0 0 4px 0;">Cost &amp; Spending Analytics</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 12px 0;">Where money flows, what's coming, and where you can save.</p>
+      <div id="analytics-stream-filter" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+
+    <!-- KPI strip -->
+    <div id="analytics-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
+      <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Lifetime spend</div>
+        <div id="kpi-total" style="font-size:24px;font-weight:700;margin-top:4px;">EUR \u2014</div>
+      </div>
+      <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Posted documents</div>
+        <div id="kpi-docs" style="font-size:24px;font-weight:700;margin-top:4px;">0</div>
+      </div>
+      <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Trend</div>
+        <div id="kpi-trend" style="font-size:24px;font-weight:700;margin-top:4px;">\u2014</div>
+      </div>
+      <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Potential savings</div>
+        <div id="kpi-savings" style="font-size:24px;font-weight:700;margin-top:4px;color:var(--green);">EUR 0</div>
+      </div>
+    </div>
+
+    <!-- Optimization suggestions -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header">
+        <h2>\u26a1 Optimization opportunities</h2>
+        <span style="font-size:12px;color:var(--muted);">AI-style heuristics. Pending Anthropic credits to layer on richer suggestions.</span>
+      </div>
+      <div id="analytics-suggestions" style="padding:16px;">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Suspicious findings -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header">
+        <h2>\u{1F6A8} Suspicious costs &amp; vendors</h2>
+        <span style="font-size:12px;color:var(--muted);">Outliers, fuzzy duplicates, missing VAT, mis-classification, foreign vendors.</span>
+      </div>
+      <div id="analytics-suspicious" style="padding:16px;">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Spend by month -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header"><h2>Spend by month</h2></div>
+      <div id="analytics-period" style="padding:16px;"></div>
+    </div>
+
+    <!-- Projection -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header"><h2>3-month projection</h2></div>
+      <div id="analytics-projection" style="padding:16px;"></div>
+    </div>
+
+    <!-- Top vendors -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header"><h2>Top vendors</h2></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th>Total</th>
+            <th>Documents</th>
+            <th>Top ledger code</th>
+          </tr>
+        </thead>
+        <tbody id="analytics-vendors"></tbody>
+      </table>
+    </div>
+
+    <!-- Top codes -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header"><h2>Top ledger codes</h2></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Total</th>
+            <th>% of total</th>
+          </tr>
+        </thead>
+        <tbody id="analytics-codes"></tbody>
+      </table>
+    </div>
+
+    <!-- Department load -->
+    <div class="table-wrapper">
+      <div class="table-header"><h2>Department load</h2></div>
+      <div id="analytics-departments" style="padding:16px;">
+        <div class="empty-state" style="font-size:13px;">No department-tagged spend yet. Tag documents in Approve to populate this.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Document Details</h3>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="reloadModal()" title="Reload document data" style="font-size:16px;padding:4px 8px;">&#128260;</button>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-preview" id="modal-preview"></div>
+      <div class="modal-details" id="modal-details"></div>
+    </div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
+
+<!-- Feedback Modal -->
+<div class="feedback-modal" id="feedback-modal">
+  <div class="feedback-modal-content">
+    <h3>What was wrong?</h3>
+    <label><input type="checkbox" value="vendor_name"> Wrong vendor name</label>
+    <label><input type="checkbox" value="amount"> Wrong amount</label>
+    <label><input type="checkbox" value="vat_number"> Wrong VAT number</label>
+    <label><input type="checkbox" value="date"> Wrong date</label>
+    <label><input type="checkbox" value="line_items"> Wrong line items</label>
+    <label><input type="checkbox" value="ledger_code"> Wrong ledger code</label>
+    <label><input type="checkbox" value="other"> Other</label>
+    <textarea id="feedback-comment" placeholder="Additional comments (optional)..."></textarea>
+    <div class="feedback-modal-actions">
+      <button class="btn btn-ghost" onclick="closeFeedbackModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="submitNegativeFeedback()">Submit Feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Stream color map
+// ---------------------------------------------------------------------------
+var STREAM_COLORS = {
+  'AA': '#0ea5e9', 'alps2alps': '#0ea5e9',
+  'BK': '#8b5cf6', 'skibookers': '#8b5cf6',
+  'SR': '#f59e0b', 'skipasser': '#f59e0b',
+  'AH': '#10b981', 'MT': '#10b981', 'mountly': '#10b981',
+  'CF': '#ec4899', 'PK': '#ec4899', 'mypeak_finance': '#ec4899',
+  'AL': '#6366f1', 'alveda': '#6366f1',
+  'AG': '#94a3b8', 'amitours_group': '#94a3b8'
+};
+
+var STREAM_NAMES = {
+  'alps2alps': 'Alps2Alps',
+  'skibookers': 'Skibookers',
+  'skipasser': 'Skipasser',
+  'mountly': 'Mountly',
+  'mypeak_finance': 'MyPeak Finance',
+  'alveda': 'ALVEDA',
+  'amitours_group': 'Amitours Group'
+};
+
+var STREAM_PC_MAP = {
+  'alps2alps': 'AA', 'skibookers': 'BK', 'skipasser': 'SR',
+  'mountly': 'AH', 'mypeak_finance': 'CF', 'alveda': 'AL'
+};
+
+var PC_TO_STREAM = {
+  'AA': 'alps2alps', 'BK': 'skibookers', 'SR': 'skipasser',
+  'AH': 'mountly', 'MT': 'mountly', 'CF': 'mypeak_finance',
+  'PK': 'mypeak_finance', 'AL': 'alveda'
+};
+
+var STATEMENT_ORDER = ['REVENUE', 'COGS', 'MARKETING', 'ADMIN', 'OPERATIONAL'];
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+var allDocs = [];
+var ledgerSchema = null;
+var currentDoc = null;
+var selectedCode = null;
+var actualsData = null;
+var activeStream = null;
+var expandedCostRow = null;
+
+// ---------------------------------------------------------------------------
+// Tab switching
+// ---------------------------------------------------------------------------
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+  });
+  document.querySelectorAll('.panel').forEach(function(p) {
+    p.classList.toggle('active', p.id === 'panel-' + tabName);
+  });
+  if (tabName === 'upload') {
+    loadStats();
+    loadUploadTable();
+  } else if (tabName === 'approve') {
+    loadApprovePanel();
+  } else if (tabName === 'accounting') {
+    loadAccountingPanel();
+  } else if (tabName === 'analytics') {
+    loadAnalyticsPanel();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cost & Spending Analytics panel
+// ---------------------------------------------------------------------------
+function fmtEUR(n) {
+  return 'EUR ' + Number(n || 0).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+var ANALYTICS_PC = '';  // '' = all streams; otherwise PC code
+
+function renderAnalyticsStreamFilter() {
+  var box = document.getElementById('analytics-stream-filter');
+  if (!box) return;
+  var streams = [
+    {code: '', label: 'All streams', color: '#64748b'},
+    {code: 'AG', label: 'Amitours Group', color: '#dc2626'},
+    {code: 'AA', label: 'Alps2Alps', color: '#0ea5e9'},
+    {code: 'BK', label: 'Skibookers', color: '#059669'},
+    {code: 'SR', label: 'Skipasser', color: '#f59e0b'},
+    {code: 'AH', label: 'Mountly', color: '#14b8a6'},
+    {code: 'CF', label: 'MyPeak Finance', color: '#ec4899'},
+    {code: 'AL', label: 'ALVEDA', color: '#6366f1'}
+  ];
+  box.innerHTML = streams.map(function(s) {
+    var active = (s.code === ANALYTICS_PC);
+    var bg = active ? s.color : '#fff';
+    var fg = active ? '#fff' : s.color;
+    var border = active ? s.color : 'var(--border)';
+    return '<button onclick="setAnalyticsStream(\'' + s.code + '\')" style="padding:6px 12px;border-radius:16px;border:1px solid ' + border + ';background:' + bg + ';color:' + fg + ';font-size:12px;font-weight:600;cursor:pointer;">' +
+      esc(s.label) + (s.code ? ' (' + s.code + ')' : '') +
+      '</button>';
+  }).join('');
+}
+
+function setAnalyticsStream(pc) {
+  ANALYTICS_PC = pc;
+  renderAnalyticsStreamFilter();
+  loadAnalyticsPanel();
+}
+
+function loadAnalyticsPanel() {
+  renderAnalyticsStreamFilter();
+  var url = '/api/analytics/spending' + (ANALYTICS_PC ? '?profit_center=' + ANALYTICS_PC : '');
+  api('GET', url).then(function(data) {
+    renderAnalyticsKPIs(data);
+    renderAnalyticsSuggestions(data);
+    renderAnalyticsSuspicious(data);
+    renderAnalyticsByPeriod(data);
+    renderAnalyticsProjection(data);
+    renderAnalyticsVendors(data);
+    renderAnalyticsCodes(data);
+    renderAnalyticsDepartments(data);
+  }).catch(function(err) {
+    document.getElementById('analytics-suggestions').innerHTML =
+      '<div class="empty-state">Failed to load analytics: ' + esc(err.message || err) + '</div>';
+  });
+}
+
+function renderAnalyticsSuspicious(data) {
+  var box = document.getElementById('analytics-suspicious');
+  var items = data.suspicious || [];
+  if (!items.length) {
+    box.innerHTML = '<div class="empty-state" style="font-size:13px;">No suspicious findings. Clean books ✨</div>';
+    return;
+  }
+  var sevColors = {high: '#dc2626', medium: '#f59e0b', low: '#64748b'};
+  var sevIcons = {high: '\u{1F534}', medium: '\u{1F7E0}', low: '⚪'};
+  box.innerHTML = items.map(function(it) {
+    var color = sevColors[it.severity] || '#64748b';
+    var icon = sevIcons[it.severity] || '⚪';
+    return '<div style="padding:12px 14px;border:1px solid var(--border);border-left:4px solid ' + color + ';border-radius:6px;margin-bottom:8px;background:' + color + '08;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">' +
+        '<div><span style="margin-right:6px;">' + icon + '</span><strong>' + esc(it.title) + '</strong></div>' +
+        '<div style="font-size:10px;text-transform:uppercase;color:' + color + ';font-weight:700;letter-spacing:.05em;">' + esc(it.severity) + '</div>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--text);margin-top:4px;">' + esc(it.detail) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderAnalyticsKPIs(data) {
+  document.getElementById('kpi-total').textContent = fmtEUR(data.total_lifetime_spend);
+  document.getElementById('kpi-docs').textContent = data.documents_posted;
+  var trend = (data.projection || {}).trend || 'flat';
+  var trendIcons = {rising: '\u2197 Rising', falling: '\u2198 Falling', flat: '\u2192 Flat'};
+  var trendColors = {rising: 'var(--red)', falling: 'var(--green)', flat: 'var(--muted)'};
+  var t = document.getElementById('kpi-trend');
+  t.textContent = trendIcons[trend] || trend;
+  t.style.color = trendColors[trend] || 'var(--text)';
+  var totalSavings = (data.duplicate_services || []).reduce(function(s, x) { return s + (x.potential_savings || 0); }, 0);
+  document.getElementById('kpi-savings').textContent = fmtEUR(totalSavings);
+}
+
+function renderAnalyticsSuggestions(data) {
+  var box = document.getElementById('analytics-suggestions');
+  var dups = data.duplicate_services || [];
+  if (!dups.length) {
+    box.innerHTML = '<div class="empty-state" style="font-size:13px;">No overlapping services detected yet. Suggestions will appear once you have multiple vendors charging under the same ledger code.</div>';
+    return;
+  }
+  box.innerHTML = dups.map(function(d) {
+    var vendorList = d.vendors.map(function(v) {
+      return '<li>' + esc(v.vendor) + ' \u2014 ' + fmtEUR(v.amount_in_code) + '</li>';
+    }).join('');
+    return '<div style="padding:14px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:#fafbff;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">' +
+        '<div><strong>' + esc(d.ledger_code) + '</strong> \u00b7 ' + d.vendor_count + ' vendors</div>' +
+        '<div style="color:var(--green);font-weight:700;">Save up to ' + fmtEUR(d.potential_savings) + '</div>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--text);margin-bottom:8px;">' + esc(d.suggestion) + '</div>' +
+      '<ul style="font-size:12px;color:var(--muted);margin:0;padding-left:20px;">' + vendorList + '</ul>' +
+    '</div>';
+  }).join('');
+}
+
+function renderAnalyticsByPeriod(data) {
+  var box = document.getElementById('analytics-period');
+  var rows = data.by_period || [];
+  if (!rows.length) { box.innerHTML = '<div class="empty-state" style="font-size:13px;">No periods yet.</div>'; return; }
+  var max = Math.max.apply(null, rows.map(function(r) { return r.amount; }));
+  box.innerHTML = rows.map(function(r) {
+    var pct = max > 0 ? (r.amount / max * 100) : 0;
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">' +
+      '<div style="width:70px;font-family:monospace;font-size:12px;">' + esc(r.period) + '</div>' +
+      '<div style="flex:1;height:14px;background:#eef2f7;border-radius:7px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#0ea5e9,#3b82f6);"></div></div>' +
+      '<div style="width:120px;text-align:right;font-size:12px;">' + fmtEUR(r.amount) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderAnalyticsProjection(data) {
+  var box = document.getElementById('analytics-projection');
+  var p = data.projection || {};
+  var next = p.next_periods || [];
+  if (!next.length) { box.innerHTML = '<div class="empty-state" style="font-size:13px;">Need at least 2 months of data for projection.</div>'; return; }
+  var pieces = ['<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Linear trend on the last 3 months. Slope: ' +
+    fmtEUR(p.slope_per_month || 0) + '/month \u00b7 Avg: ' + fmtEUR(p.avg_recent || 0) + '</div>'];
+  next.forEach(function(np) {
+    pieces.push('<div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);">' +
+      '<span style="font-family:monospace;">' + esc(np.period) + '</span>' +
+      '<span style="font-weight:600;">' + fmtEUR(np.projected) + '</span>' +
+    '</div>');
+  });
+  box.innerHTML = pieces.join('');
+}
+
+function renderAnalyticsVendors(data) {
+  var tbody = document.getElementById('analytics-vendors');
+  var rows = data.by_vendor || [];
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No posted documents.</td></tr>'; return; }
+  tbody.innerHTML = rows.map(function(v) {
+    var topCode = '';
+    var topAmt = 0;
+    Object.keys(v.codes || {}).forEach(function(c) { if (v.codes[c] > topAmt) { topAmt = v.codes[c]; topCode = c; } });
+    return '<tr>' +
+      '<td>' + esc(v.vendor) + '</td>' +
+      '<td>' + fmtEUR(v.total) + '</td>' +
+      '<td>' + v.doc_count + '</td>' +
+      '<td><span style="font-family:monospace;font-size:12px;">' + esc(topCode) + '</span> \u00b7 ' + fmtEUR(topAmt) + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderAnalyticsCodes(data) {
+  var tbody = document.getElementById('analytics-codes');
+  var rows = data.by_code || [];
+  var total = data.total_lifetime_spend || 0;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No data.</td></tr>'; return; }
+  tbody.innerHTML = rows.map(function(r) {
+    var pct = total > 0 ? (r.amount / total * 100).toFixed(1) : '0';
+    return '<tr>' +
+      '<td><span style="font-family:monospace;">' + esc(r.code) + '</span></td>' +
+      '<td>' + fmtEUR(r.amount) + '</td>' +
+      '<td>' + pct + '%</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderAnalyticsDepartments(data) {
+  var box = document.getElementById('analytics-departments');
+  var rows = data.department_load || [];
+  if (!rows.length) { return; }  // Default empty-state already in HTML
+  var max = Math.max.apply(null, rows.map(function(r) { return r.amount; }));
+  box.innerHTML = rows.map(function(r) {
+    var pct = max > 0 ? (r.amount / max * 100) : 0;
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">' +
+      '<div style="width:80px;font-size:12px;text-transform:uppercase;font-weight:600;">' + esc(r.department) + '</div>' +
+      '<div style="flex:1;height:14px;background:#eef2f7;border-radius:7px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#14b8a6,#10b981);"></div></div>' +
+      '<div style="width:120px;text-align:right;font-size:12px;">' + fmtEUR(r.amount) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', function() {
+  loadStats();
+  loadUploadTable();
+  loadSchema();
+  loadPeopleList();
+  populatePeriodFilter();
+  setInterval(function() {
+    var activePanel = document.querySelector('.panel.active');
+    if (activePanel) {
+      if (activePanel.id === 'panel-upload') { loadStats(); loadUploadTable(); }
+      else if (activePanel.id === 'panel-approve') { loadApprovePanel(); }
+    }
+  }, 15000);
+  setupUpload();
+});
+
+// ---------------------------------------------------------------------------
+// API helpers
+// ---------------------------------------------------------------------------
+function api(method, url, body) {
+  var opts = { method: method, headers: {} };
+  if (body && !(body instanceof FormData)) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  } else if (body) {
+    opts.body = body;
+  }
+  return fetch(url, opts).then(function(r) { return r.json(); });
+}
+
+function loadStats() {
+  api('GET', '/api/stats').then(function(s) {
+    document.getElementById('stat-pending').textContent = (s.pending || 0) + (s.classified || 0) + (s.parsed || 0);
+    document.getElementById('stat-approved').textContent = s.approved || 0;
+    document.getElementById('stat-rejected').textContent = s.rejected || 0;
+    document.getElementById('stat-posted').textContent = s.posted || 0;
+  });
+}
+
+function loadSchema() {
+  api('GET', '/api/ledger-schema').then(function(s) { ledgerSchema = s; });
+}
+
+// ---------------------------------------------------------------------------
+// Period filter (generate last 12 months)
+// ---------------------------------------------------------------------------
+function populatePeriodFilter() {
+  var sel = document.getElementById('period-filter');
+  var now = new Date();
+  sel.innerHTML = '<option value="" selected>All Periods</option>';
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    var label = d.toLocaleString('en', { month: 'long', year: 'numeric' });
+    sel.innerHTML += '<option value="' + val + '">' + label + '</option>';
+  }
+}
+
+// ===========================================================================
+// PANEL 1: UPLOAD
+// ===========================================================================
+function loadUploadTable() {
+  api('GET', '/api/documents').then(function(docs) {
+    allDocs = docs;
+    renderUploadTable(docs.slice(0, 20));
+  });
+}
+
+function formatUploadedBy(name) {
+  if (!name) name = 'User';
+  var parts = name.trim().split(/\s+/);
+  var initials = parts.map(function(p) { return p.charAt(0).toUpperCase(); }).join('').substring(0, 2);
+  if (initials.length < 2) initials = name.substring(0, 2).toUpperCase();
+  var display = parts.length > 1 ? parts[0] + ' ' + parts[parts.length - 1].charAt(0) + '.' : name;
+  return '<span style="display:inline-flex;align-items:center;gap:6px;">' +
+    '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--brand-light);color:var(--accent);font-size:11px;font-weight:700;border:1px solid #c7d9f0;">' + esc(initials) + '</span>' +
+    '<span style="font-size:13px;">' + esc(display) + '</span></span>';
+}
+
+var PC_LABELS = {
+  AG: 'Amitours Group', AA: 'Alps2Alps', RR: 'Rock2Rock', BK: 'Skibookers',
+  SR: 'Skipasser', MT: 'Mountly', AH: 'Mountly', PK: 'MyPeak Finance',
+  CF: 'MyPeak Finance', AL: 'ALVEDA'
+};
+var PC_COLORS = {
+  AG: '#dc2626', AA: '#0ea5e9', RR: '#7c3aed', BK: '#059669',
+  SR: '#f59e0b', MT: '#14b8a6', AH: '#14b8a6', PK: '#ec4899',
+  CF: '#ec4899', AL: '#6366f1'
+};
+
+function renderProfitCenterBadge(pc, dept) {
+  if (!pc) return '<span style="color:var(--muted);font-size:12px;">\u2014 unassigned</span>';
+  var label = PC_LABELS[pc] || pc;
+  var color = PC_COLORS[pc] || '#64748b';
+  var html = '<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:10px;background:' + color + '15;color:' + color + ';font-size:11px;font-weight:600;border:1px solid ' + color + '33;">' +
+    '<span style="width:6px;height:6px;border-radius:50%;background:' + color + ';"></span>' +
+    esc(pc) + ' \u00b7 ' + esc(label) +
+    '</span>';
+  if (dept) {
+    html += '<div style="font-size:10px;color:var(--muted);margin-top:3px;">\u21b3 ' + esc(dept) + '</div>';
+  }
+  return html;
+}
+
+function renderUploadTable(docs) {
+  var tbody = document.getElementById('upload-table-body');
+  if (!docs.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No documents yet. Upload files to begin.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = docs.map(function(doc) {
+    var amount = doc.amount ? (doc.currency || 'EUR') + ' ' + Number(doc.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
+    var uploaded = doc.uploaded_at ? doc.uploaded_at.replace('T', ' ').substring(0, 16) : '-';
+    var vatNr = doc.vat_number || '\u2014';
+    var uploadedBy = doc.uploaded_by || 'User';
+
+    // Thumbnail
+    var thumbHtml;
+    if (doc.file_type === 'pdf') {
+      thumbHtml = '<div class="doc-thumb-placeholder" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" title="View PDF">&#128196;</div>';
+    } else if (['jpg','jpeg','png'].indexOf(doc.file_type) >= 0) {
+      thumbHtml = '<img class="doc-thumb" src="/api/documents/' + doc.id + '/file" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" alt="Preview" title="Click to preview">';
+    } else {
+      thumbHtml = '<div class="doc-thumb-placeholder" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" title="View document">&#128462;</div>';
+    }
+
+    return '<tr>' +
+      '<td>' + thumbHtml + '</td>' +
+      '<td><span class="badge badge-' + doc.status + '">' + doc.status + '</span></td>' +
+      '<td title="' + esc(doc.original_name || doc.filename) + '">' + esc(truncate(doc.original_name || doc.filename, 35)) + '</td>' +
+      '<td>' + esc(doc.vendor || '-') + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + esc(vatNr) + '</td>' +
+      '<td>' + amount + '</td>' +
+      '<td>' + renderProfitCenterBadge(doc.profit_center, doc.department) + '</td>' +
+      '<td>' + formatUploadedBy(uploadedBy) + '</td>' +
+      '<td style="font-size:12px;color:var(--muted);">' + uploaded + '</td>' +
+      '<td><button onclick="deleteDoc(\'' + doc.id + '\')" title="Delete" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;">&#128465;</button></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function deleteDoc(docId) {
+  if (!confirm('Delete this document? This cannot be undone.')) return;
+  fetch('/api/documents/' + docId, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        showToast('Delete failed: ' + data.error, 'error');
+      } else {
+        showToast('Document deleted', 'success');
+        loadStats();
+        loadUploadTable();
+      }
+    })
+    .catch(function(err) {
+      showToast('Delete failed: ' + err.message, 'error');
+    });
+}
+
+function setupUpload() {
+  var zone = document.getElementById('upload-zone');
+  var input = document.getElementById('file-input');
+
+  zone.addEventListener('click', function() { input.click(); });
+  input.addEventListener('change', function() { if (input.files.length) uploadFiles(input.files); });
+
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', function() { zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+  });
+}
+
+var ALL_PEOPLE = [];
+
+function loadPeopleList() {
+  api('GET', '/api/people').then(function(data) {
+    ALL_PEOPLE = data.people || [];
+    var sel = document.getElementById('upload-user');
+    var status = document.getElementById('upload-user-status');
+    if (!sel) return;
+
+    // Group by profit_center for clearer scanning
+    var grouped = {};
+    ALL_PEOPLE.forEach(function(p) {
+      var pc = p.profit_center || 'AG';
+      if (!grouped[pc]) grouped[pc] = [];
+      grouped[pc].push(p);
+    });
+
+    var html = ['<option value="">— Select your name (synced from Asana via BT4YOU) —</option>'];
+    var pcOrder = ['AG', 'AA', 'BK', 'SR', 'MT', 'AH', 'PK', 'CF', 'AL', 'RR'];
+    pcOrder.forEach(function(pc) {
+      if (!grouped[pc]) return;
+      var pcName = (PC_LABELS && PC_LABELS[pc]) ? PC_LABELS[pc] : pc;
+      html.push('<optgroup label="' + esc(pc + ' — ' + pcName) + '">');
+      grouped[pc].forEach(function(p) {
+        var titleSnippet = p.title ? ' — ' + p.title.substring(0, 50) : '';
+        html.push('<option value="' + esc(p.name) + '">' + esc(p.name + titleSnippet) + '</option>');
+      });
+      html.push('</optgroup>');
+    });
+    sel.innerHTML = html.join('');
+
+    if (status) status.textContent = ALL_PEOPLE.length + ' people from Asana';
+
+    // Restore last selection
+    var saved = localStorage.getItem('fio_uploaded_by');
+    if (saved) sel.value = saved;
+  }).catch(function() {
+    var status = document.getElementById('upload-user-status');
+    if (status) { status.textContent = 'BT4YOU offline'; status.style.color = 'var(--red)'; }
+  });
+}
+
+function uploadFiles(files) {
+  var fd = new FormData();
+  for (var i = 0; i < files.length; i++) fd.append('files', files[i]);
+  var userInput = document.getElementById('upload-user');
+  if (userInput && userInput.value.trim()) {
+    fd.append('uploaded_by', userInput.value.trim());
+    localStorage.setItem('fio_uploaded_by', userInput.value.trim());
+  }
+
+  var bar = document.getElementById('progress-bar');
+  var fill = document.getElementById('progress-fill');
+  bar.style.display = 'block';
+  fill.style.width = '30%';
+
+  fetch('/api/upload', { method: 'POST', body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      fill.style.width = '100%';
+      setTimeout(function() { bar.style.display = 'none'; fill.style.width = '0%'; }, 1000);
+      showToast('Uploaded ' + (data.uploaded ? data.uploaded.length : 0) + ' file(s)', 'success');
+      loadStats();
+      loadUploadTable();
+      document.getElementById('file-input').value = '';
+    })
+    .catch(function(err) {
+      bar.style.display = 'none';
+      showToast('Upload failed: ' + err.message, 'error');
+    });
+}
+
+// ===========================================================================
+// PANEL 2: APPROVE
+// ===========================================================================
+function loadApprovePanel() {
+  var pc = document.getElementById('stream-filter').value;
+  var status = document.getElementById('approve-status-filter').value;
+  var url = '/api/documents';
+  var params = [];
+  if (pc) params.push('profit_center=' + pc);
+  if (status) params.push('status=' + status);
+  if (params.length) url += '?' + params.join('&');
+
+  // Stream dot color
+  var dot = document.getElementById('stream-dot');
+  if (pc && STREAM_COLORS[pc]) {
+    dot.style.display = 'inline-block';
+    dot.style.backgroundColor = STREAM_COLORS[pc];
+  } else {
+    dot.style.display = 'none';
+  }
+
+  api('GET', url).then(function(docs) {
+    renderApproveTable(docs);
+    var pending = 0, approved = 0;
+    docs.forEach(function(d) {
+      if (d.status === 'pending' || d.status === 'classified') pending++;
+      if (d.status === 'approved' || d.status === 'posted') approved++;
+    });
+    document.getElementById('approve-pending').textContent = pending;
+    document.getElementById('approve-approved').textContent = approved;
+  });
+}
+
+function renderApproveTable(docs) {
+  var tbody = document.getElementById('approve-table-body');
+  if (!docs.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No documents found for this stream.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = docs.map(function(doc) {
+    var conf = doc.confidence || 0;
+    var confClass = conf >= 90 ? 'confidence-high' : (conf >= 70 ? 'confidence-mid' : 'confidence-low');
+    var amount = doc.amount ? (doc.currency || 'EUR') + ' ' + Number(doc.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
+    var vatNr = doc.vat_number || '\u2014';
+
+    // Approved by display
+    var approvedByHtml = '\u2014';
+    if (doc.approved_by) {
+      var abName = doc.approved_by;
+      // Map profit center codes to stream names
+      var pcStream = PC_TO_STREAM[abName];
+      if (pcStream) abName = STREAM_NAMES[pcStream] || abName;
+      approvedByHtml = '<span style="font-size:12px;color:var(--green);font-weight:600;">' + esc(abName) + '</span>';
+    }
+
+    // Thumbnail
+    var thumbHtml;
+    if (doc.file_type === 'pdf') {
+      thumbHtml = '<div class="doc-thumb-placeholder" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" title="View PDF">&#128196;</div>';
+    } else if (['jpg','jpeg','png'].indexOf(doc.file_type) >= 0) {
+      thumbHtml = '<img class="doc-thumb" src="/api/documents/' + doc.id + '/file" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" alt="Preview" title="Click to preview">';
+    } else {
+      thumbHtml = '<div class="doc-thumb-placeholder" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" title="View document">&#128462;</div>';
+    }
+
+    return '<tr>' +
+      '<td>' + thumbHtml + '</td>' +
+      '<td><span class="badge badge-' + doc.status + '">' + doc.status + '</span></td>' +
+      '<td title="' + esc(doc.original_name || doc.filename) + '">' + esc(truncate(doc.original_name || doc.filename, 30)) + '</td>' +
+      '<td>' + esc(doc.vendor || '-') + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + esc(vatNr) + '</td>' +
+      '<td>' + amount + '</td>' +
+      '<td>' + esc(doc.ledger_code || '-') + '</td>' +
+      '<td><div class="confidence-bar ' + confClass + '"><span>' + conf + '%</span><div class="bar"><div class="fill" style="width:' + conf + '%"></div></div></div></td>' +
+      '<td>' + approvedByHtml + '</td>' +
+      '<td><div class="feedback-btns">' +
+        '<button title="Correct" onclick="event.stopPropagation();sendFeedback(\'' + doc.id + '\',true,this)">&#128077;</button>' +
+        '<button title="Incorrect" onclick="event.stopPropagation();openFeedbackModal(\'' + doc.id + '\',this)">&#128078;</button>' +
+      '</div></td>' +
+      '<td class="actions">' +
+        '<button class="btn btn-ghost btn-sm" onclick="openModal(\'' + doc.id + '\')">View</button>' +
+        (canApprove(doc) ? '<button class="btn btn-success btn-sm" onclick="quickApprove(\'' + doc.id + '\')">Approve</button>' : '') +
+        (canReject(doc) ? '<button class="btn btn-danger btn-sm" onclick="quickReject(\'' + doc.id + '\')">Reject</button>' : '') +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function canApprove(doc) {
+  return ['pending', 'parsed', 'classified'].indexOf(doc.status) >= 0;
+}
+function canReject(doc) {
+  return ['pending', 'parsed', 'classified'].indexOf(doc.status) >= 0;
+}
+
+// ===========================================================================
+// PANEL 3: ACCOUNTING (with drill-down)
+// ===========================================================================
+function loadAccountingPanel() {
+  var period = document.getElementById('period-filter').value;
+  var actualsUrl = '/api/actuals' + (period ? '?period=' + period : '');
+
+  var fetches = [
+    api('GET', actualsUrl),
+    api('GET', '/api/stream-stats'),
+    api('GET', '/api/audit-log?limit=50'),
+    api('GET', '/api/documents')
+  ];
+  // Ensure ledger schema is loaded (needed for P&L rendering)
+  if (!ledgerSchema) {
+    fetches.push(api('GET', '/api/ledger-schema'));
+  }
+
+  Promise.all(fetches).then(function(results) {
+    actualsData = results[0];
+    var streamStats = results[1];
+    var auditLog = results[2];
+    var allDocuments = results[3];
+    if (results[4]) ledgerSchema = results[4];
+
+    console.log('[FIO] actualsData:', JSON.stringify(actualsData));
+    console.log('[FIO] ledgerSchema codes:', ledgerSchema ? ledgerSchema.codes.length : 'NULL');
+    console.log('[FIO] streamStats:', JSON.stringify(streamStats));
+
+    renderStreamCards(actualsData, streamStats);
+    // If a stream is already selected, re-render its P&L
+    if (activeStream) {
+      showStreamPnl(activeStream, STREAM_PC_MAP[activeStream]);
+    }
+    renderPolicyViolations(allDocuments);
+    renderAuditLog(auditLog);
+  });
+}
+
+function renderStreamCards(actuals, streamStats) {
+  var grid = document.getElementById('stream-cards-grid');
+  var streams = actuals.streams || {};
+
+  var streamKeys = ['alps2alps', 'skibookers', 'skipasser', 'mountly', 'mypeak_finance', 'alveda'];
+  var pcAlts = { 'mountly': ['AH', 'MT'], 'mypeak_finance': ['CF', 'PK'] };
+
+  var html = '';
+  streamKeys.forEach(function(key) {
+    var color = STREAM_COLORS[key] || '#94a3b8';
+    var name = STREAM_NAMES[key] || key;
+    var data = streams[key] || {};
+    var total = 0;
+    var codeTotals = {};
+
+    Object.keys(data).forEach(function(period) {
+      var pd = data[period];
+      Object.keys(pd).forEach(function(code) {
+        total += pd[code];
+        codeTotals[code] = (codeTotals[code] || 0) + pd[code];
+      });
+    });
+
+    var pc = STREAM_PC_MAP[key];
+    var stats = streamStats[pc] || {};
+    if (!streamStats[pc] && pcAlts[key]) {
+      pcAlts[key].forEach(function(alt) {
+        if (streamStats[alt]) stats = streamStats[alt];
+      });
+    }
+
+    var sortedCodes = Object.keys(codeTotals).sort(function(a, b) { return Math.abs(codeTotals[b]) - Math.abs(codeTotals[a]); });
+    var top3 = sortedCodes.slice(0, 3).map(function(c) { return c + ': \u20AC' + Math.abs(codeTotals[c]).toFixed(0); }).join(', ');
+
+    var isActive = activeStream === key ? ' active-stream' : '';
+
+    html += '<div class="stream-card' + isActive + '" style="border-top-color:' + color + ';" onclick="showStreamPnl(\'' + key + '\',\'' + pc + '\')">';
+    html += '<div class="stream-title" style="color:' + color + ';">' + esc(name) + '</div>';
+    html += '<div class="stream-total">\u20AC' + Math.abs(total).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>';
+    html += '<div class="stream-counts">';
+    html += '<span>' + ((stats.pending || 0) + (stats.classified || 0)) + ' pending</span>';
+    html += '<span>' + (stats.approved || 0) + ' approved</span>';
+    html += '<span>' + (stats.posted || 0) + ' posted</span>';
+    html += '</div>';
+    if (top3) {
+      html += '<div class="stream-top-cats">Top: ' + top3 + '</div>';
+    }
+    html += '<div style="margin-top:10px;"><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();uploadStreamToBT4YOU(\'' + esc(name) + '\')">Upload to BT4YOU</button></div>';
+    html += '</div>';
+  });
+
+  grid.innerHTML = html;
+}
+
+function showStreamPnl(streamId, profitCenter) {
+  activeStream = streamId;
+  expandedCostRow = null;
+
+  // Highlight active card
+  document.querySelectorAll('.stream-card').forEach(function(c) { c.classList.remove('active-stream'); });
+  var cards = document.querySelectorAll('.stream-card');
+  var streamKeys = ['alps2alps', 'skibookers', 'skipasser', 'mountly', 'mypeak_finance', 'alveda'];
+  var idx = streamKeys.indexOf(streamId);
+  if (idx >= 0 && cards[idx]) cards[idx].classList.add('active-stream');
+
+  var section = document.getElementById('pnl-section');
+  section.style.display = 'block';
+
+  var color = STREAM_COLORS[streamId] || '#1a56db';
+  document.getElementById('pnl-section-title').innerHTML = '<span style="color:' + color + ';">' + esc(STREAM_NAMES[streamId] || streamId) + '</span> &mdash; P&amp;L';
+
+  renderPnlForStream(streamId, profitCenter);
+}
+
+function closePnlDrilldown() {
+  activeStream = null;
+  expandedCostRow = null;
+  document.getElementById('pnl-section').style.display = 'none';
+  document.querySelectorAll('.stream-card').forEach(function(c) { c.classList.remove('active-stream'); });
+}
+
+var collapsedStatements = {};
+
+function renderPnlForStream(streamId, profitCenter) {
+  if (!actualsData || !ledgerSchema) return;
+  var streams = actualsData.streams || {};
+  var tbody = document.getElementById('pnl-table-body');
+
+  var mergedCodes = {};
+  var sData = streams[streamId] || {};
+  Object.keys(sData).forEach(function(period) {
+    Object.keys(sData[period]).forEach(function(code) {
+      mergedCodes[code] = (mergedCodes[code] || 0) + sData[period][code];
+    });
+  });
+
+  if (Object.keys(mergedCodes).length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No P&amp;L data for ' + esc(STREAM_NAMES[streamId] || streamId) + '.</td></tr>';
+    return;
+  }
+
+  var codeLookup = {};
+  if (ledgerSchema && ledgerSchema.codes) {
+    ledgerSchema.codes.forEach(function(c) {
+      codeLookup[c.code] = c;
+    });
+  }
+
+  var html = '';
+  var revenueTotal = 0, cogsTotal = 0, marketingTotal = 0, adminTotal = 0, opsTotal = 0;
+
+  STATEMENT_ORDER.forEach(function(stmt) {
+    var stmtCodes = [];
+    Object.keys(mergedCodes).forEach(function(code) {
+      var info = codeLookup[code];
+      if (info && info.statement === stmt) {
+        stmtCodes.push({ code: code, label: info.label || '', amount: mergedCodes[code] });
+      }
+    });
+
+    if (stmtCodes.length === 0) return;
+
+    var isCollapsed = collapsedStatements[stmt] === true;
+    var arrowChar = isCollapsed ? '\u25B6' : '\u25BC';
+
+    // Statement header - clickable to collapse/expand
+    html += '<tr class="stmt-header-row' + (isCollapsed ? ' collapsed' : '') + '" onclick="toggleStatementGroup(\'' + stmt + '\',\'' + streamId + '\',\'' + profitCenter + '\')">';
+    html += '<td colspan="4"><span class="stmt-arrow">' + arrowChar + '</span> ' + stmt + '</td></tr>';
+
+    var stmtTotal = 0;
+    stmtCodes.forEach(function(sc) {
+      stmtTotal += sc.amount;
+      var cls = sc.amount >= 0 ? 'positive' : 'negative';
+      var hideStyle = isCollapsed ? ' style="display:none;"' : '';
+
+      html += '<tr class="clickable-row stmt-row-' + stmt + '"' + hideStyle + ' onclick="toggleCostDrilldown(\'' + sc.code + '\',\'' + profitCenter + '\',this)">';
+      html += '<td></td><td style="font-family:monospace;">' + esc(sc.code) + '</td><td>' + esc(sc.label) + '</td>';
+      html += '<td style="text-align:right;" class="' + cls + '">\u20AC' + Number(sc.amount).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+
+      // Placeholder for drilldown documents
+      html += '<tr class="drilldown-row stmt-row-' + stmt + '" id="drilldown-' + sc.code + '" style="display:none;"><td colspan="4"><div id="drilldown-content-' + sc.code + '" style="padding:4px 0 4px 24px;"></div></td></tr>';
+    });
+
+    // Subtotal row for this statement
+    var subtotalCls = stmtTotal >= 0 ? 'positive' : 'negative';
+    var subtotalHide = isCollapsed ? '' : '';
+    html += '<tr class="stmt-subtotal-row stmt-row-' + stmt + '"' + (isCollapsed ? ' style="display:none;"' : '') + '>';
+    html += '<td colspan="3" style="text-align:right;padding-right:20px;font-size:12px;color:var(--muted);">Total ' + stmt.charAt(0) + stmt.slice(1).toLowerCase() + '</td>';
+    html += '<td style="text-align:right;" class="' + subtotalCls + '">\u20AC' + Number(stmtTotal).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+
+    if (stmt === 'REVENUE') revenueTotal = stmtTotal;
+    else if (stmt === 'COGS') cogsTotal = stmtTotal;
+    else if (stmt === 'MARKETING') marketingTotal = stmtTotal;
+    else if (stmt === 'ADMIN') adminTotal = stmtTotal;
+    else if (stmt === 'OPERATIONAL') opsTotal = stmtTotal;
+
+    // Gross Margin after COGS
+    if (stmt === 'COGS') {
+      var gm = revenueTotal - Math.abs(cogsTotal);
+      html += '<tr class="gm-row"><td colspan="3">GROSS MARGIN</td>';
+      html += '<td style="text-align:right;">\u20AC' + Number(gm).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+    }
+  });
+
+  // EBITDA
+  var gm = revenueTotal - Math.abs(cogsTotal);
+  var ebitda = gm - Math.abs(marketingTotal) - Math.abs(adminTotal) - Math.abs(opsTotal);
+  html += '<tr class="ebitda-row"><td colspan="3">EBITDA</td>';
+  html += '<td style="text-align:right;">\u20AC' + Number(ebitda).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+
+  tbody.innerHTML = html;
+}
+
+function toggleStatementGroup(stmt, streamId, profitCenter) {
+  collapsedStatements[stmt] = !collapsedStatements[stmt];
+  renderPnlForStream(streamId, profitCenter);
+}
+
+function toggleCostDrilldown(ledgerCode, profitCenter, rowEl) {
+  var drillRow = document.getElementById('drilldown-' + ledgerCode);
+  var contentEl = document.getElementById('drilldown-content-' + ledgerCode);
+
+  if (!drillRow || !contentEl) return;
+
+  if (expandedCostRow === ledgerCode) {
+    // Collapse
+    drillRow.style.display = 'none';
+    expandedCostRow = null;
+    return;
+  }
+
+  // Collapse previous
+  if (expandedCostRow) {
+    var prev = document.getElementById('drilldown-' + expandedCostRow);
+    if (prev) prev.style.display = 'none';
+  }
+
+  expandedCostRow = ledgerCode;
+  drillRow.style.display = 'table-row';
+  contentEl.innerHTML = '<div style="color:var(--muted);font-size:12px;"><span class="spinner"></span> Loading documents...</div>';
+
+  // Fetch documents matching this ledger code and profit center
+  var url = '/api/documents?ledger_code=' + encodeURIComponent(ledgerCode) + '&profit_center=' + encodeURIComponent(profitCenter);
+  api('GET', url).then(function(docs) {
+    if (!docs.length) {
+      contentEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">No documents found for ' + esc(ledgerCode) + '</div>';
+      return;
+    }
+
+    var tbl = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    tbl += '<thead><tr style="background:#f1f5f9;">';
+    tbl += '<th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:600;">Date</th>';
+    tbl += '<th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:600;">Vendor</th>';
+    tbl += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:600;">Amount</th>';
+    tbl += '<th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:600;">File</th>';
+    tbl += '<th style="padding:6px 8px;"></th>';
+    tbl += '</tr></thead><tbody>';
+
+    docs.forEach(function(d) {
+      var amt = d.amount ? '\u20AC' + Number(d.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
+      var dateStr = d.period || (d.uploaded_at ? d.uploaded_at.substring(0, 10) : '-');
+      tbl += '<tr style="border-bottom:1px solid #f1f5f9;">';
+      tbl += '<td style="padding:6px 8px;">' + esc(dateStr) + '</td>';
+      tbl += '<td style="padding:6px 8px;">' + esc(d.vendor || '-') + '</td>';
+      tbl += '<td style="padding:6px 8px;text-align:right;font-weight:600;">' + amt + '</td>';
+      tbl += '<td style="padding:6px 8px;color:var(--accent);cursor:pointer;" onclick="openModal(\'' + d.id + '\')">' + esc(truncate(d.original_name || d.filename, 25)) + '</td>';
+      tbl += '<td style="padding:6px 8px;"><button class="btn btn-ghost btn-sm" onclick="openModal(\'' + d.id + '\')">View</button></td>';
+      tbl += '</tr>';
+    });
+    tbl += '</tbody></table>';
+    contentEl.innerHTML = tbl;
+  });
+}
+
+function renderPolicyViolations(docs) {
+  var section = document.getElementById('policy-violations-section');
+  var body = document.getElementById('policy-violations-body');
+  var violations = [];
+
+  docs.forEach(function(doc) {
+    var warnings = doc.policy_warnings || [];
+    warnings.forEach(function(w) {
+      if (w.level === 'red' || w.level === 'yellow') {
+        violations.push({
+          docId: doc.id,
+          vendor: doc.vendor || doc.original_name || doc.filename,
+          level: w.level,
+          message: w.message
+        });
+      }
+    });
+  });
+
+  if (violations.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  var html = '';
+  violations.forEach(function(v) {
+    var cls = v.level === 'red' ? 'policy-red' : 'policy-yellow';
+    var icon = v.level === 'red' ? '&#128308;' : '&#128993;';
+    html += '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">';
+    html += '<span class="policy-badge ' + cls + '">' + icon + ' ' + esc(v.level.toUpperCase()) + '</span>';
+    html += '<span style="font-size:13px;">' + esc(v.vendor) + ' &mdash; ' + esc(v.message) + '</span>';
+    html += '<button class="btn btn-ghost btn-sm" onclick="openModal(\'' + v.docId + '\')">View</button>';
+    html += '</div>';
+  });
+  body.innerHTML = html;
+}
+
+function renderAuditLog(entries) {
+  var tbody = document.getElementById('audit-log-body');
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No audit entries yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = entries.map(function(e) {
+    var time = e.performed_at ? e.performed_at.replace('T', ' ').substring(0, 19) : '-';
+    var details = '';
+    if (e.details && typeof e.details === 'object') {
+      var keys = Object.keys(e.details).slice(0, 3);
+      details = keys.map(function(k) {
+        var v = e.details[k];
+        if (typeof v === 'object') v = JSON.stringify(v).substring(0, 50);
+        return k + ': ' + String(v).substring(0, 40);
+      }).join('; ');
+    }
+    return '<tr>' +
+      '<td style="font-size:12px;color:var(--muted);white-space:nowrap;">' + time + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;">' + esc(e.document_id || '-') + '</td>' +
+      '<td><span class="badge badge-' + (e.action || '') + '">' + esc(e.action || '-') + '</span></td>' +
+      '<td>' + esc(e.performed_by || '-') + '</td>' +
+      '<td style="font-size:12px;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;">' + esc(details) + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+// ===========================================================================
+// MODAL (shared across panels)
+// ===========================================================================
+function openModal(docId) {
+  api('GET', '/api/documents/' + docId).then(function(doc) {
+    currentDoc = doc;
+    selectedCode = doc.ledger_code;
+    document.getElementById('modal-title').textContent = doc.original_name || doc.filename;
+    renderPreview(doc);
+    renderDetails(doc);
+    renderModalActions(doc);
+    document.getElementById('modal-overlay').classList.add('active');
+  });
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  currentDoc = null;
+}
+
+function reloadModal() {
+  if (!currentDoc) return;
+  var docId = currentDoc.id;
+  api('GET', '/api/documents/' + docId).then(function(doc) {
+    currentDoc = doc;
+    selectedCode = doc.ledger_code;
+    document.getElementById('modal-title').textContent = doc.original_name || doc.filename;
+    renderPreview(doc);
+    renderDetails(doc);
+    renderModalActions(doc);
+    showToast('Document reloaded', 'success');
+  });
+}
+
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+function renderPreview(doc) {
+  var el = document.getElementById('modal-preview');
+  var fileUrl = '/api/documents/' + doc.id + '/file';
+  if (doc.file_type === 'pdf') {
+    el.innerHTML = '<embed src="' + fileUrl + '" type="application/pdf" width="100%" height="500px">';
+  } else if (['jpg','jpeg','png'].indexOf(doc.file_type) >= 0) {
+    el.innerHTML = '<img src="' + fileUrl + '" alt="Document preview">';
+  } else {
+    el.innerHTML = '<div style="padding:40px;color:var(--muted);">Preview not available for .' + esc(doc.file_type) + ' files</div>';
+  }
+}
+
+function renderDetails(doc) {
+  var el = document.getElementById('modal-details');
+  var parsed = doc.parsed_json || {};
+  var classification = doc.classification_json || {};
+  var codes = classification.codes || [];
+  var money = parsed.money || {};
+  var dates = parsed.dates || {};
+  var vendorData = parsed.vendor || {};
+  var vendorName = typeof vendorData === 'object' ? (vendorData.name || doc.vendor || '-') : (doc.vendor || String(vendorData) || '-');
+  var vatNumber = doc.vat_number || (typeof vendorData === 'object' ? vendorData.vat_number : null) || null;
+  var currency = money.currency || 'EUR';
+
+  // Enhanced header card
+  var html = '<div class="detail-header">';
+  html += '<div class="vendor-name">' + esc(vendorName) + '</div>';
+  if (vatNumber) {
+    html += '<div class="vat-number">VAT: ' + esc(vatNumber) + '</div>';
+  }
+  if (typeof vendorData === 'object' && vendorData.address) {
+    html += '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + esc(vendorData.address) + '</div>';
+  }
+  if (money.total_amount) {
+    html += '<div class="amount-big">\u20AC' + Number(money.total_amount).toFixed(2) + '</div>';
+    var breakdown = [];
+    if (money.net_amount) breakdown.push('Net: \u20AC' + Number(money.net_amount).toFixed(2));
+    if (money.tax_amount) breakdown.push('VAT/PVN: \u20AC' + Number(money.tax_amount).toFixed(2));
+    if (breakdown.length) {
+      html += '<div class="amount-breakdown">' + breakdown.join(' &bull; ') + '</div>';
+    }
+  }
+  html += '</div>';
+
+  // Feedback buttons in modal
+  html += '<div style="margin-bottom:12px;">';
+  html += '<span style="font-size:13px;color:var(--muted);margin-right:8px;">Scan accuracy:</span>';
+  html += '<div class="feedback-btns" style="display:inline-flex;">';
+  html += '<button title="Correct" onclick="sendFeedback(\'' + doc.id + '\',true,this)">&#128077;</button>';
+  html += '<button title="Incorrect" onclick="openFeedbackModal(\'' + doc.id + '\',this)">&#128078;</button>';
+  html += '</div>';
+  html += '</div>';
+
+  // Key details grid
+  html += '<h4>Document Info</h4>';
+  html += '<div class="detail-grid">';
+  html += row('Type', parsed.document_type || '-');
+  html += row('Date', dates.document_date || '-');
+  html += row('Due Date', dates.due_date || '\u2014');
+  html += row('Payment', doc.payment_method || parsed.payment_method || '-');
+  html += row('Period', doc.period || '-');
+  html += row('Profit Center', doc.profit_center || '-');
+  html += row('Status', doc.status);
+  html += '</div>';
+
+  // Terminal receipt linking
+  if (doc.is_terminal_receipt && doc.linked_vendor) {
+    html += '<div style="margin-top:8px;padding:8px 12px;background:var(--brand-light);border:1px solid var(--accent);border-radius:6px;font-size:12px;">';
+    html += 'Linked to: <strong>' + esc(doc.linked_vendor.name || '') + '</strong>';
+    if (doc.linked_vendor.vat_number) html += ' (' + esc(doc.linked_vendor.vat_number) + ')';
+    html += '</div>';
+  }
+
+  // Policy warnings
+  var policyWarnings = doc.policy_warnings || [];
+  if (policyWarnings.length) {
+    html += '<h4>Expense Policy</h4>';
+    policyWarnings.forEach(function(pw) {
+      var cls = 'policy-' + (pw.level || 'green');
+      var icon = pw.level === 'green' ? '&#128994;' : (pw.level === 'yellow' ? '&#128993;' : '&#128308;');
+      html += '<div class="policy-badge ' + cls + '">' + icon + ' ' + esc(pw.message) + '</div><br>';
+    });
+  }
+
+  // Warnings from parser
+  var warnings = parsed.warnings || [];
+  if (warnings.length) {
+    html += '<h4>Warnings</h4>';
+    warnings.forEach(function(w) {
+      html += '<div style="color:var(--yellow);font-size:12px;margin-bottom:4px;">&#9888; ' + esc(w) + '</div>';
+    });
+  }
+
+  // Classification options
+  html += '<h4>Proposed Classification</h4>';
+  if (codes.length) {
+    codes.forEach(function(c, i) {
+      var sel = c.code === selectedCode ? ' selected' : '';
+      var conf = c.confidence || 0;
+      var confClass = conf >= 90 ? 'confidence-high' : (conf >= 70 ? 'confidence-mid' : 'confidence-low');
+      html += '<div class="code-option' + sel + '" onclick="selectCode(\'' + c.code + '\')">';
+      html += '<div class="code-header"><span class="code-name">' + esc(c.code) + ' \u2014 ' + esc(c.label || '') + '</span>';
+      html += '<div class="confidence-bar ' + confClass + '" style="width:120px"><span>' + conf + '%</span><div class="bar"><div class="fill" style="width:' + conf + '%"></div></div></div>';
+      html += '</div>';
+      if (c.reasoning) html += '<div class="reasoning">' + esc(c.reasoning) + '</div>';
+      if (c.profit_center) html += '<div class="reasoning">Profit center: ' + esc(c.profit_center) + '</div>';
+      html += '</div>';
+    });
+  } else {
+    html += '<div style="color:var(--muted);font-size:13px;">No classification available.</div>';
+  }
+
+  // Edit row
+  html += '<h4>Override</h4>';
+  html += '<div class="edit-row">';
+  html += '<select id="edit-code" onchange="selectedCode=this.value">';
+  html += '<option value="">-- Select Code --</option>';
+  if (ledgerSchema && ledgerSchema.codes) {
+    ledgerSchema.codes.forEach(function(c) {
+      var sel = c.code === selectedCode ? ' selected' : '';
+      html += '<option value="' + c.code + '"' + sel + '>' + c.code + ' \u2014 ' + esc(c.label) + '</option>';
+    });
+  }
+  html += '</select>';
+  html += '<select id="edit-pc" onchange="syncModalPC(this.value)">';
+  html += '<option value="">-- Profit Center --</option>';
+  if (ledgerSchema && ledgerSchema.profit_centers) {
+    ledgerSchema.profit_centers.forEach(function(pc) {
+      var sel = pc.code === doc.profit_center ? ' selected' : '';
+      html += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' \u2014 ' + esc(pc.name) + '</option>';
+    });
+  }
+  html += '</select>';
+  html += '</div>';
+
+  // Line items with translation
+  var items = parsed.line_items || [];
+  if (items.length) {
+    html += '<h4>Line Items (' + items.length + ')</h4>';
+    html += '<div style="max-height:200px;overflow-y:auto;">';
+    items.forEach(function(item) {
+      html += '<div class="line-item-row">';
+      var descEn = item.description_en || item.description || '-';
+      var descOrig = item.description_original || null;
+      if (item.amount) html += '<span class="line-item-amount">\u20AC' + Number(item.amount).toFixed(2) + '</span>';
+      html += '<div class="line-item-en">' + esc(descEn) + '</div>';
+      if (descOrig && descOrig !== descEn) {
+        html += '<div class="line-item-original">' + esc(descOrig);
+        if (item.language) html += ' <span style="opacity:0.6;">(' + esc(item.language) + ')</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function renderModalActions(doc) {
+  var el = document.getElementById('modal-actions');
+  if (['approved', 'posted', 'rejected'].indexOf(doc.status) >= 0) {
+    var statusMsg = '<span style="color:var(--muted);font-size:13px;">This document has been ' + doc.status + '.</span>';
+    if (doc.approved_by) {
+      var abDisplay = doc.approved_by;
+      var pcStream = PC_TO_STREAM[abDisplay];
+      if (pcStream) abDisplay = STREAM_NAMES[pcStream] || abDisplay;
+      statusMsg += '<span style="margin-left:12px;font-size:13px;color:var(--green);font-weight:600;">Approved by: ' + esc(abDisplay) + '</span>';
+    }
+    el.innerHTML = statusMsg;
+    return;
+  }
+
+  // Determine pre-selected profit center from doc, edit-pc dropdown, or stream filter
+  var prePC = '';
+  var editPcEl = document.getElementById('edit-pc');
+  if (editPcEl && editPcEl.value) {
+    prePC = editPcEl.value;
+  } else if (doc.profit_center) {
+    prePC = doc.profit_center;
+  } else {
+    var streamFilter = document.getElementById('stream-filter');
+    if (streamFilter && streamFilter.value) prePC = streamFilter.value;
+  }
+
+  var pcOptions = '<option value="">-- Select Profit Center --</option>';
+  var pcList = [
+    {code: 'AA', name: 'Alps2Alps'}, {code: 'BK', name: 'Skibookers'},
+    {code: 'SR', name: 'Skipasser'}, {code: 'AH', name: 'Mountly'},
+    {code: 'CF', name: 'MyPeak Finance'}, {code: 'AL', name: 'ALVEDA'}
+  ];
+  pcList.forEach(function(pc) {
+    var sel = pc.code === prePC ? ' selected' : '';
+    pcOptions += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' \u2014 ' + pc.name + '</option>';
+  });
+
+  var disabledAttr = prePC ? '' : ' disabled';
+  var btnStyle = prePC ? '' : ' style="opacity:0.5;cursor:not-allowed;"';
+  var warningHtml = prePC ? '' : '<div style="color:var(--yellow);font-size:12px;margin-top:4px;">Select profit center to approve</div>';
+  var selectStyle = prePC ? '' : ' style="border:2px solid var(--yellow);background:rgba(217,119,6,0.08);"';
+
+  el.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:4px;">' +
+      '<select id="modal-approve-pc" onchange="onModalPCChange()"' + selectStyle + '>' + pcOptions + '</select>' +
+      warningHtml +
+    '</div>' +
+    '<div id="modal-dept-wrap" style="display:flex;flex-direction:column;gap:4px;">' +
+      '<select id="modal-approve-dept">' +
+        '<option value="">-- Department (optional) --</option>' +
+      '</select>' +
+    '</div>' +
+    '<div id="modal-reason-wrap" style="display:flex;flex-direction:column;gap:4px;">' +
+      '<select id="modal-approve-reason">' +
+        '<option value="">-- Cost reason (optional) --</option>' +
+      '</select>' +
+    '</div>' +
+    '<div id="modal-approver-wrap" style="display:flex;flex-direction:column;gap:4px;">' +
+      '<select id="modal-approver-name">' +
+        '<option value="">-- Approver (your name from Asana) --</option>' +
+      '</select>' +
+    '</div>' +
+    '<button class="btn btn-success" id="modal-approve-btn" onclick="approveFromModal()"' + disabledAttr + btnStyle + '>Approve & Post</button>' +
+    '<button class="btn btn-danger" onclick="rejectFromModal()">Reject</button>' +
+    '<label><input type="checkbox" id="add-rule-check"> Always classify this vendor as selected code</label>';
+
+  // Populate department + reason + approver selectors based on current state
+  populateDepartmentOptions(prePC, doc.department);
+  populateReasonOptions(doc.ledger_code || (selectedCode || ''), doc.cost_reason);
+  populateApproverOptions(prePC, doc.approved_by);
+}
+
+function populateApproverOptions(pc, preselect) {
+  var sel = document.getElementById('modal-approver-name');
+  if (!sel) return;
+  var people = ALL_PEOPLE || [];
+  if (!people.length) {
+    sel.innerHTML = '<option value="">-- Roster loading… --</option>';
+    return;
+  }
+  // Show people from the chosen PC first, then everyone else
+  var primary = pc ? people.filter(function(p) { return p.profit_center === pc; }) : [];
+  var others = pc ? people.filter(function(p) { return p.profit_center !== pc; }) : people;
+  var saved = preselect || localStorage.getItem('fio_uploaded_by') || '';
+  var html = ['<option value="">-- Approver (Asana name) --</option>'];
+  if (primary.length) {
+    html.push('<optgroup label="' + esc(pc + ' team') + '">');
+    primary.forEach(function(p) {
+      var s = (p.name === saved) ? ' selected' : '';
+      html.push('<option value="' + esc(p.name) + '"' + s + '>' + esc(p.name) + '</option>');
+    });
+    html.push('</optgroup>');
+  }
+  if (others.length) {
+    html.push('<optgroup label="Other streams">');
+    others.forEach(function(p) {
+      var s = (p.name === saved) ? ' selected' : '';
+      html.push('<option value="' + esc(p.name) + '"' + s + '>' + esc(p.name) + ' (' + esc(p.profit_center) + ')</option>');
+    });
+    html.push('</optgroup>');
+  }
+  sel.innerHTML = html.join('');
+}
+
+function populateDepartmentOptions(pc, preselect) {
+  var sel = document.getElementById('modal-approve-dept');
+  if (!sel) return;
+  if (!pc) {
+    sel.innerHTML = '<option value="">-- Select Profit Center first --</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  api('GET', '/api/departments?profit_center=' + encodeURIComponent(pc)).then(function(data) {
+    var opts = ['<option value="">-- Department (optional) --</option>'];
+    (data.departments || []).forEach(function(d) {
+      var s = (d.id === preselect) ? ' selected' : '';
+      opts.push('<option value="' + d.id + '"' + s + '>' + esc(d.icon || '') + ' ' + esc(d.name) + '</option>');
+    });
+    sel.innerHTML = opts.join('');
+  }).catch(function() {});
+}
+
+function populateReasonOptions(code, preselect) {
+  var sel = document.getElementById('modal-approve-reason');
+  if (!sel) return;
+  if (!code || !ledgerSchema || !ledgerSchema.codes) {
+    sel.innerHTML = '<option value="">-- Select ledger code first --</option>';
+    sel.disabled = true;
+    return;
+  }
+  var codeMeta = null;
+  ledgerSchema.codes.forEach(function(c) { if (c.code === code) codeMeta = c; });
+  var reasons = (codeMeta && codeMeta.reasons) || [];
+  if (!reasons.length) {
+    sel.innerHTML = '<option value="">-- No predefined reasons for ' + esc(code) + ' --</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  var opts = ['<option value="">-- Cost reason (optional) --</option>'];
+  reasons.forEach(function(r) {
+    var s = (r === preselect) ? ' selected' : '';
+    opts.push('<option value="' + esc(r) + '"' + s + '>' + esc(r) + '</option>');
+  });
+  sel.innerHTML = opts.join('');
+}
+
+function selectCode(code) {
+  selectedCode = code;
+  var editCode = document.getElementById('edit-code');
+  if (editCode) editCode.value = code;
+  document.querySelectorAll('.code-option').forEach(function(el) { el.classList.remove('selected'); });
+  document.querySelectorAll('.code-option').forEach(function(el) {
+    if (el.querySelector('.code-name') && el.querySelector('.code-name').textContent.indexOf(code) === 0) {
+      el.classList.add('selected');
+    }
+  });
+  // Re-populate cost-reason options for the newly selected code
+  populateReasonOptions(code, '');
+}
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+function quickApprove(docId) {
+  // Find the button and show spinner
+  var btn = event.target;
+  var originalText = btn.textContent;
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  var pc = document.getElementById('stream-filter').value;
+
+  // Require profit center for quick approve (Fix 4 + Fix 6)
+  if (!pc) {
+    btn.textContent = originalText;
+    btn.disabled = false;
+    showToast('Please select a stream filter (profit center) before approving', 'error');
+    return;
+  }
+
+  api('POST', '/api/documents/' + docId + '/approve', {
+    approved_by: pc,
+    profit_center: pc
+  }).then(function(d) {
+    if (d.status === 'posted') {
+      var streamName = PC_TO_STREAM[pc] || pc || '';
+      var displayName = STREAM_NAMES[streamName] || streamName || 'P&L';
+      showToast('Approved & posted to ' + displayName + ' P&L', 'success');
+    } else {
+      showToast('Document approved & posted', 'success');
+    }
+    loadStats();
+    loadApprovePanel();
+  }).catch(function() {
+    btn.textContent = originalText;
+    btn.disabled = false;
+    showToast('Approval failed', 'error');
+  });
+}
+
+function quickReject(docId) {
+  var reason = prompt('Reason for rejection:');
+  if (reason === null) return;
+  api('POST', '/api/documents/' + docId + '/reject', { reason: reason }).then(function() {
+    showToast('Document rejected', 'success');
+    loadStats();
+    loadApprovePanel();
+  });
+}
+
+function syncModalPC(val) {
+  var modalPC = document.getElementById('modal-approve-pc');
+  if (modalPC) {
+    modalPC.value = val;
+    onModalPCChange();
+  }
+}
+
+function onModalPCChange() {
+  var pcSel = document.getElementById('modal-approve-pc');
+  var btn = document.getElementById('modal-approve-btn');
+  if (!pcSel || !btn) return;
+  if (pcSel.value) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    pcSel.style.border = '1px solid var(--border)';
+    pcSel.style.background = 'var(--surface)';
+    // Remove warning text
+    var warn = pcSel.parentElement.querySelector('div');
+    if (warn) warn.style.display = 'none';
+    // Also sync edit-pc if it exists
+    var editPc = document.getElementById('edit-pc');
+    if (editPc) editPc.value = pcSel.value;
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.style.cursor = 'not-allowed';
+    pcSel.style.border = '2px solid var(--yellow)';
+    pcSel.style.background = 'rgba(217,119,6,0.08)';
+  }
+  // Re-populate departments allowed under this profit center
+  var deptSel = document.getElementById('modal-approve-dept');
+  var prevDept = deptSel ? deptSel.value : '';
+  populateDepartmentOptions(pcSel.value, prevDept);
+  // Re-populate approver list (people from this PC come first)
+  var approverSel = document.getElementById('modal-approver-name');
+  var prevApprover = approverSel ? approverSel.value : '';
+  populateApproverOptions(pcSel.value, prevApprover);
+}
+
+function approveFromModal() {
+  if (!currentDoc) return;
+  var body = {};
+  var codeEl = document.getElementById('edit-code');
+  var pcEl = document.getElementById('modal-approve-pc');
+  var deptEl = document.getElementById('modal-approve-dept');
+  var reasonEl = document.getElementById('modal-approve-reason');
+  if (codeEl && codeEl.value) body.ledger_code = codeEl.value;
+  if (pcEl && pcEl.value) body.profit_center = pcEl.value;
+  if (deptEl && deptEl.value) body.department = deptEl.value;
+  if (reasonEl && reasonEl.value) body.cost_reason = reasonEl.value;
+  var approverEl = document.getElementById('modal-approver-name');
+  if (approverEl && approverEl.value) body.approved_by = approverEl.value;
+
+  // Require profit center
+  if (!body.profit_center) {
+    showToast('Please select a profit center before approving', 'error');
+    return;
+  }
+
+  var pc = body.profit_center;
+  // Only fall back to PC code if no human approver was selected
+  if (!body.approved_by) body.approved_by = pc || 'user';
+
+  var ruleCheck = document.getElementById('add-rule-check');
+  if (ruleCheck && ruleCheck.checked && currentDoc.vendor && (body.ledger_code || currentDoc.ledger_code)) {
+    api('POST', '/api/documents/' + currentDoc.id + '/rule', {
+      vendor: currentDoc.vendor,
+      ledger_code: body.ledger_code || currentDoc.ledger_code,
+      profit_center: body.profit_center || currentDoc.profit_center
+    });
+  }
+
+  // Show spinner in modal actions
+  var actionsEl = document.getElementById('modal-actions');
+  actionsEl.innerHTML = '<span class="spinner"></span> Approving & posting...';
+
+  api('POST', '/api/documents/' + currentDoc.id + '/approve', body).then(function(d) {
+    if (d.status === 'posted') {
+      var streamName = PC_TO_STREAM[body.approved_by] || body.approved_by || '';
+      var displayName = STREAM_NAMES[streamName] || streamName || 'P&L';
+      showToast('Approved & posted to ' + displayName + ' P&L', 'success');
+    } else {
+      showToast('Document approved & posted', 'success');
+    }
+    closeModal();
+    loadStats();
+    loadApprovePanel();
+    loadUploadTable();
+  }).catch(function() {
+    showToast('Approval failed', 'error');
+    renderModalActions(currentDoc);
+  });
+}
+
+function rejectFromModal() {
+  if (!currentDoc) return;
+  var reason = prompt('Reason for rejection:');
+  if (reason === null) return;
+  api('POST', '/api/documents/' + currentDoc.id + '/reject', { reason: reason }).then(function() {
+    showToast('Document rejected', 'success');
+    closeModal();
+    loadStats();
+    loadApprovePanel();
+    loadUploadTable();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.substring(0, n) + '...' : s;
+}
+
+function row(k, v) {
+  return '<div class="key">' + esc(k) + '</div><div class="val">' + esc(v || '-') + '</div>';
+}
+
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type || '') + ' show';
+  setTimeout(function() { el.classList.remove('show'); }, 3000);
+}
+
+// ---------------------------------------------------------------------------
+// BT4YOU Upload (Fix 5)
+// ---------------------------------------------------------------------------
+function uploadStreamToBT4YOU(streamName) {
+  if (!confirm('Upload ' + streamName + ' data to BT4YOU Executive Bot?\n\nThis will sync all approved expenses to the FA Manager accounting section.')) return;
+  _syncToBT4YOU();
+}
+
+function uploadAllToBT4YOU() {
+  if (!confirm('Upload ALL business stream P&L data to BT4YOU Executive Bot?\n\nThis syncs every approved expense across all profit centers.')) return;
+  _syncToBT4YOU();
+}
+
+function _syncToBT4YOU() {
+  api('POST', '/api/sync-bt4you').then(function(d) {
+    if (d.status === 'synced') {
+      showToast('Synced to BT4YOU Executive Bot — streams: ' + (d.streams || []).join(', '), 'green');
+    } else if (d.status === 'sync_failed') {
+      showToast('BT4YOU sync failed: ' + (d.error || 'unknown') + '. Make sure BT4YOU is running on port 8765.', 'red');
+    } else {
+      showToast('Sync response: ' + JSON.stringify(d), 'yellow');
+    }
+  }).catch(function(err) {
+    showToast('Sync error: ' + err.message, 'red');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ML Feedback
+// ---------------------------------------------------------------------------
+var feedbackDocId = null;
+var feedbackBtnEl = null;
+
+function sendFeedback(docId, isCorrect, btnEl) {
+  api('POST', '/api/documents/' + docId + '/feedback', {
+    is_correct: isCorrect,
+    wrong_fields: [],
+    comment: ''
+  }).then(function() {
+    showToast('Feedback saved — thank you!', 'success');
+    if (btnEl) {
+      var parent = btnEl.parentElement;
+      if (parent) {
+        var btns = parent.querySelectorAll('button');
+        btns.forEach(function(b) { b.classList.remove('active-up', 'active-down'); });
+      }
+      btnEl.classList.add('active-up');
+    }
+  });
+}
+
+function openFeedbackModal(docId, btnEl) {
+  feedbackDocId = docId;
+  feedbackBtnEl = btnEl;
+  var modal = document.getElementById('feedback-modal');
+  modal.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+  document.getElementById('feedback-comment').value = '';
+  modal.classList.add('active');
+}
+
+function closeFeedbackModal() {
+  document.getElementById('feedback-modal').classList.remove('active');
+  feedbackDocId = null;
+  feedbackBtnEl = null;
+}
+
+function submitNegativeFeedback() {
+  if (!feedbackDocId) return;
+  var modal = document.getElementById('feedback-modal');
+  var wrongFields = [];
+  modal.querySelectorAll('input[type="checkbox"]:checked').forEach(function(cb) {
+    wrongFields.push(cb.value);
+  });
+  var comment = document.getElementById('feedback-comment').value;
+
+  api('POST', '/api/documents/' + feedbackDocId + '/feedback', {
+    is_correct: false,
+    wrong_fields: wrongFields,
+    comment: comment
+  }).then(function() {
+    showToast('Feedback saved — we will improve!', 'success');
+    if (feedbackBtnEl) {
+      var parent = feedbackBtnEl.parentElement;
+      if (parent) {
+        var btns = parent.querySelectorAll('button');
+        btns.forEach(function(b) { b.classList.remove('active-up', 'active-down'); });
+      }
+      feedbackBtnEl.classList.add('active-down');
+    }
+    closeFeedbackModal();
+  });
+}
+
+document.getElementById('feedback-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeFeedbackModal();
+});
+</script>
+</body>
+</html>

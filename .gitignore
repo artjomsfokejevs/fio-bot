@@ -1,0 +1,36 @@
+# Secrets
+.env
+.env.local
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Runtime data (uploaded documents + DB + actuals + caches)
+# DO NOT commit -- privacy, size, and tester-specific state.
+data/intake/
+data/fio.db
+data/fio.db-shm
+data/fio.db-wal
+data/vies_cache/
+data/accounting_actuals.json
+
+# Claude Code local config (machine-specific paths)
+.claude/
+
+# Logs
+*.log
+nohup.out
