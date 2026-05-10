@@ -573,6 +573,36 @@ def parse_doc(doc_id: str):
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/documents/<doc_id>/save", methods=["POST"])
+def save_doc(doc_id: str):
+    """Save partial edits to a document WITHOUT approving or posting.
+
+    Lets users iterate on metadata (vendor, amount, ledger code, profit center,
+    department, cost reason, period) before they're ready to approve. Status
+    stays as 'classified' / 'pending' / whatever it was. No actuals updated.
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    if doc.get("status") in ("posted", "approved", "rejected"):
+        return jsonify({"error": "Document is %s -- can't edit" % doc.get("status")}), 400
+
+    body = request.get_json(silent=True) or {}
+    allowed = ("ledger_code", "profit_center", "department", "cost_reason",
+               "amount", "period", "vendor", "currency")
+    update_fields: Dict[str, Any] = {k: body[k] for k in allowed if k in body}
+
+    if not update_fields:
+        return jsonify({"status": "no_changes"})
+
+    db.update_document(doc_id, update_fields)
+    db.insert_audit_log(doc_id, "saved", {
+        "fields_changed": list(update_fields.keys()),
+        "saved_by": body.get("saved_by", "user"),
+    })
+    return jsonify({"status": "saved", "document": db.get_document(doc_id)})
+
+
 @app.route("/api/documents/<doc_id>/approve", methods=["POST"])
 def approve_doc(doc_id: str):
     """Approve a document with optional edits to classification."""

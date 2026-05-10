@@ -2466,6 +2466,7 @@ function renderModalActions(doc) {
         '<option value="">-- Approver (your name from Asana) --</option>' +
       '</select>' +
     '</div>' +
+    '<button class="btn" id="modal-save-btn" onclick="saveFromModal()" style="background:#0ea5e9;color:#fff;border:none;">\u{1F4BE} Save changes</button>' +
     '<button class="btn btn-success" id="modal-approve-btn" onclick="approveFromModal()"' + disabledAttr + btnStyle + '>Approve & Post</button>' +
     '<button class="btn btn-danger" onclick="rejectFromModal()">Reject</button>' +
     '<label><input type="checkbox" id="add-rule-check"> Always classify this vendor as selected code</label>';
@@ -2655,6 +2656,47 @@ function onModalPCChange() {
   var approverSel = document.getElementById('modal-approver-name');
   var prevApprover = approverSel ? approverSel.value : '';
   populateApproverOptions(pcSel.value, prevApprover);
+}
+
+function saveFromModal() {
+  if (!currentDoc) return;
+  var body = {};
+  var codeEl = document.getElementById('edit-code');
+  var pcEl = document.getElementById('modal-approve-pc');
+  var deptEl = document.getElementById('modal-approve-dept');
+  var reasonEl = document.getElementById('modal-approve-reason');
+  var approverEl = document.getElementById('modal-approver-name');
+  if (codeEl && codeEl.value) body.ledger_code = codeEl.value;
+  if (pcEl && pcEl.value) body.profit_center = pcEl.value;
+  if (deptEl && deptEl.value) body.department = deptEl.value;
+  if (reasonEl && reasonEl.value) body.cost_reason = reasonEl.value;
+  if (approverEl && approverEl.value) body.saved_by = approverEl.value;
+
+  if (!Object.keys(body).length) {
+    showToast('Nothing to save -- pick at least one field', 'error');
+    return;
+  }
+
+  var btn = document.getElementById('modal-save-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
+
+  api('POST', '/api/documents/' + currentDoc.id + '/save', body).then(function(d) {
+    if (d.status === 'saved') {
+      showToast('Saved ✓  Document still pending approval', 'success');
+      // Reload modal to reflect persisted values + reload upload/approve table
+      reloadModal();
+      if (typeof loadUploadTable === 'function') loadUploadTable();
+      if (typeof loadApprovePanel === 'function' && document.querySelector('.panel.active')?.id === 'panel-approve') loadApprovePanel();
+    } else if (d.status === 'no_changes') {
+      showToast('No changes to save', 'info');
+    } else if (d.error) {
+      showToast('Save failed: ' + d.error, 'error');
+    }
+  }).catch(function(err) {
+    showToast('Save failed: ' + (err.message || err), 'error');
+  }).finally(function() {
+    if (btn) { btn.disabled = false; btn.innerHTML = '\u{1F4BE} Save changes'; }
+  });
 }
 
 function approveFromModal() {
