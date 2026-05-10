@@ -1768,6 +1768,7 @@ function loadApprovePanel() {
   }
 
   api('GET', url).then(function(docs) {
+    allDocs = docs;  // cache so quickApprove can read saved profit_center/dept/reason
     renderApproveTable(docs);
     var pending = 0, approved = 0;
     docs.forEach(function(d) {
@@ -2577,20 +2578,29 @@ function quickApprove(docId) {
   btn.innerHTML = '<span class="spinner"></span>';
   btn.disabled = true;
 
-  var pc = document.getElementById('stream-filter').value;
+  // Find the document in our cached list to read its saved fields
+  var doc = (allDocs || []).find(function(d) { return d.id === docId; });
 
-  // Require profit center for quick approve (Fix 4 + Fix 6)
+  // Priority: document's own saved PC > stream filter dropdown
+  var pc = (doc && doc.profit_center) || document.getElementById('stream-filter').value;
+
   if (!pc) {
     btn.textContent = originalText;
     btn.disabled = false;
-    showToast('Please select a stream filter (profit center) before approving', 'error');
+    showToast('Open View, pick Profit Center, hit Save -- or pick a Stream filter at top', 'error');
     return;
   }
 
-  api('POST', '/api/documents/' + docId + '/approve', {
-    approved_by: pc,
-    profit_center: pc
-  }).then(function(d) {
+  // Compose body from saved doc fields (Save button persists these)
+  var body = {
+    profit_center: pc,
+    approved_by: (doc && doc.approved_by) || pc,
+  };
+  if (doc && doc.ledger_code) body.ledger_code = doc.ledger_code;
+  if (doc && doc.department) body.department = doc.department;
+  if (doc && doc.cost_reason) body.cost_reason = doc.cost_reason;
+
+  api('POST', '/api/documents/' + docId + '/approve', body).then(function(d) {
     if (d.status === 'posted') {
       var streamName = PC_TO_STREAM[pc] || pc || '';
       var displayName = STREAM_NAMES[streamName] || streamName || 'P&L';
