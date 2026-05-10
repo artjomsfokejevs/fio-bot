@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_FILE_SIZE_MB * 1024 * 1024
 
+# Initialise SQLite at import time so gunicorn workers have tables.
+# init_db() is idempotent (CREATE TABLE IF NOT EXISTS + ALTER for migrations).
+db.init_db()
+
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "csv", "xlsx"}
 
 
