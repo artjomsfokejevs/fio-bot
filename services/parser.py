@@ -12,10 +12,63 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import config
+from services import fx  # Phase 2.1 — ECB EUR conversion
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["parse_document"]
+
+# Currencies for which an invoice MUST be converted to EUR before posting.
+# (Anything that's not EUR-zone — Lilya's USD case, Denis's Yerevan AMD case.)
+_EU_EURO_ZONE = {
+    "EUR", "€",
+}
+# Non-EU country hints — when these appear in vendor address, force currency check
+_NON_EU_COUNTRY_HINTS = (
+    "armenia", "yerevan", "ереван", "армения",  # AMD
+    "georgia", "tbilisi", "тбилиси", "грузия",   # GEL
+    "uk", "united kingdom", "london", "england", # GBP
+    "usa", "us", "united states", "new york",    # USD
+    "switzerland", "geneva", "zurich",            # CHF
+    "russia", "moscow", "россия", "москва",       # RUB
+    "ukraine", "kyiv", "kiev", "украина",        # UAH
+    "turkey", "istanbul",                         # TRY
+    "uae", "dubai", "abu dhabi",                  # AED
+)
+
+
+def _enrich_with_fx(parsed: Any) -> Any:
+    """Add EUR equivalent to parsed['money'] via ECB rates.
+
+    Works for both single-doc dict and multi-doc list. Idempotent — re-runs
+    safely (skips when amount_eur already present and currency hasn't changed).
+    """
+    if isinstance(parsed, list):
+        return [_enrich_with_fx(d) for d in parsed]
+    if not isinstance(parsed, dict):
+        return parsed
+    money = parsed.get("money") or {}
+    amount = money.get("total_amount")
+    if amount is None:
+        return parsed
+    currency = (money.get("currency") or "EUR").upper().strip()
+    # Sanity check — if vendor is in non-EU country but currency is EUR,
+    # raise a warning (testers Denis/Lilya complained this is exact pattern)
+    addr = ""
+    vendor = parsed.get("vendor") or {}
+    if isinstance(vendor, dict):
+        addr = (vendor.get("address") or "").lower()
+    if currency == "EUR" and any(h in addr for h in _NON_EU_COUNTRY_HINTS):
+        warnings = parsed.setdefault("warnings", [])
+        warnings.append(
+            "Currency=EUR but vendor address suggests non-EU country — "
+            "please verify currency on document (auto-detect may have failed)"
+        )
+    doc_date = (parsed.get("dates") or {}).get("document_date")
+    fx_data = fx.convert_to_eur(amount, currency, doc_date)
+    money.update(fx_data)
+    parsed["money"] = money
+    return parsed
 
 
 def parse_document(file_path: str, file_type: str) -> Dict[str, Any]:
@@ -27,20 +80,30 @@ def parse_document(file_path: str, file_type: str) -> Dict[str, Any]:
 
     Returns:
         Extracted data dictionary with keys: document_type, vendor, dates,
-        money, line_items, ledger_codes, warnings.
+        money (with EUR equivalent + FX metadata), line_items, ledger_codes, warnings.
     """
     logger.info("Parsing %s (type=%s)", file_path, file_type)
 
     if file_type in ("csv",):
-        return _parse_csv(file_path)
-    if file_type in ("xlsx",):
-        return _parse_xlsx(file_path)
-    if file_type in ("pdf",):
-        return _parse_pdf(file_path)
-    if file_type in ("jpg", "jpeg", "png"):
-        return _parse_image(file_path)
+        result = _parse_csv(file_path)
+    elif file_type in ("xlsx",):
+        result = _parse_xlsx(file_path)
+    elif file_type in ("pdf",):
+        result = _parse_pdf(file_path)
+    elif file_type in ("jpg", "jpeg", "png"):
+        result = _parse_image(file_path)
+    else:
+        return _mock_response(file_path, "Unsupported file type: %s" % file_type)
 
-    return _mock_response(file_path, "Unsupported file type: %s" % file_type)
+    # Phase 2.1 — always enrich with FX (ECB EUR equivalent)
+    result = _enrich_with_fx(result)
+    # Multi-source registry: VIES for EU, OpenCorporates fallback for non-EU
+    try:
+        from services.company_registry import registry_enrich_vendor
+        result = registry_enrich_vendor(result)
+    except Exception as exc:
+        logger.debug("registry enrich skipped: %s", exc)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -422,10 +485,10 @@ def _extraction_prompt() -> str:
     """Return the system prompt for financial document extraction."""
     return (
         "You are a financial document parser for Amitours Holding (Latvia). "
-        "This image may contain MULTIPLE receipts, invoices, or documents. "
-        "Analyze the image carefully and extract EACH separate document individually.\n\n"
-        "CRITICAL: If you see multiple receipts/invoices in one image, return a JSON ARRAY "
-        "with one object per document. If there is only one document, still return an array with one element.\n\n"
+        "The file may contain MULTIPLE receipts, invoices or pages — treat each invoice/receipt "
+        "as a SEPARATE document. Multi-page PDFs with different invoice numbers on each page = multiple documents.\n\n"
+        "CRITICAL: Return a JSON ARRAY. One object per distinct invoice/receipt. "
+        "Even for a single document, return an array with one element.\n\n"
         "Return ONLY valid JSON (no markdown fences). Format:\n\n"
         "[\n"
         "  {\n"
@@ -433,13 +496,17 @@ def _extraction_prompt() -> str:
         '    "vendor": {\n'
         '      "name": "SIA Example Company",\n'
         '      "vat_number": "LV40203241255",\n'
-        '      "address": "Street 1, Riga, Latvia"\n'
+        '      "address": "Street 1, Riga, Latvia",\n'
+        '      "country": "LV"\n'
         "    },\n"
         '    "dates": {"document_date": "YYYY-MM-DD", "due_date": null},\n'
         '    "money": {\n'
-        '      "total_amount": 0.00,\n'
+        '      "subtotal": 1400.00,\n'
+        '      "discount": 0.00,\n'
+        '      "credits": 10.00,\n'
         '      "tax_amount": 0.00,\n'
-        '      "net_amount": 0.00,\n'
+        '      "net_amount": 1400.00,\n'
+        '      "total_amount": 1390.00,\n'
         '      "currency": "EUR"\n'
         "    },\n"
         '    "line_items": [\n'
@@ -449,7 +516,8 @@ def _extraction_prompt() -> str:
         '        "description": "Imereti khachapuri (Georgian cheese bread)",\n'
         '        "amount": 9.50,\n'
         '        "quantity": 1,\n'
-        '        "language": "lv"\n'
+        '        "language": "lv",\n'
+        '        "category_hint": "food" | "travel" | "marketing" | "office" | "subscription" | "consulting" | "other"\n'
         "      }\n"
         "    ],\n"
         '    "payment_method": "card" | "bank" | "cash" | "unknown",\n'
@@ -461,35 +529,111 @@ def _extraction_prompt() -> str:
         "  }\n"
         "]\n\n"
         "IMPORTANT RULES:\n\n"
-        "VAT NUMBER EXTRACTION (CRITICAL):\n"
+        "═══ MONEY BREAKDOWN (Phase 2.5 — Denis Bazoom case) ═══\n"
+        "- subtotal = sum of line items BEFORE tax, BEFORE discounts/credits\n"
+        "- discount = explicit discount amount (negative reduction on subtotal)\n"
+        "- credits = 'credits used', 'voucher', 'loyalty redemption' (separate from discount)\n"
+        "- tax_amount = VAT amount\n"
+        "- net_amount = subtotal − discount − credits  (amount BEFORE tax)\n"
+        "- total_amount = FINAL amount the buyer pays = net_amount + tax_amount\n"
+        "- Sanity check yourself: total_amount must equal (subtotal − discount − credits + tax_amount)\n"
+        "- If invoice shows 'Subtotal: 1400, Credits: −10, Total: 1390' → subtotal=1400, credits=10, total=1390 (NOT net=1400!)\n\n"
+        "═══ CURRENCY DETECTION (Phase 2.1 — Lilya/Denis non-EU case) ═══\n"
+        "- Use ISO-4217 codes: EUR, USD, GBP, CHF, AMD (Armenian Dram), GEL (Georgian Lari), RUB, UAH, TRY, AED\n"
+        "- LOOK at currency symbols on invoice: € EUR, $ USD, £ GBP, ֏ AMD, ₾ GEL, ₽ RUB\n"
+        "- Look at vendor country/address: Yerevan/Armenia → likely AMD; London → GBP; New York → USD\n"
+        "- DO NOT default to EUR. If currency is unclear from non-Latvian vendor — leave currency field as best guess but add a warning 'currency_uncertain'\n"
+        "- For Armenian invoice (Yerevan address) with amount 22500: currency is almost certainly AMD, NOT EUR\n"
+        "- For non-EUR amounts, the EUR equivalent will be computed downstream via ECB rates\n\n"
+        "═══ PAYMENT METHOD (Phase 2.4 — Denis card case) ═══\n"
+        "- 'card' if you see: 'paid by card', 'invoice has been paid by card', 'Visa', 'Mastercard',\n"
+        "   'card ending in', 'card xxxx 1234', 'bankas karte', 'maksāts ar karti', 'POS-terminālis'\n"
+        "- 'bank' if you see: 'bank transfer', 'wire', 'IBAN', 'pārskaitījums', 'pārskaitīt',\n"
+        "   'pay to account', 'SEPA', 'beneficiary' — but ONLY when no card indicator is present\n"
+        "- 'cash' if you see: 'cash', 'skaidra nauda', 'paid in cash'\n"
+        "- 'unknown' if not stated\n"
+        "- If both card AND IBAN appear, prefer 'card' (IBAN is just metadata) UNLESS document says 'pending payment via bank transfer'\n\n"
+        "═══ MULTI-PAGE / MULTI-INVOICE (Phase 2.3 — Denis case) ═══\n"
+        "- If PDF has multiple pages and each has a different invoice number / date / vendor → return MULTIPLE objects\n"
+        "- If pages are continuation of single invoice (same number, line-items spilling) → ONE object with merged line_items\n"
+        "- Hotel bookings with multiple nights ARE one invoice (not per-night)\n\n"
+        "═══ LINE-ITEM CATEGORISATION (Phase 2.5 + per-line classification) ═══\n"
+        "- For EACH line item, suggest category_hint to help downstream ledger routing\n"
+        "- 'travel' = hotel, taxi, flight, fuel, parking — even if invoice is mixed\n"
+        "- 'marketing' = ads spend, content production, design services, PR\n"
+        "- 'consulting' = legal, accounting, advisory fees\n"
+        "- 'office' = supplies, rent, utilities, software\n"
+        "- 'subscription' = SaaS, hosting, recurring tooling\n"
+        "- 'food' = meals, business dinners (often need attendee list)\n"
+        "- This hint lets the classifier split one invoice across multiple ledger codes\n\n"
+        "═══ VAT NUMBER EXTRACTION ═══\n"
         "- ALWAYS look for the vendor's VAT/tax registration number\n"
         "- Latvian patterns: 'PVN Reg. Nr.', 'Reg. Nr.', 'PVN reg. nr.', 'PVN Nr.', 'Nodoklu maks. reg. nr.'\n"
         "- Format is usually 'LV' followed by 11 digits, e.g. LV40203241255\n"
         "- Also look for generic 'VAT', 'Tax ID', 'TIN' patterns\n"
-        "- If a registration number is found without 'LV' prefix but is 11 digits, add 'LV' prefix\n\n"
-        "LANGUAGE DETECTION & TRANSLATION:\n"
-        "- Detect the language of each line item description\n"
+        "- If registration number found without 'LV' prefix but is 11 digits, add 'LV' prefix\n\n"
+        "═══ LANGUAGE DETECTION & TRANSLATION ═══\n"
+        "- Detect language of each line item description\n"
         "- Translate ALL line items to English in 'description_en'\n"
         "- Keep the original text in 'description_original'\n"
         "- Set 'description' to the English translation\n"
-        "- Set 'language' to ISO 639-1 code (lv, ru, ka, en, etc.)\n"
-        "- Common Latvian food: 'hacapuri'=khachapuri, 'pelmenji'=dumplings, "
-        "'kotlete'=cutlet, 'zupa'=soup, 'salati'=salad\n\n"
-        "TERMINAL RECEIPT LINKING:\n"
+        "- Set 'language' to ISO 639-1 code (lv, ru, ka, en, hy[Armenian], etc.)\n\n"
+        "═══ TERMINAL RECEIPT LINKING ═══\n"
         "- Card terminal receipts (kvitanciis/kvits) are separate from purchase receipts\n"
-        "- Set 'is_terminal_receipt': true for card terminal receipts\n"
-        "- Set 'document_type': 'terminal_receipt' for these\n"
-        "- If a terminal receipt (e.g., 'ZUNDA TOWERS' terminal) appears alongside a purchase receipt "
-        "for the SAME amount, link them:\n"
-        '  - On the terminal receipt: set "linked_vendor": {"name": "SIA Snabb", "vat_number": "LV..."}\n'
-        '  - Add warning: "duplicate_payment_confirmation - this is a card terminal receipt for the same payment"\n\n'
-        "OTHER RULES:\n"
-        "- Latvian receipts: look for 'PVN' (VAT), 'Kopa EUR' (total), 'Bez PVN' (net), 'Summa PVN' (tax)\n"
-        "- Extract the actual company name from 'SIA ...' or 'AS ...' headers\n"
+        "- Set 'is_terminal_receipt': true, 'document_type': 'terminal_receipt'\n"
+        "- If terminal receipt appears alongside purchase receipt for SAME amount:\n"
+        '  - On terminal: set "linked_vendor": {"name": "SIA Snabb", "vat_number": "LV..."}\n'
+        '  - Add warning: "duplicate_payment_confirmation"\n\n'
+        "═══ KNOWN-VENDOR EXTRACTION HINTS (Phase 5b — Lilya feedback) ═══\n"
+        "These vendors had repeated parsing failures. Apply the rules below:\n\n"
+        "• LinkedIn (Premium / Ads / Sales Navigator):\n"
+        "  - Vendor name on invoice header: 'LinkedIn Ireland Unlimited Company'\n"
+        "  - VAT number bottom-right block: starts with 'IE' (e.g. IE9740425P)\n"
+        "  - Currency varies: EUR for EU billing, USD if US billing — check\n"
+        "    'Bill to:' country, NOT the LinkedIn-Ireland header\n"
+        "  - Address: 'Wilton Place, Dublin 2, Ireland' (vendor side)\n"
+        "  - Total appears as 'Total due', 'Amount due', sometimes 'Charge total'\n"
+        "  - Date: 'Invoice date' field, format MM/DD/YYYY (US) or DD/MM/YYYY\n"
+        "  - Payment method: usually 'card' (LinkedIn auto-charges)\n\n"
+        "• Fireflies.ai (meeting transcription SaaS):\n"
+        "  - Vendor name: 'Fireflies AI, Inc.' (US Delaware C-corp)\n"
+        "  - NO VAT number — use 'EIN' or 'Tax ID' field if present\n"
+        "  - Currency: USD (default), occasionally EUR via Stripe Tax\n"
+        "  - Address: '548 Market St, San Francisco, CA' (or similar US)\n"
+        "  - 'Invoice number': INV-XXXXXX format\n"
+        "  - Line item usually 'Pro plan' / 'Business plan' / 'Enterprise'\n"
+        "  - This is a subscription → category_hint: 'subscription'\n\n"
+        "• Hetzner (DE hosting):\n"
+        "  - Vendor: 'Hetzner Online GmbH', VAT: DE812871812\n"
+        "  - Always EUR, German invoice\n"
+        "  - 'Bruttobetrag' = total, 'MwSt' = VAT 19%\n"
+        "  - category_hint: 'subscription' (servers)\n\n"
+        "• Google Ireland (Ads / Cloud / Workspace):\n"
+        "  - Vendor: 'Google Ireland Limited', VAT: IE6388047V\n"
+        "  - EUR for EU customers\n"
+        "  - For Google Ads: category_hint 'marketing'\n"
+        "  - For Google Cloud / Workspace: category_hint 'subscription'\n\n"
+        "• Stripe (payouts / fees):\n"
+        "  - Vendor: 'Stripe Payments Europe, Ltd.' or 'Stripe, Inc.'\n"
+        "  - Often arrives as a CSV transactions report, not a classic invoice\n"
+        "  - For fee statements: category_hint 'subscription' (payment processing)\n"
+        "  - For payouts in: this is REVENUE, not an expense\n\n"
+        "• Revolut Business (multi-currency cards):\n"
+        "  - Vendor: 'Revolut Payments UAB' (EU) / 'Revolut Ltd' (UK)\n"
+        "  - Statement format, not invoice — extract each line as separate doc\n"
+        "  - 'Card transaction' rows → look up the real vendor in description\n\n"
+        "• Meta / Facebook Ads:\n"
+        "  - Vendor: 'Meta Platforms Ireland Limited', VAT: IE9692928F\n"
+        "  - Always check Bill-to address for the buyer's entity\n"
+        "  - category_hint: 'marketing'\n\n"
+        "• Apple Services (Apple Developer / iCloud Business):\n"
+        "  - Vendor: 'Apple Distribution International Ltd', VAT: IE9700053D\n"
+        "  - Always EUR for EU\n\n"
+        "═══ OTHER RULES ═══\n"
+        "- Latvian receipts: 'PVN' (VAT), 'Kopā EUR' (total), 'Bez PVN' (net), 'Summa PVN' (tax)\n"
+        "- Extract actual company name from 'SIA ...' or 'AS ...' headers\n"
         "- Amounts should be positive numbers\n"
-        "- Currency is usually EUR for Latvian documents\n"
-        "- Date format in Latvia: DD.MM.YYYY or YYYY-MM-DD\n"
-        "- For payment_method: detect from context (e.g., 'Bankas karte'='card', 'Skaidra nauda'='cash')"
+        "- Date format in Latvia: DD.MM.YYYY or YYYY-MM-DD"
     )
 
 

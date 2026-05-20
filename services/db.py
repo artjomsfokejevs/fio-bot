@@ -69,6 +69,41 @@ CREATE TABLE IF NOT EXISTS ml_feedback (
     comment TEXT,
     created_at TEXT NOT NULL
 );
+
+-- Phase 6 — Card transaction audit (period-close workflow)
+-- Bookkeeper imports CSV from Mercury/Revolut/etc, then reconciler finds
+-- which transactions don't have a matching invoice in `documents`.
+CREATE TABLE IF NOT EXISTS card_transactions (
+    id              TEXT PRIMARY KEY,
+    source          TEXT NOT NULL,        -- mercury / revolut / stripe / generic
+    batch_id        TEXT NOT NULL,        -- group rows by import batch
+    imported_at     TEXT NOT NULL,
+    imported_by     TEXT,
+    posted_at       TEXT NOT NULL,
+    period          TEXT NOT NULL,        -- YYYY-MM
+    amount          REAL NOT NULL,        -- negative for outflows
+    currency        TEXT NOT NULL,
+    amount_eur      REAL,                 -- ECB-converted
+    fx_rate         REAL,
+    fx_date         TEXT,
+    description     TEXT,
+    counterparty    TEXT,
+    reference       TEXT,
+    card_holder     TEXT,                 -- assigned by user — drives department
+    department      TEXT,                 -- inferred from card_holder via BT4YOU map
+    profit_center   TEXT,
+    matched_invoice_id TEXT,              -- FK to documents.id (or NULL)
+    match_status    TEXT DEFAULT 'unmatched',  -- matched / suggested / unmatched / manual / excluded
+    match_confidence INTEGER DEFAULT 0,
+    match_reason    TEXT,
+    notes           TEXT,
+    raw_row         TEXT,                 -- original CSV row (json string)
+    UNIQUE(source, posted_at, amount, description)
+);
+CREATE INDEX IF NOT EXISTS ix_ct_period      ON card_transactions(period);
+CREATE INDEX IF NOT EXISTS ix_ct_department  ON card_transactions(department);
+CREATE INDEX IF NOT EXISTS ix_ct_match       ON card_transactions(match_status);
+CREATE INDEX IF NOT EXISTS ix_ct_holder      ON card_transactions(card_holder);
 """
 
 
@@ -97,6 +132,25 @@ def init_db() -> None:
         for col, ddl in (
             ("department", "ALTER TABLE documents ADD COLUMN department TEXT"),
             ("cost_reason", "ALTER TABLE documents ADD COLUMN cost_reason TEXT"),
+            # Phase 2.1 — FX (ECB EUR equivalent + original amount)
+            ("amount_orig", "ALTER TABLE documents ADD COLUMN amount_orig REAL"),
+            ("currency_orig", "ALTER TABLE documents ADD COLUMN currency_orig TEXT"),
+            ("fx_rate", "ALTER TABLE documents ADD COLUMN fx_rate REAL"),
+            ("fx_date", "ALTER TABLE documents ADD COLUMN fx_date TEXT"),
+            ("fx_source", "ALTER TABLE documents ADD COLUMN fx_source TEXT"),
+            # Phase 2.4 — payment method (card/bank/cash/unknown)
+            ("payment_method", "ALTER TABLE documents ADD COLUMN payment_method TEXT"),
+            # Phase 2.5 — extended money breakdown
+            ("subtotal", "ALTER TABLE documents ADD COLUMN subtotal REAL"),
+            ("discount", "ALTER TABLE documents ADD COLUMN discount REAL"),
+            ("credits", "ALTER TABLE documents ADD COLUMN credits REAL"),
+            # Phase 3.5 — multi-stream cost allocation (Katia case)
+            # JSON list: [{"profit_center":"AA","percentage":60,"amount":1380,"ledger_code":"BT00","note":"..."}]
+            ("allocations_json", "ALTER TABLE documents ADD COLUMN allocations_json TEXT"),
+            # Phase 5c — manual vendor verification (alternative to OpenCorporates for non-EU)
+            ("vendor_verified_by", "ALTER TABLE documents ADD COLUMN vendor_verified_by TEXT"),
+            ("vendor_verified_at", "ALTER TABLE documents ADD COLUMN vendor_verified_at TEXT"),
+            ("vendor_verified_note", "ALTER TABLE documents ADD COLUMN vendor_verified_note TEXT"),
         ):
             try:
                 conn.execute("SELECT %s FROM documents LIMIT 1" % col)

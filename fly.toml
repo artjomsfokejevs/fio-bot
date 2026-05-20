@@ -7,6 +7,11 @@ primary_region = "fra"   # Frankfurt -- closest to Latvia
 [build]
   dockerfile = "Dockerfile"
 
+# Rolling deploy: replace machines one-by-one with health-gate so testers
+# never hit a 502 mid-deploy. Required by FIO ship-hardening gate.
+[deploy]
+  strategy = "rolling"
+
 [env]
   FLASK_DEBUG = "false"
   PORT = "8080"
@@ -25,9 +30,9 @@ primary_region = "fra"   # Frankfurt -- closest to Latvia
   [[http_service.checks]]
     interval = "30s"
     timeout = "5s"
-    grace_period = "10s"
+    grace_period = "15s"
     method = "GET"
-    path = "/"
+    path = "/health"
 
 # Persistent volume for uploads, SQLite, accounting JSON, VIES cache
 [mounts]

@@ -81,32 +81,105 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.5px;
 }
 
-/* Tab bar */
-.tab-bar {
+/* Header tabs — inline pills (Call QA style) */
+.header-tabs {
   display: flex;
-  gap: 0;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 32px;
+  gap: 4px;
+  margin-left: 18px;
+  align-items: center;
 }
 .tab-btn {
   background: transparent;
   border: none;
-  color: var(--muted);
+  color: rgba(255,255,255,0.75);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 16px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
   cursor: pointer;
-  border-bottom: 3px solid transparent;
-  transition: color 0.2s, border-color 0.2s;
+  border-radius: 20px;
+  transition: background-color .15s, color .15s;
   white-space: nowrap;
 }
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+.tab-btn:hover {
+  background: rgba(255,255,255,0.10);
+  color: #fff;
 }
+.tab-btn.active {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+}
+/* Legacy .tab-bar (in case used elsewhere) — hidden in this layout */
+.tab-bar { display: none; }
+
+/* Header status pill (mirror BT4YOU pattern) */
+.bt-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border: 1.5px solid rgba(134, 239, 172, 0.4);
+  white-space: nowrap;
+}
+.bt-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 4px #22c55e;
+}
+
+/* Logo mark (square chip) */
+.bt-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: .02em;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 1px 4px rgba(26, 115, 232, .35);
+}
+
+/* Footer — bot-family attribution */
+.bt-footer {
+  max-width: 1400px;
+  margin: 48px auto 0;
+  padding: 18px 32px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.bt-footer-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bt-footer .bot-name { font-weight: 700; color: var(--text); }
+.bt-footer .bot-family { color: var(--accent); font-weight: 600; }
+.bt-footer .bot-sibling {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--brand-light);
+  color: var(--accent2);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.bt-footer-right { font-size: 11px; color: var(--muted); }
 
 /* Main container */
 .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
@@ -309,30 +382,40 @@ tbody tr:hover { background: #f8fafc; }
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0,0,0,0.5);
   z-index: 1000;
   justify-content: center;
   align-items: center;
+  padding: 20px;
+  overflow-y: auto;
 }
 .modal-overlay.active { display: flex; }
+/* Modal: fixed viewport — header sticky on top, footer sticky on bottom,
+   body is the only scroll surface so action buttons remain visible. */
 .modal {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  width: 90%;
-  max-width: 1000px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  width: 100%;
+  max-width: 1100px;
+  max-height: 92vh;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;          /* sub-elements scroll, not modal itself */
+  box-shadow: 0 24px 70px rgba(0,0,0,0.22);
 }
 .modal-header {
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: #fff;
+  flex-shrink: 0;            /* never shrink, always visible at top */
+  z-index: 2;
 }
-.modal-header h3 { font-size: 18px; font-weight: 600; color: var(--text); }
+.modal-header h3 { font-size: 17px; font-weight: 600; color: var(--text); }
 .modal-close {
   background: none;
   border: none;
@@ -341,10 +424,16 @@ tbody tr:hover { background: #f8fafc; }
   cursor: pointer;
 }
 .modal-body {
-  padding: 24px;
+  padding: 20px 24px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.2fr);
   gap: 24px;
+  flex: 1;                   /* take all remaining space */
+  overflow-y: auto;          /* scrollable region between sticky header + footer */
+  min-height: 0;             /* flex item needs this to actually scroll */
+}
+@media (max-width: 880px) {
+  .modal-body { grid-template-columns: 1fr; }
 }
 .modal-preview {
   background: #f8fafc;
@@ -396,13 +485,18 @@ tbody tr:hover { background: #f8fafc; }
 .code-option .code-name { font-weight: 600; font-size: 14px; color: var(--text); }
 .code-option .reasoning { font-size: 12px; color: var(--muted); }
 
-/* Modal actions */
+/* Modal actions — sticky footer, ALWAYS visible (Rita feedback) */
 .modal-actions {
-  padding: 16px 24px;
+  padding: 14px 24px;
   border-top: 1px solid var(--border);
+  background: #f8fafc;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  flex-shrink: 0;            /* never collapse, always at bottom */
+  flex-wrap: wrap;
+  z-index: 2;
+  box-shadow: 0 -4px 12px rgba(15,23,42,0.04);
 }
 .modal-actions label {
   font-size: 13px;
@@ -413,6 +507,10 @@ tbody tr:hover { background: #f8fafc; }
   margin-left: auto;
 }
 .modal-actions input[type="checkbox"] { accent-color: var(--accent); }
+.modal-actions button {
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 /* Edit fields in modal */
 .edit-row {
@@ -431,6 +529,239 @@ tbody tr:hover { background: #f8fafc; }
 }
 .edit-row select { flex: 1; }
 .edit-row input { width: 100px; }
+
+/* === Unified modern dropdown / button styles (Phase 5 polish) === */
+.fio-select,
+.modal-actions select,
+.edit-row select,
+.edit-row input,
+.alloc-grid select,
+.alloc-grid input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px;
+  padding-right: 28px;
+}
+.fio-select,
+.modal-actions select,
+.modal-actions input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 30px 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s;
+  min-width: 0;
+}
+.fio-select:hover,
+.modal-actions select:hover { border-color: #94a3b8; }
+.fio-select:focus,
+.modal-actions select:focus,
+.modal-actions input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+}
+.fio-select:disabled,
+.modal-actions select:disabled,
+.modal-actions input:disabled {
+  background-color: #f1f5f9;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* === Export-toolbar (Accounting tab) — modern button look === */
+.export-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.export-toolbar select {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 28px 6px 10px;
+  font-size: 12px;
+  background-color: #fff;
+  cursor: pointer;
+  min-width: 130px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
+}
+.export-toolbar select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+}
+.btn-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, transform .05s;
+}
+.btn-export:hover { background: var(--brand-light); border-color: var(--accent); color: var(--accent2); }
+.btn-export:active { transform: scale(0.97); }
+.btn-export-icon { font-size: 14px; line-height: 1; }
+.btn-export-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-export-primary:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+/* Modal action-bar Save / Approve / Reject — unified */
+.modal-actions .btn,
+.modal-actions button.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .05s;
+}
+.modal-actions .btn:hover { background: var(--brand-light); border-color: var(--accent); }
+.modal-actions .btn:active { transform: scale(0.98); }
+.modal-actions .btn:disabled { opacity: .5; cursor: not-allowed; }
+.modal-actions .btn-success { background: var(--green); color: #fff; border-color: var(--green); }
+.modal-actions .btn-success:hover { background: #047857; border-color: #047857; }
+.modal-actions .btn-danger { background: #fff; color: var(--red); border-color: var(--red); }
+.modal-actions .btn-danger:hover { background: var(--red); color: #fff; }
+
+/* Modal action-bar layout: dropdowns + buttons single row, wraps on small screens */
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
+}
+.modal-actions > div { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; min-width: 0; }
+
+/* Cost-allocation table (Phase 3.5) — same look-and-feel as .edit-row controls */
+.alloc-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.alloc-wrap .alloc-intro {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+.alloc-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.alloc-grid thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.alloc-grid thead th.num { text-align: right; }
+.alloc-grid tbody td { padding: 6px 6px; vertical-align: middle; }
+.alloc-grid select, .alloc-grid input[type="number"], .alloc-grid input[type="text"] {
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.alloc-grid select:focus, .alloc-grid input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+}
+.alloc-grid input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; }
+.alloc-grid .col-pc    { width: 26%; }
+.alloc-grid .col-code  { width: 22%; }
+.alloc-grid .col-pct   { width: 14%; }
+.alloc-grid .col-amt   { width: 18%; }
+.alloc-grid .col-note  { width: 16%; }
+.alloc-grid .col-x     { width: 4%; text-align: center; }
+.alloc-grid .row-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+}
+.alloc-grid .row-remove:hover { color: var(--red); background: rgba(220,38,38,0.08); }
+.alloc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.alloc-totals {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.alloc-totals b { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.alloc-totals .ok  { color: var(--green); }
+.alloc-totals .bad { color: var(--red); }
+.alloc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.alloc-toggle-btn:hover { background: var(--brand-light); border-color: var(--accent); }
 
 /* Reject modal */
 .reject-input {
@@ -852,28 +1183,23 @@ tbody tr:hover { background: #f8fafc; }
 
 <header class="header">
   <div class="header-left">
-    <img src="/img/logo.svg" alt="BT4YOU" style="width:36px;height:36px;filter:drop-shadow(0 1px 4px rgba(26,115,232,.35))">
+    <span class="bt-logo-mark">FIO</span>
     <div style="display:flex;flex-direction:column;line-height:1.15">
-      <span style="font-size:17px;font-weight:800;color:#fff;letter-spacing:.03em">BT4YOU</span>
-      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.6)">Executive Bot</span>
+      <span style="font-size:15px;font-weight:700;color:#fff;letter-spacing:.02em">FIO Accounting Bot</span>
+      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7);margin-top:1px">BT4YOU Business Bots</span>
     </div>
-    <div style="width:1px;height:28px;background:rgba(255,255,255,.2);margin:0 6px"></div>
-    <div class="header-logo">
-      FIO
-      <div class="subtitle">Financial Intake &amp; Orchestrator</div>
-    </div>
+    <nav class="header-tabs">
+      <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
+      <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
+      <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
+      <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Card Audit</button>
+      <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
+    </nav>
   </div>
   <div class="header-right">
-    <span class="tagline">Digital Orchestrator of BT4YOU Executive Ecosystem</span>
+    <span class="bt-status-pill" title="FIO liveness · last sync"><span class="bt-status-dot"></span> ON</span>
   </div>
 </header>
-
-<nav class="tab-bar">
-  <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
-  <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
-  <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
-  <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Cost &amp; Spending Analytics</button>
-</nav>
 
 <div class="container">
 
@@ -902,12 +1228,12 @@ tbody tr:hover { background: #f8fafc; }
     <!-- Uploader identity -->
     <div style="max-width:560px;margin:0 auto 16px;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:10px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <span style="font-size:18px;">\u{1F464}</span>
+        <span style="font-size:18px;">👤</span>
         <strong style="font-size:13px;color:var(--text);">Who's uploading?</strong>
-        <span id="upload-user-status" style="margin-left:auto;font-size:11px;color:var(--muted);">Loading roster\u2026</span>
+        <span id="upload-user-status" style="margin-left:auto;font-size:11px;color:var(--muted);">Loading roster…</span>
       </div>
-      <select id="upload-user" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;cursor:pointer;">
-        <option value="">\u2014 Select your name (synced from Asana via BT4YOU) \u2014</option>
+      <select id="upload-user" class="fio-select" style="width:100%;">
+        <option value="">— Select your name (synced from Asana via BT4YOU) —</option>
       </select>
     </div>
 
@@ -1019,12 +1345,38 @@ tbody tr:hover { background: #f8fafc; }
 
   <!-- ==================== PANEL 3: ACCOUNTING ==================== -->
   <div class="panel" id="panel-accounting">
-    <div class="accounting-toolbar">
+    <div class="accounting-toolbar" style="flex-wrap:wrap;gap:14px;">
       <h2>Management &amp; Accounting</h2>
-      <div class="table-header-controls">
-        <select id="period-filter" class="filter-select" onchange="loadAccountingPanel()">
+      <!-- Phase 5b — BT4YOU sync health pill (click to refresh, dbl-click to trigger sync) -->
+      <div id="bt4you-sync-pill"
+           style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;background:#f1f5f9;color:var(--muted);cursor:pointer;transition:background .15s;user-select:none;"
+           onclick="loadBt4youStatus(true)"
+           ondblclick="triggerBt4youSync()"
+           title="Click to refresh BT4YOU sync status · Double-click to trigger sync now">
+        <span id="bt4you-sync-dot" style="width:8px;height:8px;border-radius:50%;background:#94a3b8;"></span>
+        <span id="bt4you-sync-text">Sync status…</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="period-filter" class="fio-select" onchange="loadAccountingPanel()" style="min-width:150px;">
           <!-- populated dynamically -->
         </select>
+        <!-- Phase 4.2/4.3 — Export toolbar -->
+        <div class="export-toolbar" title="Export filtered data per profit center & period">
+          <span style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">Export</span>
+          <select id="export-pc-filter">
+            <option value="">All profit centers</option>
+          </select>
+          <button class="btn-export"
+                  onclick="exportAccountingCsv(document.getElementById('export-pc-filter').value, document.getElementById('period-filter').value)"
+                  title="Download CSV with corporate header (period / stream / generated-at / source)">
+            <span class="btn-export-icon">⬇</span><span>CSV</span>
+          </button>
+          <button class="btn-export btn-export-primary"
+                  onclick="exportAccountingSheets(document.getElementById('export-pc-filter').value, document.getElementById('period-filter').value)"
+                  title="Push to Google Sheet via Apps Script webhook (one-time setup)">
+            <span class="btn-export-icon">📊</span><span>Google Sheets</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1078,7 +1430,127 @@ tbody tr:hover { background: #f8fafc; }
     </div>
   </div>
 
-  <!-- ==================== PANEL 4: COST & SPENDING ANALYTICS ==================== -->
+  <!-- ==================== PANEL 4: CARD AUDIT (Phase 6 — period close) ==================== -->
+  <div class="panel" id="panel-card-audit">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:14px;flex-wrap:wrap;">
+      <div>
+        <h2 style="font-size:20px;font-weight:600;margin:0 0 4px 0;">Card Audit — Period close</h2>
+        <p style="color:var(--muted);font-size:13px;margin:0;max-width:680px;">
+          Upload bank/card CSV statements (Mercury, Revolut, Stripe, Airwallex or generic) to find
+          card transactions without a matching invoice. Helps the bookkeeper close the month and flag
+          policy gaps (card payments where staff forgot to upload the invoice).
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="ca-period" class="fio-select" style="min-width:140px;" onchange="loadCardAudit()">
+          <!-- populated dynamically -->
+        </select>
+        <button class="btn-export" onclick="reconcileCardAudit()" title="Re-run matching against invoices in this period">
+          <span class="btn-export-icon">🔄</span><span>Reconcile</span>
+        </button>
+        <button class="btn-export" onclick="exportCardAudit()" title="Download CSV of card-audit for this period">
+          <span class="btn-export-icon">⬇</span><span>Export CSV</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Drop-zone -->
+    <div id="ca-upload-zone" class="upload-zone" style="margin-bottom:18px;"
+         ondragover="event.preventDefault();this.classList.add('dragover');"
+         ondragleave="this.classList.remove('dragover');"
+         ondrop="event.preventDefault();this.classList.remove('dragover');uploadCardCsv(event.dataTransfer.files);"
+         onclick="document.getElementById('ca-file-input').click();">
+      <div class="icon">📥</div>
+      <p><b>Drop CSV here</b> or click to upload</p>
+      <p class="formats">Mercury · Revolut Business · Stripe · Airwallex · or any CSV with date / amount / description columns</p>
+      <input type="file" id="ca-file-input" accept=".csv,text/csv" onchange="uploadCardCsv(this.files)">
+      <div id="ca-upload-result" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
+    </div>
+
+    <!-- KPI strip -->
+    <div id="ca-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;"></div>
+
+    <!-- By-department breakdown -->
+    <div class="section-card" style="margin-bottom:18px;">
+      <div class="section-card-header">By department / card holder</div>
+      <div id="ca-by-dept" style="padding:14px;"></div>
+    </div>
+
+    <!-- The three transaction lists -->
+    <div class="section-card" style="margin-bottom:14px;border-left:4px solid #dc2626;">
+      <div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>🚨 Unmatched — card transactions WITHOUT invoice</span>
+        <span id="ca-unmatched-count" style="font-size:12px;color:var(--muted);font-weight:400;"></span>
+      </div>
+      <div id="ca-unmatched"></div>
+    </div>
+
+    <div class="section-card" style="margin-bottom:14px;border-left:4px solid #d97706;">
+      <div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>⚠️ Suggested — needs your review (auto-confidence 40-69%)</span>
+        <span id="ca-suggested-count" style="font-size:12px;color:var(--muted);font-weight:400;"></span>
+      </div>
+      <div id="ca-suggested"></div>
+    </div>
+
+    <div class="section-card" style="margin-bottom:14px;border-left:4px solid #10b981;">
+      <div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="document.getElementById('ca-matched').classList.toggle('hidden');">
+        <span>✅ Matched (auto + manual)</span>
+        <span id="ca-matched-count" style="font-size:12px;color:var(--muted);font-weight:400;">click to expand ▾</span>
+      </div>
+      <div id="ca-matched" class="hidden"></div>
+    </div>
+
+    <div class="section-card" style="margin-bottom:14px;border-left:4px solid #94a3b8;">
+      <div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="document.getElementById('ca-excluded').classList.toggle('hidden');">
+        <span>⊘ Excluded (personal / reimbursed separately)</span>
+        <span id="ca-excluded-count" style="font-size:12px;color:var(--muted);font-weight:400;">click to expand ▾</span>
+      </div>
+      <div id="ca-excluded" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- Card-audit per-row action modal -->
+  <div id="ca-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeCaModal();">
+    <div class="modal" style="max-width:680px;">
+      <div class="modal-header">
+        <h3 id="ca-modal-title">Card transaction</h3>
+        <button class="modal-close" onclick="closeCaModal()">×</button>
+      </div>
+      <div class="modal-body" style="grid-template-columns:1fr;" id="ca-modal-body"></div>
+    </div>
+  </div>
+
+  <style>
+    .ca-row { display:grid; grid-template-columns: 100px 1fr 140px 130px 110px 90px 88px; gap:8px; padding:9px 14px; border-bottom:1px solid var(--border); align-items:center; font-size:12px; }
+    .ca-row:hover { background:#f8fafc; }
+    .ca-row .date { color:var(--muted); font-variant-numeric:tabular-nums; }
+    .ca-row .desc { font-weight:500; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ca-row .desc .sub { color:var(--muted); font-size:11px; font-weight:400; }
+    .ca-row .amount { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+    .ca-row .amount .ccy { color:var(--muted); font-weight:400; font-size:10px; margin-left:3px; }
+    .ca-row .holder { font-size:11px; color:var(--muted); }
+    .ca-row .holder b { color:var(--text); font-weight:600; }
+    .ca-row .actions { display:flex; gap:4px; justify-content:flex-end; }
+    .ca-row .actions button { padding:4px 8px; font-size:11px; border-radius:5px; border:1px solid var(--border); background:#fff; cursor:pointer; }
+    .ca-row .actions button:hover { background:var(--brand-light); border-color:var(--accent); }
+    .ca-row .conf { font-size:11px; color:var(--muted); }
+    .ca-row .conf .pill { display:inline-block; padding:1px 6px; border-radius:8px; background:#f1f5f9; font-weight:600; }
+    .ca-row.is-out .amount { color:var(--red); }
+    .ca-row.is-in  .amount { color:var(--green); }
+    .ca-emptystate { padding:20px 14px; text-align:center; color:var(--muted); font-size:13px; }
+    .hidden { display:none; }
+    .ca-dept-card { display:inline-block; margin:4px; padding:8px 12px; background:#f8fafc; border:1px solid var(--border); border-radius:8px; font-size:12px; min-width:170px; }
+    .ca-dept-card .name { font-weight:600; color:var(--text); margin-bottom:4px; }
+    .ca-dept-card .stat { color:var(--muted); }
+    .ca-dept-card .stat b { font-variant-numeric:tabular-nums; }
+    .ca-dept-card .bar { display:flex; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-top:5px; }
+    .ca-dept-card .bar .seg-matched { background:#10b981; }
+    .ca-dept-card .bar .seg-suggested { background:#f59e0b; }
+    .ca-dept-card .bar .seg-unmatched { background:#dc2626; }
+  </style>
+
+  <!-- ==================== PANEL 5: COST & SPENDING ANALYTICS ==================== -->
   <div class="panel" id="panel-analytics">
     <div style="margin-bottom:16px;">
       <h2 style="font-size:20px;font-weight:600;margin:0 0 4px 0;">Cost &amp; Spending Analytics</h2>
@@ -1090,7 +1562,7 @@ tbody tr:hover { background: #f8fafc; }
     <div id="analytics-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
       <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Lifetime spend</div>
-        <div id="kpi-total" style="font-size:24px;font-weight:700;margin-top:4px;">EUR \u2014</div>
+        <div id="kpi-total" style="font-size:24px;font-weight:700;margin-top:4px;">EUR —</div>
       </div>
       <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Posted documents</div>
@@ -1098,7 +1570,7 @@ tbody tr:hover { background: #f8fafc; }
       </div>
       <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Trend</div>
-        <div id="kpi-trend" style="font-size:24px;font-weight:700;margin-top:4px;">\u2014</div>
+        <div id="kpi-trend" style="font-size:24px;font-weight:700;margin-top:4px;">—</div>
       </div>
       <div class="kpi-card" style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Potential savings</div>
@@ -1109,7 +1581,7 @@ tbody tr:hover { background: #f8fafc; }
     <!-- Optimization suggestions -->
     <div class="table-wrapper" style="margin-bottom:20px;">
       <div class="table-header">
-        <h2>\u26a1 Optimization opportunities</h2>
+        <h2>⚡ Optimization opportunities</h2>
         <span style="font-size:12px;color:var(--muted);">AI-style heuristics. Pending Anthropic credits to layer on richer suggestions.</span>
       </div>
       <div id="analytics-suggestions" style="padding:16px;">
@@ -1120,7 +1592,7 @@ tbody tr:hover { background: #f8fafc; }
     <!-- Suspicious findings -->
     <div class="table-wrapper" style="margin-bottom:20px;">
       <div class="table-header">
-        <h2>\u{1F6A8} Suspicious costs &amp; vendors</h2>
+        <h2>🚨 Suspicious costs &amp; vendors</h2>
         <span style="font-size:12px;color:var(--muted);">Outliers, fuzzy duplicates, missing VAT, mis-classification, foreign vendors.</span>
       </div>
       <div id="analytics-suspicious" style="padding:16px;">
@@ -1287,6 +1759,8 @@ function switchTab(tabName) {
     loadApprovePanel();
   } else if (tabName === 'accounting') {
     loadAccountingPanel();
+  } else if (tabName === 'card-audit') {
+    initCardAuditTab();
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();
   }
@@ -1375,7 +1849,7 @@ function renderAnalyticsKPIs(data) {
   document.getElementById('kpi-total').textContent = fmtEUR(data.total_lifetime_spend);
   document.getElementById('kpi-docs').textContent = data.documents_posted;
   var trend = (data.projection || {}).trend || 'flat';
-  var trendIcons = {rising: '\u2197 Rising', falling: '\u2198 Falling', flat: '\u2192 Flat'};
+  var trendIcons = {rising: '↗ Rising', falling: '↘ Falling', flat: '→ Flat'};
   var trendColors = {rising: 'var(--red)', falling: 'var(--green)', flat: 'var(--muted)'};
   var t = document.getElementById('kpi-trend');
   t.textContent = trendIcons[trend] || trend;
@@ -1393,11 +1867,11 @@ function renderAnalyticsSuggestions(data) {
   }
   box.innerHTML = dups.map(function(d) {
     var vendorList = d.vendors.map(function(v) {
-      return '<li>' + esc(v.vendor) + ' \u2014 ' + fmtEUR(v.amount_in_code) + '</li>';
+      return '<li>' + esc(v.vendor) + ' — ' + fmtEUR(v.amount_in_code) + '</li>';
     }).join('');
     return '<div style="padding:14px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:#fafbff;">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">' +
-        '<div><strong>' + esc(d.ledger_code) + '</strong> \u00b7 ' + d.vendor_count + ' vendors</div>' +
+        '<div><strong>' + esc(d.ledger_code) + '</strong> · ' + d.vendor_count + ' vendors</div>' +
         '<div style="color:var(--green);font-weight:700;">Save up to ' + fmtEUR(d.potential_savings) + '</div>' +
       '</div>' +
       '<div style="font-size:13px;color:var(--text);margin-bottom:8px;">' + esc(d.suggestion) + '</div>' +
@@ -1427,7 +1901,7 @@ function renderAnalyticsProjection(data) {
   var next = p.next_periods || [];
   if (!next.length) { box.innerHTML = '<div class="empty-state" style="font-size:13px;">Need at least 2 months of data for projection.</div>'; return; }
   var pieces = ['<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Linear trend on the last 3 months. Slope: ' +
-    fmtEUR(p.slope_per_month || 0) + '/month \u00b7 Avg: ' + fmtEUR(p.avg_recent || 0) + '</div>'];
+    fmtEUR(p.slope_per_month || 0) + '/month · Avg: ' + fmtEUR(p.avg_recent || 0) + '</div>'];
   next.forEach(function(np) {
     pieces.push('<div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);">' +
       '<span style="font-family:monospace;">' + esc(np.period) + '</span>' +
@@ -1449,7 +1923,7 @@ function renderAnalyticsVendors(data) {
       '<td>' + esc(v.vendor) + '</td>' +
       '<td>' + fmtEUR(v.total) + '</td>' +
       '<td>' + v.doc_count + '</td>' +
-      '<td><span style="font-family:monospace;font-size:12px;">' + esc(topCode) + '</span> \u00b7 ' + fmtEUR(topAmt) + '</td>' +
+      '<td><span style="font-family:monospace;font-size:12px;">' + esc(topCode) + '</span> · ' + fmtEUR(topAmt) + '</td>' +
     '</tr>';
   }).join('');
 }
@@ -1527,7 +2001,21 @@ function loadStats() {
 }
 
 function loadSchema() {
-  api('GET', '/api/ledger-schema').then(function(s) { ledgerSchema = s; });
+  api('GET', '/api/ledger-schema').then(function(s) {
+    ledgerSchema = s;
+    populateExportPcFilter();
+  });
+}
+function populateExportPcFilter() {
+  var sel = document.getElementById('export-pc-filter');
+  if (!sel || !ledgerSchema || !ledgerSchema.profit_centers) return;
+  if (sel.options.length > 1) return; // already populated
+  ledgerSchema.profit_centers.forEach(function(pc) {
+    var opt = document.createElement('option');
+    opt.value = pc.code;
+    opt.textContent = pc.code + ' — ' + pc.name;
+    sel.appendChild(opt);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1578,15 +2066,15 @@ var PC_COLORS = {
 };
 
 function renderProfitCenterBadge(pc, dept) {
-  if (!pc) return '<span style="color:var(--muted);font-size:12px;">\u2014 unassigned</span>';
+  if (!pc) return '<span style="color:var(--muted);font-size:12px;">— unassigned</span>';
   var label = PC_LABELS[pc] || pc;
   var color = PC_COLORS[pc] || '#64748b';
   var html = '<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:10px;background:' + color + '15;color:' + color + ';font-size:11px;font-weight:600;border:1px solid ' + color + '33;">' +
     '<span style="width:6px;height:6px;border-radius:50%;background:' + color + ';"></span>' +
-    esc(pc) + ' \u00b7 ' + esc(label) +
+    esc(pc) + ' · ' + esc(label) +
     '</span>';
   if (dept) {
-    html += '<div style="font-size:10px;color:var(--muted);margin-top:3px;">\u21b3 ' + esc(dept) + '</div>';
+    html += '<div style="font-size:10px;color:var(--muted);margin-top:3px;">↳ ' + esc(dept) + '</div>';
   }
   return html;
 }
@@ -1600,7 +2088,7 @@ function renderUploadTable(docs) {
   tbody.innerHTML = docs.map(function(doc) {
     var amount = doc.amount ? (doc.currency || 'EUR') + ' ' + Number(doc.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
     var uploaded = doc.uploaded_at ? doc.uploaded_at.replace('T', ' ').substring(0, 16) : '-';
-    var vatNr = doc.vat_number || '\u2014';
+    var vatNr = doc.vat_number || '—';
     var uploadedBy = doc.uploaded_by || 'User';
 
     // Thumbnail
@@ -1791,10 +2279,10 @@ function renderApproveTable(docs) {
     var conf = doc.confidence || 0;
     var confClass = conf >= 90 ? 'confidence-high' : (conf >= 70 ? 'confidence-mid' : 'confidence-low');
     var amount = doc.amount ? (doc.currency || 'EUR') + ' ' + Number(doc.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
-    var vatNr = doc.vat_number || '\u2014';
+    var vatNr = doc.vat_number || '—';
 
     // Approved by display
-    var approvedByHtml = '\u2014';
+    var approvedByHtml = '—';
     if (doc.approved_by) {
       var abName = doc.approved_by;
       // Map profit center codes to stream names
@@ -1846,7 +2334,71 @@ function canReject(doc) {
 // ===========================================================================
 // PANEL 3: ACCOUNTING (with drill-down)
 // ===========================================================================
+// Phase 5b — BT4YOU sync health badge
+async function loadBt4youStatus(showToastOnRefresh) {
+  var pill = document.getElementById('bt4you-sync-pill');
+  var dot  = document.getElementById('bt4you-sync-dot');
+  var text = document.getElementById('bt4you-sync-text');
+  if (!pill) return;
+  try {
+    var r = await api('GET', '/api/sync-bt4you/status');
+    var reachable = r.bt4you_reachable;
+    var pending = r.pending_docs || 0;
+    var last = r.last_sync ? new Date(r.last_sync).toLocaleString() : '—';
+    if (reachable && pending === 0) {
+      // Up + nothing to sync
+      pill.style.background = 'rgba(16,185,129,.10)';
+      pill.style.color = '#047857';
+      dot.style.background = '#10b981';
+      text.textContent = 'BT4YOU · in sync · last ' + last;
+      pill.title = 'BT4YOU reachable · no pending docs · last sync ' + last + '\nDbl-click to force sync';
+    } else if (reachable && pending > 0) {
+      pill.style.background = 'rgba(245,158,11,.10)';
+      pill.style.color = '#92400e';
+      dot.style.background = '#f59e0b';
+      text.textContent = 'BT4YOU · ' + pending + ' pending · dbl-click to sync';
+      pill.title = pending + ' approved/posted docs ready to sync\nLast sync: ' + last;
+    } else {
+      pill.style.background = 'rgba(220,38,38,.10)';
+      pill.style.color = '#b91c1c';
+      dot.style.background = '#ef4444';
+      text.textContent = 'BT4YOU · offline (port 8765)';
+      pill.title = 'BT4YOU Executive Bot is not reachable. Pending: ' + pending + ' · Last sync: ' + last;
+    }
+    if (showToastOnRefresh) showToast('Sync status refreshed', 'info');
+  } catch (err) {
+    pill.style.background = '#f1f5f9';
+    pill.style.color = 'var(--muted)';
+    dot.style.background = '#94a3b8';
+    text.textContent = 'Sync status · unavailable';
+  }
+}
+
+async function triggerBt4youSync() {
+  var pill = document.getElementById('bt4you-sync-pill');
+  if (pill) {
+    var oldText = document.getElementById('bt4you-sync-text').textContent;
+    document.getElementById('bt4you-sync-text').textContent = 'Syncing…';
+  }
+  try {
+    var r = await api('POST', '/api/sync-bt4you', {});
+    if (r.status === 'synced') {
+      showToast('✓ Synced to BT4YOU · streams: ' + (r.streams || []).join(', '), 'success');
+    } else if (r.status === 'sync_failed') {
+      showToast('Sync failed: ' + (r.error || 'BT4YOU offline'), 'error');
+    } else if (r.error) {
+      showToast('Sync error: ' + r.error, 'error');
+    }
+  } catch (err) {
+    showToast('Sync error: ' + err.message, 'error');
+  } finally {
+    loadBt4youStatus(false);
+  }
+}
+
 function loadAccountingPanel() {
+  // Always refresh sync pill when entering Accounting (Phase 5b)
+  loadBt4youStatus(false);
   var period = document.getElementById('period-filter').value;
   var actualsUrl = '/api/actuals' + (period ? '?period=' + period : '');
 
@@ -1914,13 +2466,13 @@ function renderStreamCards(actuals, streamStats) {
     }
 
     var sortedCodes = Object.keys(codeTotals).sort(function(a, b) { return Math.abs(codeTotals[b]) - Math.abs(codeTotals[a]); });
-    var top3 = sortedCodes.slice(0, 3).map(function(c) { return c + ': \u20AC' + Math.abs(codeTotals[c]).toFixed(0); }).join(', ');
+    var top3 = sortedCodes.slice(0, 3).map(function(c) { return c + ': €' + Math.abs(codeTotals[c]).toFixed(0); }).join(', ');
 
     var isActive = activeStream === key ? ' active-stream' : '';
 
     html += '<div class="stream-card' + isActive + '" style="border-top-color:' + color + ';" onclick="showStreamPnl(\'' + key + '\',\'' + pc + '\')">';
     html += '<div class="stream-title" style="color:' + color + ';">' + esc(name) + '</div>';
-    html += '<div class="stream-total">\u20AC' + Math.abs(total).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>';
+    html += '<div class="stream-total">€' + Math.abs(total).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>';
     html += '<div class="stream-counts">';
     html += '<span>' + ((stats.pending || 0) + (stats.classified || 0)) + ' pending</span>';
     html += '<span>' + (stats.approved || 0) + ' approved</span>';
@@ -2005,7 +2557,7 @@ function renderPnlForStream(streamId, profitCenter) {
     if (stmtCodes.length === 0) return;
 
     var isCollapsed = collapsedStatements[stmt] === true;
-    var arrowChar = isCollapsed ? '\u25B6' : '\u25BC';
+    var arrowChar = isCollapsed ? '▶' : '▼';
 
     // Statement header - clickable to collapse/expand
     html += '<tr class="stmt-header-row' + (isCollapsed ? ' collapsed' : '') + '" onclick="toggleStatementGroup(\'' + stmt + '\',\'' + streamId + '\',\'' + profitCenter + '\')">';
@@ -2019,7 +2571,7 @@ function renderPnlForStream(streamId, profitCenter) {
 
       html += '<tr class="clickable-row stmt-row-' + stmt + '"' + hideStyle + ' onclick="toggleCostDrilldown(\'' + sc.code + '\',\'' + profitCenter + '\',this)">';
       html += '<td></td><td style="font-family:monospace;">' + esc(sc.code) + '</td><td>' + esc(sc.label) + '</td>';
-      html += '<td style="text-align:right;" class="' + cls + '">\u20AC' + Number(sc.amount).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+      html += '<td style="text-align:right;" class="' + cls + '">€' + Number(sc.amount).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
 
       // Placeholder for drilldown documents
       html += '<tr class="drilldown-row stmt-row-' + stmt + '" id="drilldown-' + sc.code + '" style="display:none;"><td colspan="4"><div id="drilldown-content-' + sc.code + '" style="padding:4px 0 4px 24px;"></div></td></tr>';
@@ -2030,7 +2582,7 @@ function renderPnlForStream(streamId, profitCenter) {
     var subtotalHide = isCollapsed ? '' : '';
     html += '<tr class="stmt-subtotal-row stmt-row-' + stmt + '"' + (isCollapsed ? ' style="display:none;"' : '') + '>';
     html += '<td colspan="3" style="text-align:right;padding-right:20px;font-size:12px;color:var(--muted);">Total ' + stmt.charAt(0) + stmt.slice(1).toLowerCase() + '</td>';
-    html += '<td style="text-align:right;" class="' + subtotalCls + '">\u20AC' + Number(stmtTotal).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+    html += '<td style="text-align:right;" class="' + subtotalCls + '">€' + Number(stmtTotal).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
 
     if (stmt === 'REVENUE') revenueTotal = stmtTotal;
     else if (stmt === 'COGS') cogsTotal = stmtTotal;
@@ -2042,7 +2594,7 @@ function renderPnlForStream(streamId, profitCenter) {
     if (stmt === 'COGS') {
       var gm = revenueTotal - Math.abs(cogsTotal);
       html += '<tr class="gm-row"><td colspan="3">GROSS MARGIN</td>';
-      html += '<td style="text-align:right;">\u20AC' + Number(gm).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+      html += '<td style="text-align:right;">€' + Number(gm).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
     }
   });
 
@@ -2050,7 +2602,7 @@ function renderPnlForStream(streamId, profitCenter) {
   var gm = revenueTotal - Math.abs(cogsTotal);
   var ebitda = gm - Math.abs(marketingTotal) - Math.abs(adminTotal) - Math.abs(opsTotal);
   html += '<tr class="ebitda-row"><td colspan="3">EBITDA</td>';
-  html += '<td style="text-align:right;">\u20AC' + Number(ebitda).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
+  html += '<td style="text-align:right;">€' + Number(ebitda).toLocaleString('en', {minimumFractionDigits: 2}) + '</td></tr>';
 
   tbody.innerHTML = html;
 }
@@ -2101,7 +2653,7 @@ function toggleCostDrilldown(ledgerCode, profitCenter, rowEl) {
     tbl += '</tr></thead><tbody>';
 
     docs.forEach(function(d) {
-      var amt = d.amount ? '\u20AC' + Number(d.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
+      var amt = d.amount ? '€' + Number(d.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
       var dateStr = d.period || (d.uploaded_at ? d.uploaded_at.substring(0, 10) : '-');
       tbl += '<tr style="border-bottom:1px solid #f1f5f9;">';
       tbl += '<td style="padding:6px 8px;">' + esc(dateStr) + '</td>';
@@ -2258,8 +2810,64 @@ function renderDetails(doc) {
     '</div>';
   }
 
-  // VIES verification badge
-  if (doc.vies_verified === true) {
+  // Registry verification badge — VIES (EU) or OpenCorporates (non-EU) or format-only
+  var regCheck = (vendorData && vendorData.registry_check) || null;
+  if (regCheck && regCheck.source && regCheck.source !== 'none') {
+    var verified = regCheck.verified === true;
+    var src = regCheck.source;
+    var srcLabel = ({
+      vies: 'EU VIES (official)',
+      opencorporates: 'OpenCorporates (global registry)',
+      format_only: 'Format check only',
+      error: 'Registry error'
+    })[src] || src;
+    var color = verified ? '#10b981' : (src === 'format_only' ? '#d97706' : '#dc2626');
+    var icon = verified ? '✓' : (src === 'format_only' ? '⚠️' : '×');
+    html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid ' + color + ';border-radius:6px;background:' + color + '15;">' +
+      '<div style="font-size:12px;color:' + color + ';font-weight:700;">' + icon + ' Registry: ' + esc(srcLabel) + '</div>';
+    if (regCheck.official_name) {
+      html += '<div style="font-size:12px;margin-top:2px;">Official name: <b>' + esc(regCheck.official_name) + '</b></div>';
+    }
+    if (regCheck.matches && regCheck.matches.length > 0) {
+      var m0 = regCheck.matches[0];
+      if (m0.company_number && m0.company_number !== vatNumber) {
+        html += '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Reg. No: ' + esc(m0.company_number) + (m0.jurisdiction ? ' · ' + esc(m0.jurisdiction.toUpperCase()) : '') + '</div>';
+      }
+      if (m0.opencorporates_url) {
+        html += '<div style="font-size:11px;margin-top:2px;"><a href="' + esc(m0.opencorporates_url) + '" target="_blank" style="color:#1a56db;">View on OpenCorporates ↗</a></div>';
+      }
+    }
+    if (regCheck.warnings && regCheck.warnings.length) {
+      regCheck.warnings.slice(0, 2).forEach(function(w) {
+        html += '<div style="font-size:11px;color:#92400e;margin-top:3px;">⚠ ' + esc(w) + '</div>';
+      });
+    }
+    // Phase 5c — Manual verification (alternative to OpenCorporates for non-EU).
+    // Shown only when registry result isn't an automatic verified hit.
+    var isAutoVerified = verified && (src === 'vies' || src === 'opencorporates');
+    if (!isAutoVerified) {
+      if (doc.vendor_verified_by) {
+        var dt = doc.vendor_verified_at ? new Date(doc.vendor_verified_at).toLocaleString() : '';
+        html += '<div style="margin-top:8px;padding:8px 10px;background:#ecfdf5;border:1px solid #10b981;border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
+          '<div style="font-size:12px;color:#047857;">' +
+            '<b>✓ Verified manually</b> by ' + esc(doc.vendor_verified_by) +
+            (dt ? ' · <span style="color:var(--muted);font-weight:400;">' + esc(dt) + '</span>' : '') +
+            (doc.vendor_verified_note ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;font-style:italic;">' + esc(doc.vendor_verified_note) + '</div>' : '') +
+          '</div>' +
+          '<button class="btn btn-sm" onclick="vendorUnverify(\'' + esc(doc.id) + '\')" style="font-size:11px;color:var(--muted);">Remove</button>' +
+        '</div>';
+      } else {
+        html += '<div style="margin-top:8px;padding:8px 10px;background:#fff;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
+          '<span style="font-size:11.5px;color:var(--muted);">No automatic registry match. If you verified this vendor yourself (phone, registry visit, receipt confirmation):</span>' +
+          '<button class="btn-export" onclick="vendorVerifyPrompt(\'' + esc(doc.id) + '\')" style="font-size:11px;">' +
+            '<span style="margin-right:4px;">✓</span>Mark as verified manually' +
+          '</button>' +
+        '</div>';
+      }
+    }
+    html += '</div>';
+  } else if (doc.vies_verified === true) {
+    // Legacy fallback for already-stored docs without registry_check
     html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #10b981;border-radius:6px;background:#10b98115;">' +
       '<div style="font-size:12px;color:#10b981;font-weight:700;">✓ VIES verified</div>' +
       (doc.vies_official_name ? '<div style="font-size:12px;margin-top:2px;">Official name: ' + esc(doc.vies_official_name) + '</div>' : '') +
@@ -2279,13 +2887,56 @@ function renderDetails(doc) {
   if (typeof vendorData === 'object' && vendorData.address) {
     html += '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + esc(vendorData.address) + '</div>';
   }
-  if (money.total_amount) {
-    html += '<div class="amount-big">\u20AC' + Number(money.total_amount).toFixed(2) + '</div>';
-    var breakdown = [];
-    if (money.net_amount) breakdown.push('Net: \u20AC' + Number(money.net_amount).toFixed(2));
-    if (money.tax_amount) breakdown.push('VAT/PVN: \u20AC' + Number(money.tax_amount).toFixed(2));
+  if (money.total_amount != null || money.amount_eur != null) {
+    var amtEur = money.amount_eur != null ? Number(money.amount_eur) : Number(money.total_amount);
+    var amtOrig = money.amount_orig != null ? Number(money.amount_orig) : Number(money.total_amount);
+    var curOrig = money.currency_orig || money.currency || 'EUR';
+    var isNonEur = curOrig && curOrig.toUpperCase() !== 'EUR';
+    // Phase 2.1 — primary EUR always; secondary original currency for non-EUR
+    html += '<div class="amount-big">€' + amtEur.toFixed(2);
+    if (isNonEur) {
+      html += '<span style="font-size:14px;color:var(--muted);font-weight:500;margin-left:10px;">(' +
+              amtOrig.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + esc(curOrig) + ')</span>';
+    }
+    html += '</div>';
+    if (isNonEur && money.fx_rate) {
+      var sourceLabel = ({ecb:'ECB live', 'ecb-cache':'ECB (cached)', fallback:'static fallback'})[money.fx_source] || money.fx_source || '';
+      html += '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' +
+              'FX: 1 ' + esc(curOrig) + ' = €' + Number(money.fx_rate).toFixed(4) +
+              (money.fx_date ? ' @ ' + esc(money.fx_date) : '') +
+              (sourceLabel ? ' · ' + sourceLabel : '') +
+              '</div>';
+    }
+    if (money.fx_warning) {
+      html += '<div style="margin-top:4px;font-size:11px;color:#d97706;">⚠️ ' + esc(money.fx_warning) + '</div>';
+    }
+    // Phase 2.5 — money breakdown in ORIGINAL currency (+ EUR shadow if non-EUR)
+    // Fix: subtotal/discount/credits are parsed in the invoice's own currency.
+    var fxRate = Number(money.fx_rate || 1);
+    var curSym = isNonEur ? esc(curOrig) : '€';
+    function _fmtPair(v) {
+      if (v == null || !Number(v)) return null;
+      var orig = Number(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + curSym;
+      if (!isNonEur || !fxRate) return orig;
+      var eur = Number(v) * fxRate;
+      return orig + ' <span style="color:var(--muted);font-size:11px;">(€' + eur.toFixed(2) + ')</span>';
+    }
+    var breakdown = [], v;
+    if ((v = _fmtPair(money.subtotal))   && Number(money.subtotal)   > 0) breakdown.push('Subtotal: ' + v);
+    if ((v = _fmtPair(money.discount))   && Number(money.discount)   > 0) breakdown.push('Discount: −' + v);
+    if ((v = _fmtPair(money.credits))    && Number(money.credits)    > 0) breakdown.push('Credits: −' + v);
+    if ((v = _fmtPair(money.net_amount)))                                  breakdown.push('Net: ' + v);
+    if ((v = _fmtPair(money.tax_amount)))                                  breakdown.push('VAT: ' + v);
     if (breakdown.length) {
       html += '<div class="amount-breakdown">' + breakdown.join(' &bull; ') + '</div>';
+    }
+    // Phase 2.4 — payment method badge
+    if (parsed.payment_method && parsed.payment_method !== 'unknown') {
+      var pmColors = {card:'#7c3aed', bank:'#0284c7', cash:'#059669'};
+      var pmIcons = {card:'\u{1F4B3}', bank:'\u{1F3E6}', cash:'\u{1F4B5}'};
+      var pmC = pmColors[parsed.payment_method] || '#64748b';
+      html += '<div style="display:inline-block;margin-top:6px;padding:3px 10px;background:' + pmC + '15;color:' + pmC + ';border-radius:10px;font-size:11px;font-weight:600;">' +
+              (pmIcons[parsed.payment_method] || '') + ' Paid by ' + esc(parsed.payment_method) + '</div>';
     }
   }
   html += '</div>';
@@ -2304,7 +2955,7 @@ function renderDetails(doc) {
   html += '<div class="detail-grid">';
   html += row('Type', parsed.document_type || '-');
   html += row('Date', dates.document_date || '-');
-  html += row('Due Date', dates.due_date || '\u2014');
+  html += row('Due Date', dates.due_date || '—');
   html += row('Payment', doc.payment_method || parsed.payment_method || '-');
   html += row('Period', doc.period || '-');
   html += row('Profit Center', doc.profit_center || '-');
@@ -2339,6 +2990,27 @@ function renderDetails(doc) {
     });
   }
 
+  // Phase 3 — BT4YOU governance suggestions block (above classification)
+  var gov = classification.governance || {};
+  if (gov.auto_suggested_pc) {
+    var sg = gov.auto_suggested_pc;
+    var srcLabel = sg.source === 'uploader' ? '👤 Based on uploader' : (sg.source === 'vendor_name' ? '🏢 Based on vendor' : '🧭 Auto-detected');
+    var streamLabel = sg.stream ? ' · stream: ' + esc(sg.stream) : '';
+    var deptLabel = sg.department ? ' · dept: ' + esc(sg.department) : '';
+    html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #7c3aed;border-radius:6px;background:#f3e8ff;">' +
+      '<div style="font-size:12px;color:#6d28d9;font-weight:700;">' + srcLabel + ' — Profit Center <span style="font-family:ui-monospace,monospace;background:#fff;padding:1px 6px;border-radius:4px;">' + esc(sg.profit_center) + '</span> · ' + (sg.confidence || 0) + '% confidence' + streamLabel + deptLabel + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:3px;">' + esc(sg.reason || '') + '</div>' +
+    '</div>';
+  }
+  if (gov.opex_matches && gov.opex_matches.length) {
+    html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #0ea5e9;border-radius:6px;background:#e0f2fe;font-size:11.5px;">' +
+      '<div style="color:#0369a1;font-weight:700;">💼 Matches BT4YOU OPEX category:</div>';
+    gov.opex_matches.slice(0, 3).forEach(function(m) {
+      html += '<div style="margin-top:3px;">' + esc(m.category) + ' (owner: <b>' + esc(m.owner || '—') + '</b>, annual budget €' + (m.annual_eur || 0).toLocaleString() + ')</div>';
+    });
+    html += '</div>';
+  }
+
   // Classification options
   html += '<h4>Proposed Classification</h4>';
   if (codes.length) {
@@ -2347,7 +3019,7 @@ function renderDetails(doc) {
       var conf = c.confidence || 0;
       var confClass = conf >= 90 ? 'confidence-high' : (conf >= 70 ? 'confidence-mid' : 'confidence-low');
       html += '<div class="code-option' + sel + '" onclick="selectCode(\'' + c.code + '\')">';
-      html += '<div class="code-header"><span class="code-name">' + esc(c.code) + ' \u2014 ' + esc(c.label || '') + '</span>';
+      html += '<div class="code-header"><span class="code-name">' + esc(c.code) + ' — ' + esc(c.label || '') + '</span>';
       html += '<div class="confidence-bar ' + confClass + '" style="width:120px"><span>' + conf + '%</span><div class="bar"><div class="fill" style="width:' + conf + '%"></div></div></div>';
       html += '</div>';
       if (c.reasoning) html += '<div class="reasoning">' + esc(c.reasoning) + '</div>';
@@ -2366,7 +3038,7 @@ function renderDetails(doc) {
   if (ledgerSchema && ledgerSchema.codes) {
     ledgerSchema.codes.forEach(function(c) {
       var sel = c.code === selectedCode ? ' selected' : '';
-      html += '<option value="' + c.code + '"' + sel + '>' + c.code + ' \u2014 ' + esc(c.label) + '</option>';
+      html += '<option value="' + c.code + '"' + sel + '>' + c.code + ' — ' + esc(c.label) + '</option>';
     });
   }
   html += '</select>';
@@ -2375,34 +3047,164 @@ function renderDetails(doc) {
   if (ledgerSchema && ledgerSchema.profit_centers) {
     ledgerSchema.profit_centers.forEach(function(pc) {
       var sel = pc.code === doc.profit_center ? ' selected' : '';
-      html += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' \u2014 ' + esc(pc.name) + '</option>';
+      html += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' — ' + esc(pc.name) + '</option>';
     });
   }
   html += '</select>';
   html += '</div>';
 
-  // Line items with translation
+  // Line items — Phase 2.5: per-line split with checkboxes + dropdowns
+  // When invoice mixes categories (food + travel + marketing on one bank statement),
+  // user can attribute each line to its own ledger code + profit center.
   var items = parsed.line_items || [];
+  var perLine = classification.per_line || [];
+  var hasMultiCategory = perLine.length > 1;
+
   if (items.length) {
-    html += '<h4>Line Items (' + items.length + ')</h4>';
-    html += '<div style="max-height:200px;overflow-y:auto;">';
-    items.forEach(function(item) {
-      html += '<div class="line-item-row">';
-      var descEn = item.description_en || item.description || '-';
-      var descOrig = item.description_original || null;
-      if (item.amount) html += '<span class="line-item-amount">\u20AC' + Number(item.amount).toFixed(2) + '</span>';
-      html += '<div class="line-item-en">' + esc(descEn) + '</div>';
-      if (descOrig && descOrig !== descEn) {
-        html += '<div class="line-item-original">' + esc(descOrig);
-        if (item.language) html += ' <span style="opacity:0.6;">(' + esc(item.language) + ')</span>';
-        html += '</div>';
+    html += '<h4>Line Items (' + items.length + ')';
+    if (hasMultiCategory) {
+      html += ' <span style="font-size:11px;color:#7c3aed;font-weight:600;padding:2px 8px;background:#f3e8ff;border-radius:8px;margin-left:6px;">' +
+              '❖ ' + perLine.length + ' categories detected — split available</span>';
+    }
+    html += '</h4>';
+
+    // Bulk action bar (only when multi-category)
+    if (hasMultiCategory) {
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;font-size:12px;flex-wrap:wrap;">';
+      html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">' +
+              '<input type="checkbox" id="line-check-all" onchange="toggleAllLineCheckboxes(this)"> Select all</label>';
+      html += '<span style="color:var(--muted);">|</span>';
+      html += '<span style="color:var(--muted);">Bulk →</span>';
+      html += '<select id="bulk-ledger" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;">';
+      html += '<option value="">Ledger code...</option>';
+      if (ledgerSchema && ledgerSchema.codes) {
+        ledgerSchema.codes.forEach(function(c) {
+          html += '<option value="' + c.code + '">' + esc(c.code) + ' — ' + esc(c.label) + '</option>';
+        });
       }
+      html += '</select>';
+      html += '<select id="bulk-pc" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;">';
+      html += '<option value="">Profit center...</option>';
+      if (ledgerSchema && ledgerSchema.profit_centers) {
+        ledgerSchema.profit_centers.forEach(function(pc) {
+          html += '<option value="' + pc.code + '">' + esc(pc.code) + ' — ' + esc(pc.name) + '</option>';
+        });
+      }
+      html += '</select>';
+      html += '<button type="button" onclick="applyBulkLineAssign()" style="font-size:11px;padding:4px 10px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;">Apply to selected</button>';
+      html += '</div>';
+    }
+
+    html += '<div class="line-split-table" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">';
+
+    items.forEach(function(item, idx) {
+      // Find matching per-line suggestion
+      var sug = null;
+      perLine.forEach(function(p) { if (p.line_index === idx) sug = p; });
+      if (!sug && perLine.length === 1) sug = perLine[0];
+
+      var lineLedger = sug ? sug.code : (selectedCode || '');
+      var linePc = sug ? sug.profit_center : (doc.profit_center || '');
+      var hint = sug ? sug.category_hint : '';
+      var descEn = item.description_en || item.description || '-';
+      var amt = item.amount ? Number(item.amount).toFixed(2) : '0.00';
+
+      html += '<div class="line-split-row" data-line-idx="' + idx + '" style="display:grid;grid-template-columns:28px 1fr 80px 130px 110px;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;background:#fff;">';
+
+      // Col 1: checkbox
+      html += '<input type="checkbox" class="line-check" data-line-idx="' + idx + '" ' + (hasMultiCategory ? '' : 'style="visibility:hidden;"') + '>';
+
+      // Col 2: description (+ hint badge)
+      html += '<div style="min-width:0;">';
+      html += '<div style="font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(descEn) + '">' + esc(descEn) + '</div>';
+      if (hint) {
+        var hintColors = {marketing:'#ec4899', travel:'#f59e0b', food:'#dc2626', office:'#0284c7', subscription:'#7c3aed', consulting:'#059669', other:'#64748b'};
+        var hc = hintColors[hint] || '#64748b';
+        html += '<span style="display:inline-block;font-size:10px;padding:1px 6px;background:' + hc + '15;color:' + hc + ';border-radius:6px;margin-top:2px;font-weight:600;">' + esc(hint) + '</span>';
+      }
+      html += '</div>';
+
+      // Col 3: amount
+      html += '<div style="text-align:right;font-weight:600;font-family:ui-monospace,monospace;color:var(--text);">€' + amt + '</div>';
+
+      // Col 4: ledger dropdown
+      html += '<select class="line-ledger" data-line-idx="' + idx + '" style="font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;">';
+      html += '<option value="">—</option>';
+      if (ledgerSchema && ledgerSchema.codes) {
+        ledgerSchema.codes.forEach(function(c) {
+          var sel = c.code === lineLedger ? ' selected' : '';
+          html += '<option value="' + c.code + '"' + sel + ' title="' + esc(c.label) + '">' + esc(c.code) + '</option>';
+        });
+      }
+      html += '</select>';
+
+      // Col 5: PC dropdown
+      html += '<select class="line-pc" data-line-idx="' + idx + '" style="font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;">';
+      html += '<option value="">—</option>';
+      if (ledgerSchema && ledgerSchema.profit_centers) {
+        ledgerSchema.profit_centers.forEach(function(pc) {
+          var sel = pc.code === linePc ? ' selected' : '';
+          html += '<option value="' + pc.code + '"' + sel + ' title="' + esc(pc.name) + '">' + esc(pc.code) + '</option>';
+        });
+      }
+      html += '</select>';
+
       html += '</div>';
     });
     html += '</div>';
+
+    if (hasMultiCategory) {
+      html += '<div style="margin-top:6px;font-size:11px;color:var(--muted);">' +
+              'ℹ️ Tick rows to bulk-assign, then pick ledger + PC and "Apply to selected". ' +
+              'Per-row dropdowns work too. Saved when you click Save or Approve.</div>';
+    }
   }
 
+  // ── Phase 3.5 — Multi-stream cost allocation (Katia split-entity case)
+  var existingAllocs = [];
+  try { existingAllocs = doc.allocations_json ? JSON.parse(doc.allocations_json) : []; }
+  catch (_) { existingAllocs = []; }
+  var hasAllocs = Array.isArray(existingAllocs) && existingAllocs.length > 0;
+
+  var _docTotalEurStr = Number(doc.amount || 0).toFixed(2);
+  html += '<h4 style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+          '<span>Cost allocation</span>' +
+          '<button type="button" class="alloc-toggle-btn" onclick="toggleAllocBlock()">' +
+          (hasAllocs ? 'Edit splits (' + existingAllocs.length + ')' : '+ Split between profit centers') +
+          '</button></h4>';
+  html += '<div id="alloc-block" class="alloc-wrap"' + (hasAllocs ? '' : ' style="display:none;"') + '>';
+  html += '<div class="alloc-intro">' +
+          'Split this invoice across multiple business units. Useful when the paying entity (e.g. Alps2Alps OU) ' +
+          'fronts a cost that benefits another stream (e.g. Skibookers). Pick percentages (sum = 100) ' +
+          'or exact amounts (sum = document total). The other column auto-fills.' +
+          '</div>';
+  html += '<table class="alloc-grid"><thead><tr>' +
+          '<th class="col-pc">Profit center</th>' +
+          '<th class="col-code">Ledger code</th>' +
+          '<th class="col-pct num">Share %</th>' +
+          '<th class="col-amt num">Amount €</th>' +
+          '<th class="col-note">Note</th>' +
+          '<th class="col-x"></th>' +
+          '</tr></thead><tbody id="alloc-rows">';
+  (existingAllocs.length ? existingAllocs : [{}, {}]).forEach(function(a, idx) {
+    html += _allocRowHtml(a, idx);
+  });
+  html += '</tbody></table>';
+  html += '<div class="alloc-footer">' +
+          '<button type="button" class="btn btn-sm" onclick="addAllocRow()">+ Add row</button>' +
+          '<div class="alloc-totals">' +
+          '<span>Share: <b id="alloc-pct-total">0</b>%</span>' +
+          '<span>Amount: <b id="alloc-amt-total">€0</b> of <b>€' + _docTotalEurStr + '</b></span>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+          '<button type="button" class="btn btn-sm" onclick="clearAllocations()">Clear</button>' +
+          '<button type="button" class="btn btn-sm btn-primary" onclick="saveAllocations(\'' + esc(doc.id) + '\')">Save allocation</button>' +
+          '</div>' +
+          '</div>';
+  html += '</div>';
+
   el.innerHTML = html;
+  setTimeout(function() { if (document.getElementById('alloc-rows')) recalcAllocTotals(); }, 0);
 }
 
 function renderModalActions(doc) {
@@ -2439,7 +3241,7 @@ function renderModalActions(doc) {
   ];
   pcList.forEach(function(pc) {
     var sel = pc.code === prePC ? ' selected' : '';
-    pcOptions += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' \u2014 ' + pc.name + '</option>';
+    pcOptions += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' — ' + pc.name + '</option>';
   });
 
   var disabledAttr = prePC ? '' : ' disabled';
@@ -2448,29 +3250,29 @@ function renderModalActions(doc) {
   var selectStyle = prePC ? '' : ' style="border:2px solid var(--yellow);background:rgba(217,119,6,0.08);"';
 
   el.innerHTML =
-    '<div style="display:flex;flex-direction:column;gap:4px;">' +
-      '<select id="modal-approve-pc" onchange="onModalPCChange()"' + selectStyle + '>' + pcOptions + '</select>' +
+    '<div>' +
+      '<select id="modal-approve-pc" class="fio-select" onchange="onModalPCChange()"' + selectStyle + '>' + pcOptions + '</select>' +
       warningHtml +
     '</div>' +
-    '<div id="modal-dept-wrap" style="display:flex;flex-direction:column;gap:4px;">' +
-      '<select id="modal-approve-dept">' +
-        '<option value="">-- Department (optional) --</option>' +
+    '<div id="modal-dept-wrap">' +
+      '<select id="modal-approve-dept" class="fio-select">' +
+        '<option value="">— Department (optional) —</option>' +
       '</select>' +
     '</div>' +
-    '<div id="modal-reason-wrap" style="display:flex;flex-direction:column;gap:4px;">' +
-      '<select id="modal-approve-reason">' +
-        '<option value="">-- Cost reason (optional) --</option>' +
+    '<div id="modal-reason-wrap">' +
+      '<select id="modal-approve-reason" class="fio-select">' +
+        '<option value="">— Cost reason (optional) —</option>' +
       '</select>' +
     '</div>' +
-    '<div id="modal-approver-wrap" style="display:flex;flex-direction:column;gap:4px;">' +
-      '<select id="modal-approver-name">' +
-        '<option value="">-- Approver (your name from Asana) --</option>' +
+    '<div id="modal-approver-wrap">' +
+      '<select id="modal-approver-name" class="fio-select">' +
+        '<option value="">— Approver (Asana name) —</option>' +
       '</select>' +
     '</div>' +
-    '<button class="btn" id="modal-save-btn" onclick="saveFromModal()" style="background:#0ea5e9;color:#fff;border:none;">\u{1F4BE} Save changes</button>' +
-    '<button class="btn btn-success" id="modal-approve-btn" onclick="approveFromModal()"' + disabledAttr + btnStyle + '>Approve & Post</button>' +
+    '<button class="btn" id="modal-save-btn" onclick="saveFromModal()" style="background:var(--accent);color:#fff;border-color:var(--accent);"><span style="margin-right:4px;">💾</span>Save changes</button>' +
+    '<button class="btn btn-success" id="modal-approve-btn" onclick="approveFromModal()"' + disabledAttr + btnStyle + '>Approve &amp; Post</button>' +
     '<button class="btn btn-danger" onclick="rejectFromModal()">Reject</button>' +
-    '<label><input type="checkbox" id="add-rule-check"> Always classify this vendor as selected code</label>';
+    '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto;cursor:pointer;"><input type="checkbox" id="add-rule-check"> Always classify this vendor as selected code</label>';
 
   // Populate department + reason + approver selectors based on current state
   populateDepartmentOptions(prePC, doc.department);
@@ -2627,6 +3429,268 @@ function quickReject(docId) {
   });
 }
 
+// Phase 2.5 — per-line split helpers
+function toggleAllLineCheckboxes(masterCb) {
+  document.querySelectorAll('.line-check').forEach(function(cb) { cb.checked = masterCb.checked; });
+}
+
+// === Phase 3.5 — Cost Allocation helpers (Katia split-entity) ===
+function _allocRowHtml(a, idx) {
+  var pcs = (ledgerSchema && ledgerSchema.profit_centers) || [];
+  var codes = (ledgerSchema && ledgerSchema.codes) || [];
+  var pc = (a && a.profit_center) || '';
+  var code = (a && a.ledger_code) || '';
+  var pct = (a && a.percentage != null) ? a.percentage : '';
+  var amt = (a && a.amount != null) ? a.amount : '';
+  var note = (a && a.note) || '';
+  var pcOpts = '<option value="">--</option>' + pcs.map(function(p) {
+    return '<option value="' + p.code + '"' + (p.code === pc ? ' selected' : '') + '>' + p.code + ' — ' + esc(p.name) + '</option>';
+  }).join('');
+  var codeOpts = '<option value="">--</option>' + codes.map(function(c) {
+    return '<option value="' + c.code + '"' + (c.code === code ? ' selected' : '') + '>' + c.code + '</option>';
+  }).join('');
+  return '<tr data-alloc-idx="' + idx + '">' +
+    '<td><select class="alloc-pc" onchange="recalcAllocTotals()">' + pcOpts + '</select></td>' +
+    '<td><select class="alloc-code">' + codeOpts + '</select></td>' +
+    '<td><input type="number" class="alloc-pct" value="' + pct + '" step="0.5" min="0" max="100" oninput="onAllocPctInput(this)" placeholder="0"></td>' +
+    '<td><input type="number" class="alloc-amt" value="' + amt + '" step="0.01" min="0" oninput="onAllocAmtInput(this)" placeholder="0.00"></td>' +
+    '<td><input type="text" class="alloc-note" value="' + esc(note) + '" placeholder="reason (optional)"></td>' +
+    '<td class="col-x"><button type="button" class="row-remove" onclick="removeAllocRow(this)" title="Remove row">×</button></td>' +
+    '</tr>';
+}
+function toggleAllocBlock() {
+  var block = document.getElementById('alloc-block');
+  if (!block) return;
+  block.style.display = block.style.display === 'none' ? 'block' : 'none';
+}
+function addAllocRow() {
+  var tbody = document.getElementById('alloc-rows');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', _allocRowHtml({}, tbody.children.length));
+  recalcAllocTotals();
+}
+function removeAllocRow(btn) {
+  var tr = btn.closest('tr');
+  if (tr) tr.remove();
+  recalcAllocTotals();
+}
+function _docTotalEur() {
+  if (!currentDoc) return 0;
+  return Number(currentDoc.amount || 0);
+}
+function onAllocPctInput(input) {
+  var pct = parseFloat(input.value) || 0;
+  var total = _docTotalEur();
+  if (total) {
+    var amtInput = input.closest('tr').querySelector('.alloc-amt');
+    if (amtInput) amtInput.value = (total * pct / 100).toFixed(2);
+  }
+  recalcAllocTotals();
+}
+function onAllocAmtInput(input) {
+  var amt = parseFloat(input.value) || 0;
+  var total = _docTotalEur();
+  if (total) {
+    var pctInput = input.closest('tr').querySelector('.alloc-pct');
+    if (pctInput) pctInput.value = (amt / total * 100).toFixed(2);
+  }
+  recalcAllocTotals();
+}
+function recalcAllocTotals() {
+  var pctTotal = 0, amtTotal = 0;
+  document.querySelectorAll('#alloc-rows tr').forEach(function(tr) {
+    pctTotal += parseFloat(tr.querySelector('.alloc-pct')?.value) || 0;
+    amtTotal += parseFloat(tr.querySelector('.alloc-amt')?.value) || 0;
+  });
+  var pctEl = document.getElementById('alloc-pct-total');
+  var amtEl = document.getElementById('alloc-amt-total');
+  if (pctEl) {
+    pctEl.textContent = pctTotal.toFixed(1);
+    pctEl.style.color = (Math.abs(pctTotal - 100) > 0.5 && pctTotal > 0) ? 'var(--red)' : 'var(--green)';
+  }
+  if (amtEl) amtEl.textContent = '€' + amtTotal.toFixed(2);
+}
+function clearAllocations() {
+  if (!currentDoc) return;
+  if (!confirm('Clear all allocation splits for this document?')) return;
+  api('POST', '/api/documents/' + currentDoc.id + '/allocations', {allocations: [], saved_by: 'user'}).then(function() {
+    showToast('Allocations cleared', 'success');
+    reloadModal();
+  });
+}
+function saveAllocations(docId) {
+  var allocs = [];
+  document.querySelectorAll('#alloc-rows tr').forEach(function(tr) {
+    var pc = tr.querySelector('.alloc-pc')?.value;
+    if (!pc) return;
+    var entry = {profit_center: pc};
+    var code = tr.querySelector('.alloc-code')?.value;
+    if (code) entry.ledger_code = code;
+    var pct = parseFloat(tr.querySelector('.alloc-pct')?.value);
+    if (!isNaN(pct)) entry.percentage = pct;
+    var amt = parseFloat(tr.querySelector('.alloc-amt')?.value);
+    if (!isNaN(amt)) entry.amount = amt;
+    var note = tr.querySelector('.alloc-note')?.value;
+    if (note) entry.note = note;
+    allocs.push(entry);
+  });
+  if (!allocs.length) {
+    showToast('Add at least one allocation row (or use Clear button)', 'error');
+    return;
+  }
+  api('POST', '/api/documents/' + docId + '/allocations', {allocations: allocs, saved_by: 'user'}).then(function(d) {
+    if (d.error) showToast('Rejected: ' + d.error, 'error');
+    else { showToast('Allocation saved (' + allocs.length + ' splits)', 'success'); reloadModal(); }
+  });
+}
+
+// === Phase 4.1 — Reassign with audit trail ===
+// Phase 5c — Manual vendor verification
+function vendorVerifyPrompt(docId) {
+  var who = prompt('Your name (will be stored as verifier):',
+                   document.getElementById('upload-user')?.value || '');
+  if (!who || !who.trim()) return;
+  var note = prompt('Verification note (optional — how did you verify?):', '');
+  api('POST', '/api/documents/' + docId + '/vendor-verify',
+      {verified_by: who.trim(), note: (note || '').trim()}).then(function(r) {
+    if (r.error) {
+      showToast('Verification failed: ' + r.error, 'error');
+    } else {
+      showToast('✓ Vendor marked as verified by ' + who, 'success');
+      reloadModal();
+    }
+  });
+}
+
+function vendorUnverify(docId) {
+  if (!confirm('Remove manual verification from this vendor?')) return;
+  api('POST', '/api/documents/' + docId + '/vendor-verify',
+      {verified_by: null, acting_user: document.getElementById('upload-user')?.value || 'user'})
+    .then(function(r) {
+      if (r.error) {
+        showToast('Failed: ' + r.error, 'error');
+      } else {
+        showToast('Verification removed', 'info');
+        reloadModal();
+      }
+    });
+}
+
+function reassignDoc(docId, fields, reason) {
+  return api('POST', '/api/documents/' + docId + '/reassign', Object.assign({}, fields, {reason: reason || 'manual correction', changed_by: 'user'}));
+}
+
+// === Phase 4.2 — Export per business stream ===
+function exportAccountingCsv(profitCenter, period) {
+  var qs = [];
+  if (profitCenter) qs.push('profit_center=' + encodeURIComponent(profitCenter));
+  if (period) qs.push('period=' + encodeURIComponent(period));
+  var url = '/api/accounting/export' + (qs.length ? '?' + qs.join('&') : '');
+  window.location.href = url;  // triggers download
+}
+async function exportAccountingSheets(profitCenter, period) {
+  var sheetName = prompt('Sheet/tab name in your Google Sheet:', 'FIO ' + (profitCenter || 'ALL') + ' ' + (period || 'all'));
+  if (!sheetName) return;
+  var r = await api('POST', '/api/accounting/export-sheets', {profit_center: profitCenter || '', period: period || '', sheet_name: sheetName});
+  if (r.error) {
+    showSheetsSetupModal(r.error, r.hint, r.fallback);
+  } else {
+    showToast('✓ ' + r.rows_sent + ' rows pushed to "' + sheetName + '"', 'success');
+  }
+}
+
+function showSheetsSetupModal(err, hint, fallback) {
+  var overlay = document.createElement('div');
+  overlay.setAttribute('data-sheets-modal', '1');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  var template = 'function doPost(e) {\n' +
+    '  var body = JSON.parse(e.postData.contents);\n' +
+    '  var ss = SpreadsheetApp.openById(\'YOUR_SPREADSHEET_ID\');\n' +
+    '  var sheet = ss.getSheetByName(body.sheet_name) || ss.insertSheet(body.sheet_name);\n' +
+    '  if (sheet.getLastRow() === 0 && body.rows.length) sheet.appendRow(Object.keys(body.rows[0]));\n' +
+    '  body.rows.forEach(function(r) { sheet.appendRow(Object.values(r)); });\n' +
+    '  return ContentService.createTextOutput(JSON.stringify({ok:true, rows:body.rows.length}))\n' +
+    '    .setMimeType(ContentService.MimeType.JSON);\n' +
+    '}';
+  var html = '<div style="background:#fff;border-radius:12px;max-width:580px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);">' +
+    '<div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
+      '<h3 style="margin:0;font-size:15px;font-weight:600;">\u{1F4CA} Google Sheets export — one-time setup</h3>' +
+      '<button onclick="this.closest(\'[data-sheets-modal]\').remove()" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;">×</button>' +
+    '</div>' +
+    '<div style="padding:18px 22px;font-size:13px;line-height:1.55;color:var(--text);">' +
+      '<div style="padding:10px 12px;background:rgba(220,38,38,0.08);border-left:3px solid var(--red);border-radius:6px;margin-bottom:14px;font-size:12px;color:var(--red);">' +
+        esc(err || '') +
+      '</div>' +
+      '<p style="margin:0 0 12px;color:var(--muted);">' + esc(hint || '') + '</p>' +
+      '<ol style="margin:0 0 12px 18px;padding:0;">' +
+        '<li style="margin-bottom:6px;">Open <a href="https://script.google.com" target="_blank" style="color:var(--accent);">script.google.com</a> → <b>New project</b></li>' +
+        '<li style="margin-bottom:6px;">Paste the script below into <code>Code.gs</code>, set your spreadsheet ID</li>' +
+        '<li style="margin-bottom:6px;">Click <b>Deploy → New deployment → Web app</b>, access: <b>Anyone</b></li>' +
+        '<li style="margin-bottom:6px;">Copy the web-app URL</li>' +
+        '<li style="margin-bottom:6px;">Add <code>GOOGLE_SHEETS_WEBHOOK=&lt;url&gt;</code> to <code>.env</code> → restart FIO</li>' +
+      '</ol>' +
+      '<details style="margin-bottom:12px;">' +
+        '<summary style="cursor:pointer;font-weight:600;color:var(--accent);">Show Apps Script template</summary>' +
+        '<pre style="margin-top:8px;padding:12px;background:#0f172a;color:#a7f3d0;border-radius:8px;font-size:11px;overflow-x:auto;line-height:1.5;">' + esc(template) + '</pre>' +
+      '</details>' +
+      '<div style="padding:10px 12px;background:var(--brand-light);border-radius:6px;font-size:12px;color:var(--accent2);">' +
+        '\u{1F4A1} <b>For now:</b> ' + esc(fallback || 'Use the CSV button and upload to Sheets manually.') +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:14px 22px;border-top:1px solid var(--border);background:var(--surface);display:flex;justify-content:flex-end;gap:8px;">' +
+      '<button class="btn btn-sm" onclick="this.closest(\'[data-sheets-modal]\').remove()">Close</button>' +
+    '</div>' +
+  '</div>';
+  overlay.innerHTML = html;
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function applyBulkLineAssign() {
+  var bulkLedger = document.getElementById('bulk-ledger');
+  var bulkPc = document.getElementById('bulk-pc');
+  var ledgerVal = bulkLedger ? bulkLedger.value : '';
+  var pcVal = bulkPc ? bulkPc.value : '';
+  if (!ledgerVal && !pcVal) {
+    showToast('Pick ledger and/or profit center first', 'error');
+    return;
+  }
+  var checked = document.querySelectorAll('.line-check:checked');
+  if (!checked.length) {
+    showToast('Tick at least one line first', 'error');
+    return;
+  }
+  checked.forEach(function(cb) {
+    var idx = cb.getAttribute('data-line-idx');
+    if (ledgerVal) {
+      var ledSel = document.querySelector('.line-ledger[data-line-idx="' + idx + '"]');
+      if (ledSel) ledSel.value = ledgerVal;
+    }
+    if (pcVal) {
+      var pcSel = document.querySelector('.line-pc[data-line-idx="' + idx + '"]');
+      if (pcSel) pcSel.value = pcVal;
+    }
+  });
+  showToast('Applied to ' + checked.length + ' line(s)', 'success');
+}
+
+function collectPerLineOverrides() {
+  // Returns array of {line_index, code, profit_center} for each row that
+  // has at least one non-empty dropdown — saved alongside top-level save.
+  var out = [];
+  document.querySelectorAll('.line-split-row').forEach(function(row) {
+    var idx = parseInt(row.getAttribute('data-line-idx'), 10);
+    var led = row.querySelector('.line-ledger');
+    var pc = row.querySelector('.line-pc');
+    var ledVal = led ? led.value : '';
+    var pcVal = pc ? pc.value : '';
+    if (ledVal || pcVal) {
+      out.push({ line_index: idx, code: ledVal || null, profit_center: pcVal || null });
+    }
+  });
+  return out;
+}
+
 function syncModalPC(val) {
   var modalPC = document.getElementById('modal-approve-pc');
   if (modalPC) {
@@ -2681,6 +3745,10 @@ function saveFromModal() {
   if (deptEl && deptEl.value) body.department = deptEl.value;
   if (reasonEl && reasonEl.value) body.cost_reason = reasonEl.value;
   if (approverEl && approverEl.value) body.saved_by = approverEl.value;
+
+  // Phase 2.5 — per-line split (when invoice has mixed categories)
+  var lineOverrides = collectPerLineOverrides();
+  if (lineOverrides.length) body.per_line = lineOverrides;
 
   if (!Object.keys(body).length) {
     showToast('Nothing to save -- pick at least one field', 'error');
@@ -2899,6 +3967,372 @@ function submitNegativeFeedback() {
 document.getElementById('feedback-modal').addEventListener('click', function(e) {
   if (e.target === this) closeFeedbackModal();
 });
+
+// ════════════════════════════════════════════════════════════════
+// Phase 6 — Card Audit panel
+// ════════════════════════════════════════════════════════════════
+var _caInitialised = false;
+var _caCachedHolders = null;  // from BT4YOU people map
+
+function initCardAuditTab() {
+  if (!_caInitialised) {
+    _caInitialised = true;
+    populateCaPeriodFilter();
+    fetchCaHolders();
+  }
+  loadCardAudit();
+}
+
+function populateCaPeriodFilter() {
+  var sel = document.getElementById('ca-period');
+  if (!sel || sel.children.length) return;
+  var now = new Date();
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var p = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    var opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p + (i === 0 ? ' (current)' : '');
+    sel.appendChild(opt);
+  }
+}
+
+async function fetchCaHolders() {
+  try {
+    var r = await api('GET', '/api/people');
+    _caCachedHolders = (r && (r.people || r)) || [];
+  } catch (e) { _caCachedHolders = []; }
+}
+
+async function uploadCardCsv(files) {
+  if (!files || !files.length) return;
+  var f = files[0];
+  var resultEl = document.getElementById('ca-upload-result');
+  resultEl.innerHTML = 'Uploading <b>' + esc(f.name) + '</b>…';
+  var fd = new FormData();
+  fd.append('file', f);
+  fd.append('imported_by', document.getElementById('upload-user')?.value || 'user');
+  try {
+    var r = await fetch('/api/card-audit/import', {method: 'POST', body: fd}).then(r => r.json());
+    if (r.error) {
+      resultEl.innerHTML = '<span style="color:var(--red);">Error: ' + esc(r.error) + '</span>';
+      return;
+    }
+    var msg = '<b style="color:var(--green);">✓ Imported ' + r.inserted + ' rows</b> from ' + esc(r.source_label || r.source);
+    if (r.skipped) msg += ' · <span style="color:var(--muted);">' + r.skipped + ' skipped (duplicates / unparseable)</span>';
+    if (r.errors && r.errors.length) msg += ' · <span style="color:var(--yellow);">' + r.errors.length + ' errors</span>';
+    if (r.periods_reconciled && r.periods_reconciled.length) {
+      msg += '<br>Auto-reconciled periods: ' + r.periods_reconciled.join(', ');
+      // Switch period filter to most relevant
+      var sel = document.getElementById('ca-period');
+      if (sel && r.periods_reconciled[0]) sel.value = r.periods_reconciled[0];
+    }
+    resultEl.innerHTML = msg;
+    loadCardAudit();
+  } catch (err) {
+    resultEl.innerHTML = '<span style="color:var(--red);">Upload failed: ' + esc(err.message || err) + '</span>';
+  }
+  document.getElementById('ca-file-input').value = '';
+}
+
+async function loadCardAudit() {
+  var period = document.getElementById('ca-period')?.value || new Date().toISOString().slice(0, 7);
+  try {
+    var [summary, txWrap] = await Promise.all([
+      api('GET', '/api/card-audit/summary?period=' + period),
+      api('GET', '/api/card-audit/transactions?limit=2000&period=' + period),
+    ]);
+    renderCaKpis(summary);
+    renderCaByDept(summary);
+    renderCaLists(txWrap.transactions || []);
+  } catch (err) {
+    console.error('Card audit load failed:', err);
+  }
+}
+
+function renderCaKpis(s) {
+  var st = s.by_status || {};
+  function box(label, n, eur, color) {
+    return '<div class="card stat" style="border-left:3px solid ' + color + ';">' +
+      '<div class="big" style="color:' + color + ';">' + (n || 0) + '</div>' +
+      '<div class="lbl">' + esc(label) + '</div>' +
+      '<div class="sub">€' + Number(eur || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div></div>';
+  }
+  // Mirror existing kpi-card style — but inline-stat for this tab
+  function kpi(label, n, eur, color) {
+    return '<div style="padding:14px 16px;background:#fff;border:1px solid var(--border);border-left:4px solid ' + color + ';border-radius:10px;">' +
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">' + esc(label) + '</div>' +
+      '<div style="font-size:26px;font-weight:700;color:' + color + ';margin-top:4px;line-height:1;">' + (n || 0) + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:3px;">€' + Number(eur || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>' +
+      '</div>';
+  }
+  var html = '';
+  html += kpi('Total card-tx', s.total?.n, s.total?.eur, '#1a56db');
+  html += kpi('Unmatched', st.unmatched?.n, st.unmatched?.eur, '#dc2626');
+  html += kpi('Suggested',  st.suggested?.n, st.suggested?.eur, '#d97706');
+  html += kpi('Auto-matched', st.matched?.n, st.matched?.eur, '#10b981');
+  html += kpi('Manual',     st.manual?.n,    st.manual?.eur,    '#0ea5e9');
+  html += kpi('Excluded',   st.excluded?.n,  st.excluded?.eur,  '#94a3b8');
+  document.getElementById('ca-kpis').innerHTML = html;
+}
+
+function renderCaByDept(s) {
+  var entries = Object.entries(s.by_department || {});
+  if (!entries.length) {
+    document.getElementById('ca-by-dept').innerHTML = '<div class="ca-emptystate">No transactions in this period yet — upload a CSV above.</div>';
+    return;
+  }
+  entries.sort(function(a, b) { return (b[1].eur || 0) - (a[1].eur || 0); });
+  var html = '';
+  entries.forEach(function(e) {
+    var dept = e[0], v = e[1];
+    var total = (v.matched || 0) + (v.suggested || 0) + (v.unmatched || 0) + (v.manual || 0) + (v.excluded || 0);
+    var matchedP = total ? Math.round(((v.matched || 0) + (v.manual || 0)) / total * 100) : 0;
+    var suggP = total ? Math.round((v.suggested || 0) / total * 100) : 0;
+    var unP = total ? Math.max(0, 100 - matchedP - suggP) : 0;
+    html += '<div class="ca-dept-card">' +
+      '<div class="name">' + esc(dept) + '</div>' +
+      '<div class="stat"><b>' + total + '</b> tx · <b>€' + Number(v.eur || 0).toLocaleString('en-US', {maximumFractionDigits: 0}) + '</b></div>' +
+      '<div style="margin-top:4px;font-size:11px;">' +
+      '<span style="color:#10b981;">✓ ' + ((v.matched || 0) + (v.manual || 0)) + '</span> · ' +
+      '<span style="color:#d97706;">⚠ ' + (v.suggested || 0) + '</span> · ' +
+      '<span style="color:#dc2626;">🚨 ' + (v.unmatched || 0) + '</span></div>' +
+      '<div class="bar">' +
+        '<div class="seg-matched" style="width:' + matchedP + '%;"></div>' +
+        '<div class="seg-suggested" style="width:' + suggP + '%;"></div>' +
+        '<div class="seg-unmatched" style="width:' + unP + '%;"></div>' +
+      '</div>' +
+      '</div>';
+  });
+  document.getElementById('ca-by-dept').innerHTML = html;
+}
+
+function renderCaLists(txs) {
+  var buckets = {unmatched: [], suggested: [], matched: [], excluded: []};
+  txs.forEach(function(t) {
+    var k = t.match_status;
+    if (k === 'manual') k = 'matched';
+    if (buckets[k]) buckets[k].push(t);
+  });
+  function rowHtml(t) {
+    var amt = Number(t.amount_eur || t.amount || 0);
+    var isOut = amt < 0;
+    var ccyOrig = t.currency || 'EUR';
+    var date = (t.posted_at || '').slice(0, 10);
+    var holderHtml = t.card_holder
+      ? '<b>' + esc(t.card_holder) + '</b>' + (t.department ? ' <span style="color:var(--muted);">· ' + esc(t.department) + '</span>' : '')
+      : '<span style="color:var(--muted);font-style:italic;">unassigned</span>';
+    var confHtml = t.match_confidence
+      ? '<span class="pill">' + t.match_confidence + '%</span>'
+      : '';
+    return '<div class="ca-row ' + (isOut ? 'is-out' : 'is-in') + '" data-tx-id="' + esc(t.id) + '">' +
+      '<div class="date">' + esc(date) + '</div>' +
+      '<div class="desc">' + esc((t.description || '').slice(0, 80)) +
+        (t.counterparty && t.counterparty !== t.description ? '<div class="sub">' + esc(t.counterparty.slice(0, 60)) + '</div>' : '') +
+      '</div>' +
+      '<div class="holder">' + holderHtml + '</div>' +
+      '<div class="conf">' + confHtml + (t.match_reason ? ' <span style="font-size:10px;color:var(--muted);">' + esc(t.match_reason.slice(0, 40)) + '</span>' : '') + '</div>' +
+      '<div class="amount">' +
+        (isOut ? '−' : '+') + '€' + Math.abs(amt).toFixed(2) +
+        (ccyOrig !== 'EUR' ? '<span class="ccy">(' + Math.abs(t.amount).toFixed(2) + ' ' + esc(ccyOrig) + ')</span>' : '') +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--muted);">' + esc(t.source || '') + '</div>' +
+      '<div class="actions"><button onclick="openCaModal(\'' + esc(t.id) + '\')">Open</button></div>' +
+      '</div>';
+  }
+  function fill(elId, list, emptyMsg, countId) {
+    var el = document.getElementById(elId);
+    var cnt = document.getElementById(countId);
+    if (!list.length) {
+      el.innerHTML = '<div class="ca-emptystate">' + esc(emptyMsg) + '</div>';
+    } else {
+      el.innerHTML = list.map(rowHtml).join('');
+    }
+    if (cnt) cnt.textContent = list.length + ' transaction(s)';
+  }
+  fill('ca-unmatched', buckets.unmatched, 'No unmatched card transactions — clean period! ✨', 'ca-unmatched-count');
+  fill('ca-suggested', buckets.suggested, 'Nothing to review.', 'ca-suggested-count');
+  fill('ca-matched',   buckets.matched,   'No matched transactions yet.',  'ca-matched-count');
+  fill('ca-excluded',  buckets.excluded,  'No excluded transactions.',      'ca-excluded-count');
+}
+
+async function reconcileCardAudit() {
+  var period = document.getElementById('ca-period').value;
+  showToast('Reconciling ' + period + '…', 'info');
+  var r = await api('POST', '/api/card-audit/reconcile?period=' + period, {});
+  showToast('Reconciled · auto=' + (r.auto || 0) + ' · suggested=' + (r.suggested || 0) + ' · unmatched=' + (r.unmatched || 0), 'success');
+  loadCardAudit();
+}
+
+function exportCardAudit() {
+  var period = document.getElementById('ca-period').value;
+  window.location.href = '/api/card-audit/export?period=' + period;
+}
+
+// ─── Modal (open card-tx for assign/match/exclude/delete) ───
+async function openCaModal(txId) {
+  var tx = await api('GET', '/api/card-audit/transactions?limit=1').then(r => (r.transactions || []).find(t => t.id === txId));
+  if (!tx) {
+    showToast('Transaction not found', 'error');
+    return;
+  }
+  document.getElementById('ca-modal-title').textContent = 'Card-tx · ' + (tx.posted_at || '').slice(0, 10);
+  var body = document.getElementById('ca-modal-body');
+  var amt = Number(tx.amount_eur || tx.amount || 0);
+  var isOut = amt < 0;
+  var holders = (_caCachedHolders || []).map(function(p) { return p.name; }).sort();
+  var holderOpts = '<option value="">— Unassigned —</option>' +
+                   holders.map(function(n) { return '<option value="' + esc(n) + '"' + (n === tx.card_holder ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+
+  var html = '<div style="padding:14px 18px;">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:14px;">' +
+    '<div>' +
+      '<div style="font-size:13px;color:var(--text);font-weight:600;">' + esc(tx.counterparty || tx.description || '—') + '</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-top:3px;">' + esc(tx.description || '') + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:5px;">' + esc(tx.source) + ' · ' + esc(tx.posted_at) + ' · ' + esc(tx.reference || '—') + '</div>' +
+    '</div>' +
+    '<div style="text-align:right;">' +
+      '<div style="font-size:22px;font-weight:700;color:' + (isOut ? 'var(--red)' : 'var(--green)') + ';">' +
+        (isOut ? '−' : '+') + '€' + Math.abs(amt).toFixed(2) + '</div>' +
+      (tx.currency !== 'EUR' ? '<div style="font-size:11px;color:var(--muted);">' + Math.abs(tx.amount).toFixed(2) + ' ' + esc(tx.currency) +
+        (tx.fx_rate ? ' · FX ' + Number(tx.fx_rate).toFixed(4) : '') + '</div>' : '') +
+    '</div>' +
+  '</div>';
+
+  // Section: assign holder
+  html += '<div style="margin-bottom:14px;">' +
+    '<label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">Card holder</label>' +
+    '<select id="ca-modal-holder" class="fio-select" style="width:100%;margin-top:4px;">' + holderOpts + '</select>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Department + Profit Center will auto-resolve from BT4YOU holding map.</div>' +
+    '<button class="btn btn-sm" style="margin-top:8px;" onclick="caAssignHolder(\'' + esc(tx.id) + '\')">Save holder</button>' +
+    '</div>';
+
+  // Section: match status + actions
+  html += '<div style="margin-bottom:14px;padding:10px 12px;background:#f8fafc;border-radius:8px;font-size:12px;">' +
+    '<div><b>Status:</b> ' + esc(tx.match_status) +
+      (tx.match_confidence ? ' (' + tx.match_confidence + '%)' : '') + '</div>' +
+    (tx.matched_invoice_id
+      ? '<div style="margin-top:4px;">Linked invoice: <code>' + esc(tx.matched_invoice_id) + '</code> ' +
+        '<button class="btn btn-sm" onclick="caUnmatch(\'' + esc(tx.id) + '\')">Unlink</button></div>'
+      : '<div style="margin-top:4px;color:var(--muted);">No invoice linked yet.</div>') +
+    (tx.match_reason ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + esc(tx.match_reason) + '</div>' : '') +
+    '</div>';
+
+  // Section: manual match — search by amount in approved/classified docs
+  html += '<div style="margin-bottom:14px;">' +
+    '<label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">Manual match — pick invoice</label>' +
+    '<div id="ca-modal-candidates" style="margin-top:6px;font-size:12px;color:var(--muted);">Loading candidates…</div>' +
+    '</div>';
+
+  // Section: exclude / delete
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border);">' +
+    (tx.match_status === 'excluded'
+      ? '<button class="btn btn-sm" onclick="caExclude(\'' + esc(tx.id) + '\', false)">Re-include</button>'
+      : '<button class="btn btn-sm" onclick="caExclude(\'' + esc(tx.id) + '\', true)" title="Mark as personal / reimbursed separately — no invoice expected">Exclude from audit</button>') +
+    '<button class="btn btn-sm btn-danger" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="caDelete(\'' + esc(tx.id) + '\')">Delete</button>' +
+    '</div>';
+
+  html += '</div>';
+  body.innerHTML = html;
+
+  // Load candidates
+  loadCaModalCandidates(tx);
+
+  document.getElementById('ca-modal-overlay').classList.add('active');
+}
+
+function closeCaModal() {
+  document.getElementById('ca-modal-overlay').classList.remove('active');
+}
+
+async function loadCaModalCandidates(tx) {
+  // Search invoices with similar amount and same period (±1 month)
+  var el = document.getElementById('ca-modal-candidates');
+  if (!el) return;
+  try {
+    var r = await api('GET', '/api/documents?limit=500');
+    var docs = r.documents || r;
+    var txAmt = Math.abs(Number(tx.amount_eur || tx.amount || 0));
+    var candidates = docs.filter(function(d) {
+      if (!d.amount) return false;
+      if (['rejected'].indexOf(d.status) >= 0) return false;
+      var diff = Math.abs(Math.abs(d.amount) - txAmt);
+      return diff < Math.max(0.5, txAmt * 0.05); // ±5% or 0.50 EUR
+    }).slice(0, 8);
+    if (!candidates.length) {
+      el.innerHTML = '<div style="padding:8px 12px;background:#fef3c7;border-radius:6px;color:#92400e;">No invoices with similar amount (±5%) in DB. Did the user upload the invoice?</div>';
+      return;
+    }
+    el.innerHTML = candidates.map(function(d) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;">' +
+        '<div style="min-width:0;flex:1;">' +
+          '<div style="font-weight:600;font-size:12px;color:var(--text);">' + esc(d.vendor || '—') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + esc(d.id) + ' · ' + esc(d.period || '') + ' · ' + esc(d.ledger_code || '') + ' · €' + Number(d.amount).toFixed(2) + (d.payment_method ? ' · ' + esc(d.payment_method) : '') + '</div>' +
+        '</div>' +
+        '<button class="btn btn-sm" onclick="caManualMatch(\'' + esc(tx.id) + '\', \'' + esc(d.id) + '\')">Match</button>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--red);">Could not load invoice candidates.</div>';
+  }
+}
+
+async function caAssignHolder(txId) {
+  var holder = document.getElementById('ca-modal-holder').value;
+  var r = await api('POST', '/api/card-audit/transactions/' + txId, {card_holder: holder || null, changed_by: 'user'});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Holder saved · dept/PC auto-resolved', 'success');
+  closeCaModal();
+  loadCardAudit();
+}
+
+async function caManualMatch(txId, invoiceId) {
+  var r = await api('POST', '/api/card-audit/transactions/' + txId, {matched_invoice_id: invoiceId, changed_by: 'user'});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Linked manually to ' + invoiceId, 'success');
+  closeCaModal();
+  loadCardAudit();
+}
+
+async function caUnmatch(txId) {
+  var r = await api('POST', '/api/card-audit/transactions/' + txId, {matched_invoice_id: null, changed_by: 'user'});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Unlinked', 'info');
+  openCaModal(txId);
+  loadCardAudit();
+}
+
+async function caExclude(txId, exclude) {
+  var note = exclude ? prompt('Reason for excluding (personal / reimbursed separately / etc):') : '';
+  if (exclude && note === null) return; // user cancelled
+  var r = await api('POST', '/api/card-audit/transactions/' + txId, {exclude: exclude, exclude_reason: note || '', changed_by: 'user'});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(exclude ? 'Excluded' : 'Re-included', 'info');
+  closeCaModal();
+  loadCardAudit();
+}
+
+async function caDelete(txId) {
+  if (!confirm('Delete this card transaction permanently? (Use Exclude instead if it should stay for audit trail.)')) return;
+  var r = await fetch('/api/card-audit/transactions/' + txId, {method: 'DELETE'}).then(r => r.json());
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Deleted', 'info');
+  closeCaModal();
+  loadCardAudit();
+}
 </script>
+
+<footer class="bt-footer">
+  <div class="bt-footer-left">
+    <span class="bot-name">FIO Accounting Bot</span> · part of the <span class="bot-family">BT4YOU Bots Family</span>
+    <span style="color:var(--muted)">— alongside</span>
+    <span class="bot-sibling">BT4YOU Executive Bot</span>
+    <span class="bot-sibling">BT4YOU Call QA</span>
+  </div>
+  <div class="bt-footer-right">
+    Synchronised with <span style="font-weight:600;color:var(--text)">BT4YOU governance · Ledger · Holding structure</span>
+  </div>
+</footer>
+
 </body>
 </html>

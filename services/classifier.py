@@ -9,7 +9,20 @@ import config
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["classify_document", "add_rule", "check_expense_policy"]
+__all__ = ["classify_document", "classify_line_items", "add_rule", "check_expense_policy"]
+
+
+# category_hint (from parser prompt) → default ledger code mapping
+# Used as a fast hint, LLM may override with more specific code.
+_HINT_TO_CODE = {
+    "marketing": ("MGG0", "Marketing — Google Ads / paid acquisition"),
+    "travel":    ("BT00", "Business trips"),
+    "food":      ("REO0", "Representative expenses (meals)"),
+    "office":    ("RNT0", "Rent & utilities / office supplies"),
+    "subscription": ("SWS1", "Software subscriptions"),
+    "consulting": ("CNO0", "Consulting — Other"),
+    "other":     ("OTH0", "Grants, subsidies, misc"),
+}
 
 
 def classify_document(parsed: Dict[str, Any]) -> Dict[str, Any]:
@@ -19,45 +32,131 @@ def classify_document(parsed: Dict[str, Any]) -> Dict[str, Any]:
     1. Check the rule engine (accounting_rules.json) for vendor/description matches.
     2. If no high-confidence match, fall back to Claude LLM classification.
 
+    Also computes per_line classification when the invoice has > 1 line items
+    with different category_hints (Phase 2.5 / multi-ledger split).
+
     Args:
         parsed: The parsed document data from parser.parse_document().
 
     Returns:
-        Dictionary with 'codes' (top-3 matches) and 'auto_post' flag.
+        Dictionary with 'codes' (top-3 matches), 'auto_post' flag, and
+        'per_line' (list of {line_index, code, label, confidence, profit_center}).
     """
     vendor_raw = parsed.get("vendor", "") or ""
     vendor = vendor_raw.get("name", "") if isinstance(vendor_raw, dict) else str(vendor_raw)
     description = _build_description(parsed)
 
-    # Step 1: Rule engine
+    # Step 1: Rule engine for the overall document
     rule_matches = _match_rules(vendor, description)
     if rule_matches and rule_matches[0]["confidence"] >= config.CONFIDENCE_REVIEW:
         logger.info("Rule engine matched: %s", rule_matches[0])
         auto_post = rule_matches[0]["confidence"] >= config.CONFIDENCE_AUTO_POST
-        return {"codes": rule_matches[:3], "auto_post": auto_post}
-
-    # Step 2: LLM classification
-    llm_result = _classify_with_llm(parsed)
-    if llm_result:
-        auto_post = (
-            len(llm_result) > 0
-            and llm_result[0]["confidence"] >= config.CONFIDENCE_AUTO_POST
-        )
-        return {"codes": llm_result[:3], "auto_post": auto_post}
-
-    # Fallback: unknown
-    return {
-        "codes": [
-            {
-                "code": "OTH0",
-                "label": "Grants, subsidies, misc",
-                "confidence": 30,
-                "reasoning": "No rule or LLM match found",
-                "profit_center": None,
+        result = {"codes": rule_matches[:3], "auto_post": auto_post}
+    else:
+        # Step 2: LLM classification
+        llm_result = _classify_with_llm(parsed)
+        if llm_result:
+            auto_post = (
+                len(llm_result) > 0
+                and llm_result[0]["confidence"] >= config.CONFIDENCE_AUTO_POST
+            )
+            result = {"codes": llm_result[:3], "auto_post": auto_post}
+        else:
+            # Fallback: unknown
+            result = {
+                "codes": [
+                    {
+                        "code": "OTH0",
+                        "label": "Grants, subsidies, misc",
+                        "confidence": 30,
+                        "reasoning": "No rule or LLM match found",
+                        "profit_center": None,
+                    }
+                ],
+                "auto_post": False,
             }
-        ],
-        "auto_post": False,
-    }
+
+    # Phase 2.5 — per-line classification when there are mixed categories
+    result["per_line"] = classify_line_items(parsed, result["codes"][0] if result["codes"] else None)
+
+    # Phase 2.2 — Dmitrijs bridge: surface profit_center to top-level result
+    # (top-level write to DB is done by app.py — here we just ensure codes[0] has it)
+    top = result["codes"][0] if result["codes"] else None
+    if top and not top.get("profit_center"):
+        # Try to harvest PC from per_line if any item has one
+        for line in result["per_line"]:
+            if line.get("profit_center"):
+                top["profit_center"] = line["profit_center"]
+                break
+
+    return result
+
+
+def classify_line_items(
+    parsed: Dict[str, Any],
+    document_default: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Suggest a ledger code per line item.
+
+    If all line items share the same category → returns single-item list inheriting
+    document_default. If items have DIFFERENT category_hints → returns per-line
+    suggestions so the user can split the invoice across multiple ledger codes.
+
+    Args:
+        parsed: Parser output with line_items[].
+        document_default: Top-level classification (from classify_document).
+
+    Returns:
+        List of {line_index, description, amount, code, label, confidence,
+        profit_center, category_hint, source}.
+    """
+    line_items = parsed.get("line_items") or []
+    if not line_items:
+        return []
+
+    suggestions: List[Dict[str, Any]] = []
+    seen_hints: set = set()
+    for i, line in enumerate(line_items):
+        if not isinstance(line, dict):
+            continue
+        hint = (line.get("category_hint") or "").lower().strip()
+        seen_hints.add(hint or "other")
+
+        if hint and hint in _HINT_TO_CODE:
+            code, label = _HINT_TO_CODE[hint]
+            suggestions.append({
+                "line_index": i,
+                "description": line.get("description") or line.get("description_en") or "",
+                "amount": line.get("amount", 0),
+                "code": code,
+                "label": label,
+                "confidence": 70,
+                "profit_center": document_default.get("profit_center") if document_default else None,
+                "category_hint": hint,
+                "source": "category_hint",
+                "reasoning": f"Auto-mapped from category hint '{hint}'",
+            })
+        else:
+            # Fall back to document-level code if available
+            code = document_default.get("code") if document_default else "OTH0"
+            label = document_default.get("label") if document_default else "Misc"
+            suggestions.append({
+                "line_index": i,
+                "description": line.get("description") or line.get("description_en") or "",
+                "amount": line.get("amount", 0),
+                "code": code,
+                "label": label,
+                "confidence": document_default.get("confidence", 50) if document_default else 30,
+                "profit_center": document_default.get("profit_center") if document_default else None,
+                "category_hint": hint or None,
+                "source": "document_default",
+                "reasoning": "Inherited from document classification",
+            })
+
+    # If all line items share single category → return single-element list (no split needed)
+    if len(seen_hints) <= 1:
+        return suggestions[:1] if suggestions else []
+    return suggestions
 
 
 def add_rule(vendor: str, code: str, profit_center: Optional[str] = None) -> None:

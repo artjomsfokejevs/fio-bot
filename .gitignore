@@ -27,6 +27,14 @@ data/fio.db-shm
 data/fio.db-wal
 data/vies_cache/
 data/accounting_actuals.json
+data/audit.jsonl
+data/fx_rates_cache.json
+data/registry_cache/
+
+# Backups (FIO ship-hardening gate, 2026-05-20)
+*.before-*
+*.bak
+*.orig
 
 # Claude Code local config (machine-specific paths)
 .claude/

@@ -23,3 +23,16 @@ data/vies_cache/
 # Logs
 *.log
 nohup.out
+
+# Backups & dev artefacts (ship-hardening gate, FIO retrospective 2026-05-20)
+*.before-*
+*.bak
+*.orig
+*~
+.claude/
+fio-bot-demo/
+docs/
+tests/
+data/audit.jsonl
+data/fx_rates_cache.json
+data/registry_cache/

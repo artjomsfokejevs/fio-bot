@@ -42,6 +42,76 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_FILE_SIZE_MB * 1024 * 1024
 
+# ───────────────────────────────────────────────────────────────
+# DEMO MODE — Basic Auth + audit + kill-switch + owner bypass
+# Inserted via Product Builder hardening, May 2026.
+# ───────────────────────────────────────────────────────────────
+import hmac as _hmac
+from flask import Response as _Resp
+
+_FIO_USER = os.getenv("FIO_USER", "tester")
+_FIO_PASS = os.getenv("FIO_PASS", "")
+_FIO_DISABLED = os.getenv("FIO_DISABLED", "0") == "1"
+_AUDIT_LOG = os.path.join(os.path.dirname(__file__), "data", "audit.jsonl")
+
+def _audit(event: str, **fields):
+    try:
+        rec = {
+            "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "event": event,
+            "ip": request.headers.get("Cf-Connecting-Ip") or request.remote_addr,
+            "ua": (request.headers.get("User-Agent") or "")[:160],
+            "path": request.path,
+            **fields,
+        }
+        os.makedirs(os.path.dirname(_AUDIT_LOG), exist_ok=True)
+        with open(_AUDIT_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+def _check_auth(u, p):
+    if not _FIO_PASS:
+        return False
+    return _hmac.compare_digest(u or "", _FIO_USER) and _hmac.compare_digest(p or "", _FIO_PASS)
+
+def _is_localhost_direct():
+    """True if request hit loopback WITHOUT proxy headers.
+    Cloudflared/Fly-proxy always inject Cf-Connecting-Ip/X-Forwarded-For,
+    so this bypass never applies to internet traffic — only local SSH-tunnel."""
+    remote = request.remote_addr or ""
+    if remote not in ("127.0.0.1", "::1"):
+        return False
+    if request.headers.get("Cf-Connecting-Ip") or request.headers.get("X-Forwarded-For"):
+        return False
+    return True
+
+@app.before_request
+def _demo_gate():
+    if request.path == "/health":
+        return None
+    if _FIO_DISABLED:
+        _audit("blocked_disabled")
+        return _Resp("FIO demo is currently disabled.", 503)
+    if _is_localhost_direct():
+        _audit("local_bypass", method=request.method)
+        return None
+    auth = request.authorization
+    if not auth or not _check_auth(auth.username, auth.password):
+        _audit("auth_fail", user=(auth.username if auth else None))
+        return _Resp(
+            "Authentication required.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="FIO MVP - please sign in"'},
+        )
+    _audit("hit", user=auth.username, method=request.method)
+    return None
+
+@app.get("/health")
+def _health():
+    return jsonify({"ok": True, "service": "fio-mvp", "mode": "demo"})
+# ───────────────────────────────────────────────────────────────
+
 
 def _seed_data_volume() -> None:
     """Copy seed config files into data/ if missing.
@@ -73,6 +143,143 @@ _seed_data_volume()
 db.init_db()
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "csv", "xlsx"}
+
+
+def _apply_governance_suggestions(parsed: Dict[str, Any], classification: Dict[str, Any], uploaded_by: Optional[str] = None) -> Dict[str, Any]:
+    """Phase 3 — enrich classification with BT4YOU-aware suggestions.
+
+    Two signals (highest confidence wins):
+      1. UPLOADER → uploader_name in BT4YOU people-map → their stream's PC
+      2. VENDOR   → vendor name contains brand keyword → that brand's PC
+
+    Also surfaces governance category hits as warnings (e.g. "this looks
+    like Legal & Compliance OPEX — owner Ilona Istomina"). Non-destructive:
+    only fills classification.codes[0].profit_center if it was empty.
+    """
+    try:
+        from services import bt4you_sync as bts
+    except Exception:
+        return classification
+
+    suggestions: List[Dict[str, Any]] = []
+    # 1. From uploader
+    if uploaded_by and uploaded_by not in ("User", ""):
+        s = bts.suggest_pc_for_uploader(uploaded_by)
+        if s:
+            suggestions.append(s)
+    # 2. From vendor
+    vendor = parsed.get("vendor")
+    if isinstance(vendor, dict):
+        v_name = vendor.get("name") or ""
+        v_addr = vendor.get("address") or ""
+        s = bts.suggest_pc_for_vendor(v_name, v_addr)
+        if s:
+            suggestions.append(s)
+
+    # Pick best suggestion (highest confidence)
+    best = max(suggestions, key=lambda s: s.get("confidence", 0)) if suggestions else None
+    if best:
+        # Annotate classification — non-destructive
+        classification.setdefault("governance", {})["auto_suggested_pc"] = best
+        # If top code has no profit_center, backfill with the suggestion
+        codes = classification.get("codes") or []
+        if codes and not codes[0].get("profit_center"):
+            codes[0]["profit_center"] = best["profit_center"]
+            codes[0].setdefault("reasoning", "")
+            codes[0]["reasoning"] += f" · Auto-PC from {best['source']}: {best['reason']}"
+        # All other suggestions stay in classification.governance.alternatives
+        if len(suggestions) > 1:
+            classification["governance"]["alternatives"] = [s for s in suggestions if s is not best]
+
+    # 3. Governance OPEX category match → soft warning
+    try:
+        gov = bts.build_governance_index()
+        cats = gov.get("categories", [])
+        vendor_blob = " ".join([
+            (vendor.get("name") or "") if isinstance(vendor, dict) else "",
+            (vendor.get("address") or "") if isinstance(vendor, dict) else "",
+        ]).lower()
+        items_blob = " ".join((li.get("description") or "") for li in (parsed.get("line_items") or [])).lower()
+        full_blob = vendor_blob + " " + items_blob
+        for c in cats:
+            name_tokens = [t for t in (c.get("name") or "").lower().split() if len(t) >= 5]
+            for tok in name_tokens:
+                if tok in full_blob:
+                    classification.setdefault("governance", {}).setdefault("opex_matches", []).append({
+                        "category": c.get("name"),
+                        "owner": c.get("owner"),
+                        "annual_eur": c.get("annual_eur"),
+                        "matched_token": tok,
+                    })
+                    break
+    except Exception:
+        pass
+
+    return classification
+
+
+def _build_doc_update(parsed: Dict[str, Any], classification: Dict[str, Any]) -> Dict[str, Any]:
+    """Centralised mapper: parsed+classification → DB update fields.
+
+    Used by upload(), parse(), and re-classify endpoints. Ensures FX/payment/
+    money-breakdown fields are written consistently to DB columns (so analytics
+    + Accounting queries work without re-parsing classification_json).
+
+    Phase 2 fixes folded in here:
+      • 2.1 FX  — amount = EUR equivalent, amount_orig = original, plus fx_*
+      • 2.2 PC bridge — top-level profit_center never NULL when codes[0] or per_line has one
+      • 2.4 payment_method — surfaced from parsed.payment_method
+      • 2.5 money breakdown — subtotal/discount/credits surfaced as DB columns
+    """
+    money = (parsed.get("money") or {})
+    vendor_data = parsed.get("vendor") or ""
+    vendor = (vendor_data.get("name") or "") if isinstance(vendor_data, dict) else str(vendor_data or "")
+    top_code = (classification.get("codes") or [{}])[0]
+
+    # Phase 2.2 — harvest PC from per_line if top is empty
+    pc = top_code.get("profit_center")
+    if not pc:
+        for line in classification.get("per_line", []):
+            if line.get("profit_center"):
+                pc = line["profit_center"]
+                break
+
+    # Phase 2.1 — prefer EUR-normalised amount for downstream analytics
+    amount_eur = money.get("amount_eur")
+    amount_orig = money.get("amount_orig")
+    if amount_eur is None and money.get("total_amount") is not None:
+        amount_eur = money["total_amount"]
+    if amount_orig is None and money.get("total_amount") is not None:
+        amount_orig = money["total_amount"]
+
+    fields: Dict[str, Any] = {
+        "status": "classified",
+        "parsed_json": json.dumps(parsed, default=str),
+        "classification_json": json.dumps(classification, default=str),
+        "confidence": top_code.get("confidence", 0),
+        "ledger_code": top_code.get("code"),
+        "profit_center": pc,
+        "vendor": vendor,
+        # Phase 2.1 — EUR normalised primary, original secondary
+        "amount": amount_eur,
+        "currency": "EUR",
+        "amount_orig": amount_orig,
+        "currency_orig": money.get("currency_orig") or money.get("currency") or "EUR",
+        "fx_rate": money.get("fx_rate"),
+        "fx_date": money.get("fx_date"),
+        "fx_source": money.get("fx_source"),
+        # Phase 2.4 — payment method
+        "payment_method": parsed.get("payment_method"),
+        # Phase 2.5 — money breakdown
+        "subtotal": money.get("subtotal"),
+        "discount": money.get("discount"),
+        "credits": money.get("credits"),
+    }
+
+    # Period from document date (fallback now)
+    doc_date = (parsed.get("dates") or {}).get("document_date")
+    fields["period"] = (doc_date[:7] if doc_date else datetime.utcnow().strftime("%Y-%m"))
+    return fields
 
 
 def _allowed_file(filename: str) -> bool:
@@ -150,6 +357,7 @@ def upload():
                 logger.info("Auto-parse multi-receipt: %d documents in %s", len(parsed), doc_id)
                 for i, single_doc in enumerate(parsed):
                     classification = classify_document(single_doc)
+                    classification = _apply_governance_suggestions(single_doc, classification, uploaded_by)
                     top_code = classification["codes"][0] if classification["codes"] else {}
                     vendor_data = single_doc.get("vendor") or ""
                     vendor = vendor_data.get("name") or "" if isinstance(vendor_data, dict) else str(vendor_data or "")
@@ -236,35 +444,10 @@ def upload():
                     parsed = parsed[0]
 
                 classification = classify_document(parsed)
-
-                top_code = classification["codes"][0] if classification["codes"] else {}
-                vendor_data = parsed.get("vendor") or ""
-                vendor = vendor_data.get("name") or "" if isinstance(vendor_data, dict) else str(vendor_data or "")
-                amount = None
-                if parsed.get("money") and parsed["money"].get("total_amount"):
-                    amount = parsed["money"]["total_amount"]
-
-                update_fields: Dict[str, Any] = {
-                    "status": "classified",
-                    "parsed_json": json.dumps(parsed),
-                    "classification_json": json.dumps(classification),
-                    "confidence": top_code.get("confidence", 0),
-                    "ledger_code": top_code.get("code"),
-                    "profit_center": top_code.get("profit_center"),
-                    "amount": amount,
-                    "currency": parsed.get("money", {}).get("currency", "EUR"),
-                    "vendor": vendor,
-                }
-
-                # Derive period from parsed dates
-                doc_date = parsed.get("dates", {}).get("document_date")
-                if doc_date:
-                    update_fields["period"] = doc_date[:7]
-                else:
-                    update_fields["period"] = datetime.utcnow().strftime("%Y-%m")
-
+                classification = _apply_governance_suggestions(parsed, classification, uploaded_by)
+                update_fields = _build_doc_update(parsed, classification)
                 db.update_document(doc_id, update_fields)
-                db.insert_audit_log(doc_id, "parsed", {"vendor": vendor})
+                db.insert_audit_log(doc_id, "parsed", {"vendor": update_fields.get("vendor", "")})
                 db.insert_audit_log(
                     doc_id,
                     "classified",
@@ -392,7 +575,37 @@ def _subtract_from_actuals(doc: Dict[str, Any]) -> None:
 def sync_to_bt4you():
     """Push FIO actuals to BT4YOU Executive Bot.
 
-    Sends the accounting_actuals.json to BT4YOU's cashflow fact endpoint.
+    ── Contract (Phase 5b — Dmitri's ask) ──
+    Endpoint:    POST  /api/sync-bt4you
+    Purpose:     forward FIO's approved+posted documents to the BT4YOU
+                 Executive Bot, so cashflow aggregation has accrual-basis
+                 numbers ready for the bi-monthly bookkeeping cycle.
+    Request:     (empty body) — server-side picks up data/accounting_actuals.json
+    Target:      POST http://127.0.0.1:8765/api/holding/cashflow/fact/generic
+    Payload:     {
+                   "source":    "FIO",
+                   "type":      "fio_actuals_sync",
+                   "data":      <accounting_actuals.json content>,
+                   "synced_at": "<ISO timestamp>"
+                 }
+    Response:    200 {"status": "synced", "streams": [...]}
+                 404 {"error": "No actuals data"}        — no posted docs yet
+                 503 {"status": "sync_failed", "hint":…} — BT4YOU offline
+
+    The payload's `data` mirrors the on-disk shape:
+      {
+        "streams": {"AA": {...P&L...}, "BK": {...}, …},
+        "lines":   [{document_id, period, ledger_code, profit_center,
+                     amount_eur, allocation_split, ...}, …]
+      }
+    BT4YOU reads `streams` for the dashboard cards and `lines` to drill
+    into individual invoices. Allocations are pre-exploded server-side
+    (one CSV-line per profit_center) so BT4YOU never has to know about
+    the split logic.
+
+    Failure mode: if BT4YOU is unreachable (port 8765 closed) we mark the
+    sync as failed without losing data — actuals stay on disk and the
+    next POST will retry the same payload.
     """
     import urllib.request
 
@@ -438,6 +651,115 @@ def sync_to_bt4you():
         }), 503
 
 
+@app.route("/api/documents/<doc_id>/vendor-verify", methods=["POST"])
+def vendor_verify(doc_id: str):
+    """Phase 5c — accountant marks vendor as manually verified.
+
+    For non-EU vendors where VIES doesn't apply and we don't have an
+    OpenCorporates lookup result, the bookkeeper can attest "yes, I verified
+    this company exists" (via their own channel — phone, registry visit,
+    invoice receipt confirmation, etc).
+
+    Body:
+      {"verified_by": "Rita Petukhova", "note": "Called Yerevan office, confirmed"}
+
+    Toggle off: pass {"verified_by": null}
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    body = request.get_json(silent=True) or {}
+    who = (body.get("verified_by") or "").strip() or None
+    note = (body.get("note") or "").strip() or None
+
+    if who:
+        db.update_document(doc_id, {
+            "vendor_verified_by":   who,
+            "vendor_verified_at":   datetime.utcnow().isoformat(),
+            "vendor_verified_note": note,
+        })
+        db.insert_audit_log(doc_id, "vendor_verified", {"verified_by": who, "note": note})
+        return jsonify({"status": "verified", "verified_by": who})
+    else:
+        db.update_document(doc_id, {
+            "vendor_verified_by":   None,
+            "vendor_verified_at":   None,
+            "vendor_verified_note": None,
+        })
+        db.insert_audit_log(doc_id, "vendor_unverified", {"unverified_by": body.get("acting_user", "user")})
+        return jsonify({"status": "unverified"})
+
+
+# ════════════════════════════════════════════════════════════════
+# Phase 6 — Card Audit endpoints live in routes/card_audit.py
+# (registered as `card_audit_bp` at the bottom of this file).
+# ════════════════════════════════════════════════════════════════
+
+
+@app.route("/api/sync-bt4you/status", methods=["GET"])
+def sync_bt4you_status():
+    """Liveness probe for the sync pipeline (Phase 5b).
+
+    Reports:
+      - bt4you_reachable: ping http://127.0.0.1:8765/health
+      - last_sync:        most recent successful sync timestamp (from audit_log)
+      - actuals_present:  whether data/accounting_actuals.json exists
+      - actuals_streams:  list of PC codes ready to ship
+      - actuals_lines:    line count
+      - pending_docs:     approved/posted docs awaiting next sync
+    """
+    import urllib.request
+
+    out: Dict[str, Any] = {
+        "bt4you_reachable": False,
+        "bt4you_url": "http://127.0.0.1:8765/health",
+        "last_sync": None,
+        "actuals_present": False,
+        "actuals_streams": [],
+        "actuals_lines": 0,
+        "pending_docs": 0,
+    }
+
+    # BT4YOU reachability
+    try:
+        req = urllib.request.Request(out["bt4you_url"], method="GET")
+        with urllib.request.urlopen(req, timeout=4) as r:
+            out["bt4you_reachable"] = r.status == 200
+    except Exception:
+        out["bt4you_reachable"] = False
+
+    # Last successful sync from audit_log
+    try:
+        conn = db.get_connection()
+        row = conn.execute(
+            """SELECT performed_at, details FROM audit_log
+               WHERE action = 'bt4you_sync' ORDER BY id DESC LIMIT 1"""
+        ).fetchone()
+        if row:
+            out["last_sync"] = row["performed_at"]
+        # pending docs (approved/posted without sync trace)
+        cur = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE status IN ('approved', 'posted')"
+        )
+        out["pending_docs"] = cur.fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
+
+    # Actuals file
+    try:
+        if os.path.isfile(config.ACTUALS_FILE):
+            out["actuals_present"] = True
+            with open(config.ACTUALS_FILE, "r") as f:
+                a = json.load(f)
+            out["actuals_streams"] = list((a.get("streams") or {}).keys())
+            out["actuals_lines"] = len(a.get("lines", []) or [])
+    except Exception:
+        pass
+
+    return jsonify(out)
+
+
 @app.route("/api/documents/<doc_id>", methods=["GET"])
 def get_document(doc_id: str):
     """Get a single document by ID."""
@@ -472,6 +794,7 @@ def parse_doc(doc_id: str):
             created_docs = []
             for i, single_doc in enumerate(parsed):
                 classification = classify_document(single_doc)
+                classification = _apply_governance_suggestions(single_doc, classification, doc.get("uploaded_by"))
                 top_code = classification["codes"][0] if classification["codes"] else {}
                 vendor_data = single_doc.get("vendor", "")
                 vendor = vendor_data.get("name", str(vendor_data)) if isinstance(vendor_data, dict) else str(vendor_data)
@@ -539,6 +862,7 @@ def parse_doc(doc_id: str):
             parsed = parsed[0]
 
         classification = classify_document(parsed)
+        classification = _apply_governance_suggestions(parsed, classification, doc.get("uploaded_by"))
         top_code = classification["codes"][0] if classification["codes"] else {}
         vendor_data = parsed.get("vendor", "")
         vendor = vendor_data.get("name", str(vendor_data)) if isinstance(vendor_data, dict) else str(vendor_data)
@@ -592,12 +916,38 @@ def save_doc(doc_id: str):
                "amount", "period", "vendor", "currency")
     update_fields: Dict[str, Any] = {k: body[k] for k in allowed if k in body}
 
+    # Phase 2.5 — per-line ledger split (when user reassigns lines to different codes)
+    per_line_overrides = body.get("per_line") or []
+    if per_line_overrides:
+        try:
+            existing = json.loads(doc.get("classification_json") or "{}")
+        except Exception:
+            existing = {}
+        existing_per = existing.get("per_line", [])
+        # Merge user overrides into existing per_line records
+        idx_to_existing = {p.get("line_index"): p for p in existing_per if isinstance(p, dict)}
+        for ovr in per_line_overrides:
+            li = ovr.get("line_index")
+            if li is None:
+                continue
+            base = idx_to_existing.get(li, {"line_index": li})
+            if ovr.get("code"):
+                base["code"] = ovr["code"]
+                base["source"] = "user_override"
+                base["confidence"] = 100
+            if ovr.get("profit_center"):
+                base["profit_center"] = ovr["profit_center"]
+            idx_to_existing[li] = base
+        existing["per_line"] = list(idx_to_existing.values())
+        update_fields["classification_json"] = json.dumps(existing, default=str)
+
     if not update_fields:
         return jsonify({"status": "no_changes"})
 
     db.update_document(doc_id, update_fields)
     db.insert_audit_log(doc_id, "saved", {
         "fields_changed": list(update_fields.keys()),
+        "per_line_overrides": len(per_line_overrides),
         "saved_by": body.get("saved_by", "user"),
     })
     return jsonify({"status": "saved", "document": db.get_document(doc_id)})
@@ -647,6 +997,348 @@ def approve_doc(doc_id: str):
             return jsonify({"error": str(exc)}), 500
 
     return jsonify({"status": "approved"})
+
+
+# ════════════════════════════════════════════════════════════════
+# Phase 3.5 — Multi-stream cost allocation (Katia case)
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/documents/<doc_id>/allocations", methods=["POST"])
+def save_allocations(doc_id: str):
+    """Set multi-stream allocation for a document.
+
+    Body:
+      {
+        "allocations": [
+          {"profit_center": "AA", "percentage": 60, "ledger_code": "BT00", "note": "ops side"},
+          {"profit_center": "BK", "percentage": 40, "ledger_code": "BT00", "note": "Skibookers benefit"}
+        ],
+        "saved_by": "Rita"
+      }
+
+    Validation:
+      - Sum of percentages must be 100 (± 0.5 tolerance for rounding)
+      - OR all entries may use 'amount' instead; sum-of-amount must equal document total (±0.01)
+      - Each entry must have profit_center (ledger_code + note optional)
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    allocations = body.get("allocations") or []
+    if not isinstance(allocations, list):
+        return jsonify({"error": "allocations must be list"}), 400
+
+    if not allocations:
+        # Clear allocations
+        db.update_document(doc_id, {"allocations_json": None})
+        db.insert_audit_log(doc_id, "allocations_cleared", {"by": body.get("saved_by", "user")})
+        return jsonify({"status": "cleared"})
+
+    # Validate
+    total_doc = float(doc.get("amount") or 0)
+    pct_total = 0.0
+    amt_total = 0.0
+    has_pct = has_amt = False
+    cleaned: List[Dict[str, Any]] = []
+    for a in allocations:
+        if not isinstance(a, dict):
+            return jsonify({"error": "each allocation must be a dict"}), 400
+        pc = (a.get("profit_center") or "").strip()
+        if not pc:
+            return jsonify({"error": "each allocation needs profit_center"}), 400
+        pct = a.get("percentage")
+        amt = a.get("amount")
+        if pct is not None:
+            has_pct = True
+            try:
+                pct = float(pct)
+            except (TypeError, ValueError):
+                return jsonify({"error": "percentage must be numeric"}), 400
+            pct_total += pct
+        if amt is not None:
+            has_amt = True
+            try:
+                amt = float(amt)
+            except (TypeError, ValueError):
+                return jsonify({"error": "amount must be numeric"}), 400
+            amt_total += amt
+        cleaned.append({
+            "profit_center": pc,
+            "percentage": round(pct, 4) if pct is not None else None,
+            "amount":     round(amt, 2) if amt is not None else None,
+            "ledger_code": a.get("ledger_code") or doc.get("ledger_code"),
+            "note":        (a.get("note") or "").strip(),
+        })
+
+    if has_pct and abs(pct_total - 100.0) > 0.5:
+        return jsonify({"error": f"percentages sum to {pct_total:.2f}, expected 100"}), 400
+    if has_amt and total_doc and abs(amt_total - total_doc) > 0.01:
+        return jsonify({"error": f"amounts sum to {amt_total:.2f}, expected {total_doc:.2f}"}), 400
+
+    # If percentages given, compute amount per row (denormalised for P&L queries)
+    if has_pct and total_doc:
+        for r in cleaned:
+            if r["percentage"] is not None and r["amount"] is None:
+                r["amount"] = round(total_doc * r["percentage"] / 100.0, 2)
+
+    db.update_document(doc_id, {"allocations_json": json.dumps(cleaned, ensure_ascii=False)})
+    db.insert_audit_log(doc_id, "allocations_set", {
+        "splits":    len(cleaned),
+        "summary":   [{"pc": c["profit_center"], "pct": c["percentage"], "amt": c["amount"]} for c in cleaned],
+        "saved_by":  body.get("saved_by", "user"),
+    })
+    return jsonify({"status": "saved", "allocations": cleaned})
+
+
+# ════════════════════════════════════════════════════════════════
+# Phase 4.1 — Reassign (post-approval edit with full audit trail)
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/documents/<doc_id>/reassign", methods=["POST"])
+def reassign_doc(doc_id: str):
+    """Re-classify an already-approved document (bookkeeper correction).
+
+    Unlike /save which only works on pending docs, /reassign works on any
+    status. Writes a full before/after diff to the audit log for compliance.
+
+    Body: { ledger_code, profit_center, department, cost_reason, period,
+            reason: "<why we reassigned>", changed_by }
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    allowed = ("ledger_code", "profit_center", "department", "cost_reason", "period")
+    new_values = {k: body[k] for k in allowed if k in body}
+    if not new_values:
+        return jsonify({"error": "no fields to reassign"}), 400
+
+    before = {k: doc.get(k) for k in allowed}
+    diff = {k: (before.get(k), new_values[k]) for k in new_values if before.get(k) != new_values[k]}
+    if not diff:
+        return jsonify({"status": "no_changes"})
+
+    db.update_document(doc_id, new_values)
+    db.insert_audit_log(doc_id, "reassigned", {
+        "before":      before,
+        "after":       new_values,
+        "diff":        diff,
+        "reason":      body.get("reason", ""),
+        "changed_by":  body.get("changed_by", "user"),
+        "previous_status": doc.get("status"),
+    })
+    return jsonify({"status": "reassigned", "diff": diff, "document": db.get_document(doc_id)})
+
+
+# ════════════════════════════════════════════════════════════════
+# Phase 4.2 + 4.3 — CSV / Google Sheets export per business stream
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/accounting/export", methods=["GET"])
+def accounting_export():
+    """Export documents filtered by profit_center / period as CSV.
+
+    Query params:
+      profit_center=AA           (optional — empty = all PCs)
+      period=2026-05             (optional — empty = all periods)
+      include_allocations=1      (optional — split-allocated docs into per-PC rows)
+      format=csv                 (default; xlsx via openpyxl planned)
+    """
+    import csv
+    import io as _io
+
+    pc_filter = (request.args.get("profit_center") or "").strip().upper() or None
+    period_filter = (request.args.get("period") or "").strip() or None
+    include_allocs = request.args.get("include_allocations", "1") == "1"
+
+    conn = db.get_connection()
+    try:
+        sql = "SELECT * FROM documents WHERE status IN ('approved', 'posted', 'classified')"
+        params: List[Any] = []
+        if pc_filter:
+            sql += " AND (profit_center = ? OR allocations_json LIKE ?)"
+            params.append(pc_filter)
+            params.append(f'%"profit_center": "{pc_filter}"%')
+        if period_filter:
+            sql += " AND period = ?"
+            params.append(period_filter)
+        sql += " ORDER BY period DESC, approved_at DESC, uploaded_at DESC"
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+    # Flatten: docs with allocations split into multiple CSV rows
+    csv_rows: List[Dict[str, Any]] = []
+    for d in rows:
+        allocs = []
+        if include_allocs and d.get("allocations_json"):
+            try:
+                allocs = json.loads(d["allocations_json"])
+            except Exception:
+                allocs = []
+        # Build base row from doc
+        base = {
+            "document_id":       d.get("id"),
+            "original_filename": d.get("original_name"),
+            "uploaded_at":       d.get("uploaded_at"),
+            "uploaded_by":       d.get("uploaded_by"),
+            "vendor":            d.get("vendor"),
+            "period":            d.get("period"),
+            "status":            d.get("status"),
+            "approved_by":       d.get("approved_by"),
+            "approved_at":       d.get("approved_at"),
+            "currency_orig":     d.get("currency_orig") or d.get("currency"),
+            "amount_orig":       d.get("amount_orig"),
+            "fx_rate":           d.get("fx_rate"),
+            "fx_date":           d.get("fx_date"),
+            "fx_source":         d.get("fx_source"),
+            "payment_method":    d.get("payment_method"),
+            "subtotal_eur":      d.get("subtotal"),
+            "discount_eur":      d.get("discount"),
+            "credits_eur":       d.get("credits"),
+            "amount_eur":        d.get("amount"),
+        }
+        if allocs:
+            for a in allocs:
+                row = dict(base)
+                row["allocation_split"]  = "yes"
+                row["ledger_code"]       = a.get("ledger_code") or d.get("ledger_code")
+                row["profit_center"]     = a.get("profit_center")
+                row["allocation_pct"]    = a.get("percentage")
+                row["allocation_amount"] = a.get("amount")
+                row["allocation_note"]   = a.get("note", "")
+                # If PC filter was set, only emit matching split rows
+                if pc_filter and row["profit_center"] != pc_filter:
+                    continue
+                csv_rows.append(row)
+        else:
+            base["allocation_split"]  = "no"
+            base["ledger_code"]       = d.get("ledger_code")
+            base["profit_center"]     = d.get("profit_center")
+            base["allocation_pct"]    = None
+            base["allocation_amount"] = d.get("amount")
+            base["allocation_note"]   = ""
+            csv_rows.append(base)
+
+    fmt = (request.args.get("format") or "csv").lower()
+    fieldnames = [
+        "document_id", "original_filename", "uploaded_at", "uploaded_by",
+        "vendor", "period", "status", "approved_by", "approved_at",
+        "ledger_code", "profit_center",
+        "currency_orig", "amount_orig", "fx_rate", "fx_date", "fx_source",
+        "subtotal_eur", "discount_eur", "credits_eur", "amount_eur",
+        "allocation_split", "allocation_pct", "allocation_amount", "allocation_note",
+        "payment_method",
+    ]
+    if fmt == "json":
+        return jsonify({"rows": csv_rows, "count": len(csv_rows)})
+
+    buf = _io.StringIO()
+
+    # ── Professional CSV header — corporate metadata so files are self-describing
+    # when bookkeeper hands them to an auditor / fund manager / accountant.
+    # Uses CSV "comment" convention (lines start with #) plus a blank-row separator;
+    # Excel / Sheets ignore #-prefixed lines as data rows.
+    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    pc_label = pc_filter or "ALL"
+    period_label = period_filter or "ALL"
+    # Look up the human-readable PC name from BT4YOU streams if available
+    pc_human = pc_label
+    if pc_filter:
+        try:
+            from services.bt4you_sync import load_business_streams
+            for s in load_business_streams():
+                if (s.get("profit_center") or "").upper() == pc_filter:
+                    pc_human = f'{pc_filter} — {s.get("name", "")}'.strip(" —")
+                    break
+        except Exception:
+            pass
+
+    meta_lines = [
+        f"# Amitours Holding — FIO Accounting Export",
+        f"# Business stream / Profit Center: {pc_human}",
+        f"# Period filter: {period_label}",
+        f"# Allocations exploded: {'yes (split docs appear as multiple rows)' if include_allocs else 'no'}",
+        f"# Generated at: {generated_at}",
+        f"# Total rows in export: {len(csv_rows)}",
+        f"# Document statuses included: approved · posted · classified",
+        f"# Source system: FIO Accounting Bot (BT4YOU Business Bots family)",
+        "",
+    ]
+    for line in meta_lines:
+        buf.write(line + "\n")
+
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for r in csv_rows:
+        writer.writerow(r)
+    csv_text = buf.getvalue()
+
+    fname_parts = ["fio_accounting"]
+    if pc_filter:    fname_parts.append(pc_filter)
+    if period_filter:fname_parts.append(period_filter)
+    fname = "_".join(fname_parts) + ".csv"
+
+    from flask import Response as _Resp
+    return _Resp(
+        csv_text, mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.route("/api/accounting/export-sheets", methods=["POST"])
+def accounting_export_sheets():
+    """Forward export to user-provided Google Apps Script webhook.
+
+    User configures GOOGLE_SHEETS_WEBHOOK env (a Web-App-deployed Apps Script
+    that accepts JSON POST and appends rows). Body:
+      { profit_center, period, sheet_name }
+    """
+    import urllib.request as _ureq
+    import urllib.error as _uerr
+
+    webhook = os.getenv("GOOGLE_SHEETS_WEBHOOK", "").strip()
+    if not webhook:
+        return jsonify({
+            "error": "GOOGLE_SHEETS_WEBHOOK not configured",
+            "hint": "Add a Google Apps Script web-app URL to .env to enable this.",
+            "fallback": "Use /api/accounting/export?format=csv and upload to Sheets manually.",
+        }), 400
+
+    body = request.get_json(silent=True) or {}
+    # Re-use the export endpoint internally to build rows
+    with app.test_request_context(
+        "/api/accounting/export",
+        query_string={
+            "profit_center": body.get("profit_center", ""),
+            "period":        body.get("period", ""),
+            "format":        "json",
+        },
+    ):
+        rows_payload = accounting_export()
+        try:
+            data = rows_payload.get_json()
+        except Exception:
+            return jsonify({"error": "internal export failed"}), 500
+
+    payload = json.dumps({
+        "sheet_name":   body.get("sheet_name") or f"fio_export_{datetime.utcnow().strftime('%Y%m%d_%H%M')}",
+        "rows":         data.get("rows", []),
+        "profit_center": body.get("profit_center", ""),
+        "period":       body.get("period", ""),
+    }).encode("utf-8")
+    try:
+        req = _ureq.Request(webhook, data=payload, headers={"Content-Type": "application/json"})
+        with _ureq.urlopen(req, timeout=15) as r:
+            return jsonify({"ok": True, "rows_sent": len(data.get("rows", [])), "response_code": r.status})
+    except _uerr.URLError as exc:
+        return jsonify({"error": f"webhook unreachable: {exc}"}), 502
+    except Exception as exc:
+        logger.exception("sheets webhook failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/documents/<doc_id>/reject", methods=["POST"])
@@ -1253,6 +1945,14 @@ def audit_log():
 def stream_stats():
     """Return document counts grouped by profit center and status."""
     return jsonify(db.get_document_stats_by_stream())
+
+
+# ---------------------------------------------------------------------------
+# Blueprint registration (Phase 7.1 refactor — see docs/architecture.md)
+# ---------------------------------------------------------------------------
+from routes.card_audit import card_audit_bp  # noqa: E402
+
+app.register_blueprint(card_audit_bp)
 
 
 # ---------------------------------------------------------------------------
