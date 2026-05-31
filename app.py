@@ -953,6 +953,47 @@ def save_doc(doc_id: str):
     return jsonify({"status": "saved", "document": db.get_document(doc_id)})
 
 
+@app.route("/api/documents/<doc_id>/vat-verify", methods=["POST"])
+def manually_verify_vat(doc_id: str):
+    """Mark a document's VAT as manually verified after the user checked it
+    against an external registry (Lursoft / Äriregister / FR INSEE / etc.).
+
+    This persists the override into parsed_json.vendor so that VIES failure
+    no longer blocks the user. Audit log records who verified and when.
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    verified_by = body.get("verified_by") or "user"
+    note = body.get("note", "")
+
+    # Merge override into parsed_json.vendor so /api/documents/<id>
+    # surfaces it on next fetch.
+    try:
+        parsed = json.loads(doc.get("parsed_json") or "{}")
+    except Exception:
+        parsed = {}
+    vendor = parsed.get("vendor") or {}
+    if not isinstance(vendor, dict):
+        vendor = {"name": str(vendor)}
+    vendor["vat_manually_verified"] = True
+    vendor["vat_verified_by"] = verified_by
+    vendor["vat_verified_at"] = datetime.utcnow().isoformat()
+    if note:
+        vendor["vat_verification_note"] = note
+    parsed["vendor"] = vendor
+
+    db.update_document(doc_id, {"parsed_json": json.dumps(parsed)})
+    db.insert_audit_log(doc_id, "vat_manually_verified", {
+        "verified_by": verified_by,
+        "vat_number": doc.get("vat_number"),
+        "note": note,
+    })
+    return jsonify({"status": "verified", "document": db.get_document(doc_id)})
+
+
 @app.route("/api/documents/<doc_id>/approve", methods=["POST"])
 def approve_doc(doc_id: str):
     """Approve a document with optional edits to classification."""
@@ -1463,16 +1504,34 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
         doc["vies_verified"] = vendor_data.get("vies_verified")
         doc["vies_official_name"] = vendor_data.get("vies_official_name")
         doc["vendor_address"] = vendor_data.get("address") or vendor_data.get("vies_address")
+        # Manual VAT verification override (set by POST /api/documents/<id>/vat-verify)
+        doc["vat_manually_verified"] = bool(vendor_data.get("vat_manually_verified"))
+        doc["vat_verified_by"] = vendor_data.get("vat_verified_by")
     else:
         doc["vat_number"] = None
         doc["vies_verified"] = None
         doc["vies_official_name"] = None
         doc["vendor_address"] = None
+        doc["vat_manually_verified"] = False
+        doc["vat_verified_by"] = None
 
     # Surface parser failure category and warnings for UI banner
     doc["parser_failure_category"] = parsed.get("parser_failure_category")
     doc["needs_manual_input"] = bool(parsed.get("needs_manual_input"))
     doc["parser_warnings"] = parsed.get("warnings") or []
+
+    # Surface split allocation rows so the modal + Upload table can render multi-PC tiles
+    allocations_raw = doc.get("allocations_json")
+    parsed_allocations: List[Dict[str, Any]] = []
+    if allocations_raw:
+        try:
+            decoded = json.loads(allocations_raw) if isinstance(allocations_raw, str) else allocations_raw
+            if isinstance(decoded, list):
+                parsed_allocations = [r for r in decoded if isinstance(r, dict)]
+        except (json.JSONDecodeError, TypeError):
+            parsed_allocations = []
+    doc["allocations"] = parsed_allocations
+    doc["is_split"] = len(parsed_allocations) > 1
 
     # Extract payment method
     doc["payment_method"] = parsed.get("payment_method") or None

@@ -1167,6 +1167,11 @@ tbody tr:hover { background: #f8fafc; }
   vertical-align: middle;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fio-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(245,158,11,0.45); }
+  70%  { box-shadow: 0 0 0 8px rgba(245,158,11,0);    }
+  100% { box-shadow: 0 0 0 0   rgba(245,158,11,0);    }
+}
 
 @media (max-width: 768px) {
   .stats-bar { grid-template-columns: repeat(2, 1fr); }
@@ -1194,6 +1199,7 @@ tbody tr:hover { background: #f8fafc; }
       <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
       <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Card Audit</button>
       <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
+      <button class="tab-btn" onclick="switchTab('legend')" data-tab="legend">FIO Legend</button>
     </nav>
   </div>
   <div class="header-right">
@@ -1648,6 +1654,130 @@ tbody tr:hover { background: #f8fafc; }
       <div class="table-header"><h2>Department load</h2></div>
       <div id="analytics-departments" style="padding:16px;">
         <div class="empty-state" style="font-size:13px;">No department-tagged spend yet. Tag documents in Approve to populate this.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL 5: FIO LEGEND ==================== -->
+  <div class="panel" id="panel-legend">
+    <div style="max-width:980px;margin:0 auto;padding:8px 12px;">
+      <h2 style="font-size:22px;font-weight:700;margin:0 0 6px 0;">\u{1F4D6} FIO Legend</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 24px 0;">Rules, how the tool works, and what each control does. Bookmark this page if you're new.</p>
+
+      <div style="display:grid;grid-template-columns:1fr;gap:18px;">
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 8px 0;font-size:16px;">What is FIO?</h3>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text);">FIO (Financial Intake &amp; Orchestrator) is the central inbox for every invoice, receipt, and bank statement at Amitours Holding. The AI parses each document, validates the VAT number in the official EU registry, classifies it into our chart of accounts, and posts it to the correct Profit Center's P&amp;L.</p>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">Tabs at a glance</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:6px 8px;">Tab</th><th style="padding:6px 8px;">What it's for</th><th style="padding:6px 8px;">Who uses it</th></tr></thead>
+            <tbody>
+              <tr><td style="padding:6px 8px;"><strong>Upload</strong></td><td style="padding:6px 8px;">Drop the file. AI extracts vendor, VAT, amount, line items.</td><td style="padding:6px 8px;">Anyone in the holding</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Approve</strong></td><td style="padding:6px 8px;">Review parsed data, pick PC / Department / Reason, post to P&amp;L. Split across PCs if needed.</td><td style="padding:6px 8px;">Bookkeeper + business-stream owners</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Accounting</strong></td><td style="padding:6px 8px;">Live P&amp;L per stream. Drill into any code.</td><td style="padding:6px 8px;">Bookkeeper, CFO, stream owners</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Card Audit</strong></td><td style="padding:6px 8px;">Reconcile card-terminal receipts against bank statements.</td><td style="padding:6px 8px;">Bookkeeper</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Analytics</strong></td><td style="padding:6px 8px;">Spend trends, projections, optimization opportunities, suspicious findings.</td><td style="padding:6px 8px;">CEO, CFO, stream owners</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>FIO Legend</strong></td><td style="padding:6px 8px;">This page.</td><td style="padding:6px 8px;">You, right now</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">Document lifecycle</h3>
+          <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li><strong>pending</strong> &mdash; just uploaded, parser is running.</li>
+            <li><strong>parsed</strong> &mdash; AI extracted text/structure, awaits classification.</li>
+            <li><strong>classified</strong> &mdash; ledger code proposed, ready for human review.</li>
+            <li><strong>approved</strong> &mdash; human picked PC + code, but not yet posted to ledger.</li>
+            <li><strong>posted</strong> &mdash; landed in the P&amp;L. Visible in Accounting and Analytics.</li>
+            <li><strong>rejected</strong> &mdash; declined with a reason, won't appear in P&amp;L.</li>
+          </ol>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">\u{1F4BE} Save vs \u{2705} Approve &amp; Post</h3>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li><strong>Save changes</strong> &mdash; persist your edits (Profit Center, Department, Cost Reason, Ledger code, Approver name) without finalizing. The document stays in <em>classified</em> status. Useful when you need to pause halfway, or save partial info for someone else to finish.</li>
+            <li><strong>Approve &amp; Post</strong> &mdash; commits to ledger. The document is locked, P&amp;L is updated, and Analytics picks it up.</li>
+            <li>Once posted, you can <strong>only delete</strong> &mdash; deletion rolls back the posting from actuals.</li>
+          </ul>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">Profit centers (business streams)</h3>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:12px;">
+            <div><strong>AG</strong> &mdash; Amitours Group (holding)</div>
+            <div><strong>AA</strong> &mdash; Alps2Alps</div>
+            <div><strong>BK</strong> &mdash; Skibookers</div>
+            <div><strong>SR</strong> &mdash; Skipasser</div>
+            <div><strong>MT / AH</strong> &mdash; Mountly</div>
+            <div><strong>CF / PK</strong> &mdash; MyPeak Finance</div>
+            <div><strong>AL</strong> &mdash; ALVEDA</div>
+            <div><strong>RR</strong> &mdash; Rock2Rock</div>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">Ledger code conventions</h3>
+          <p style="margin:0 0 8px 0;font-size:13px;line-height:1.6;color:var(--muted);">35 codes across 5 statement groups. Pick what most closely matches the cost driver.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:5px 6px;">Statement</th><th style="padding:5px 6px;">Example codes</th></tr></thead>
+            <tbody>
+              <tr><td style="padding:5px 6px;"><strong>REVENUE</strong></td><td style="padding:5px 6px;">BB00 (B2B) · BC00 (B2C) · INT0 (intra-holding) · OTH0 (grants)</td></tr>
+              <tr><td style="padding:5px 6px;"><strong>COGS</strong></td><td style="padding:5px 6px;">CFS0 (charter fleet) · CFB0 (B2B fleet) · TH00 (TransferHub) · SAL0 (ops salaries) · REF0 (refunds) · RB01 (affiliate retros)</td></tr>
+              <tr><td style="padding:5px 6px;"><strong>MARKETING</strong></td><td style="padding:5px 6px;">MGG0 (Google) · MSO0 (Social) · MSM0 (SMM) · MCN0 (Content) · MSE0 (SEO) · MAF0 (Affiliates) · MEV0 (Events) · MPR0 (PR)</td></tr>
+              <tr><td style="padding:5px 6px;"><strong>ADMIN</strong></td><td style="padding:5px 6px;">RNT0 (rent) · REL0 (HR recruiting) · HRTB (team building) · HRLD (L&amp;D) · HRSB (HR AI/subs) · LGL0 (legal) · CNS0 (consulting) · TRV0 (travel) · BNK0 (bank fees) · INS0 (insurance) · OFF0 (office)</td></tr>
+              <tr><td style="padding:5px 6px;"><strong>OPERATIONAL</strong></td><td style="padding:5px 6px;">DEV0 (engineering) · TST0 (QA) · SFT0 (SaaS subs) · HST0 (cloud hosting) · RND0 (R&amp;D) · TEL0 (telecom)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">Split allocation</h3>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li>One invoice can be split across multiple business units when the paying entity (e.g., Alps2Alps OÜ) fronts a cost that benefits another stream (e.g., Skibookers).</li>
+            <li>Open the modal &rarr; section <em>Split this invoice across multiple business units</em> &rarr; add rows.</li>
+            <li>Sum of <strong>Share %</strong> must equal exactly 100. <strong>Amount</strong> column auto-fills as you pick percent (and vice versa).</li>
+            <li>Each row also picks its own ledger code &mdash; e.g., MT&nbsp;30% under CNS0, SR&nbsp;70% under MSO0.</li>
+            <li>After Approve &amp; Post, each PC's P&amp;L is updated with its slice, and the Upload table shows stacked PC tiles.</li>
+          </ul>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">VAT &amp; VIES verification</h3>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li>The parser extracts VAT numbers from 27 EU countries (LV, EE, LT, DE, FR, etc.) plus Latvian Reg. Nr.</li>
+            <li>If a VAT is found, FIO automatically calls the official EU <strong>VIES</strong> registry to verify the number and pull the official legal name + address.</li>
+            <li>\u{2713} green badge &mdash; verified, official details auto-filled.</li>
+            <li>\u{00D7} red badge &mdash; VAT format looks right but VIES says it's invalid. Possible reasons: vendor recently changed VAT, VIES is temporarily down for that country, or the OCR mis-read a digit. Use the remediation buttons in the document modal.</li>
+            <li>No badge &mdash; vendor has no EU VAT (e.g., US company like Fireflies). This is correct, just review manually.</li>
+          </ul>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">\u{1F6A8} Suspicious findings (Analytics)</h3>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li>\u{1F534} <strong>high</strong>: amount outlier (&gt;3 sigma above mean for the same code).</li>
+            <li>\u{1F7E0} <strong>medium</strong>: vendor charged under 3+ codes (likely mis-tagged) &middot; posted document without VAT &middot; fuzzy duplicate vendor names.</li>
+            <li>\u{26AA} <strong>low</strong>: foreign (non-Baltic) vendor &middot; round-number amounts &ge; €500.</li>
+          </ul>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 8px 0;font-size:16px;">Tips &amp; gotchas</h3>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li>The app sleeps after ~10 min idle on the free Fly tier. First request after sleep takes 1–3 seconds to wake.</li>
+            <li>If the UI looks stale (no Save button, missing dropdown) hit <strong>Cmd&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</strong> to bust the browser cache.</li>
+            <li>Upload size limit: 20 MB per file. Larger PDFs &mdash; compress or split first.</li>
+            <li>The AI parser depends on a paid API. When credits run out, a red banner explains it; regex &amp; VIES still try to extract VAT/address, but vendor name &amp; amounts must be filled manually.</li>
+            <li>Pre-prod tool, no auth yet. Don't share the URL outside the company.</li>
+          </ul>
+        </div>
+
       </div>
     </div>
   </div>
@@ -2873,9 +3003,30 @@ function renderDetails(doc) {
       (doc.vies_official_name ? '<div style="font-size:12px;margin-top:2px;">Official name: ' + esc(doc.vies_official_name) + '</div>' : '') +
     '</div>';
   } else if (doc.vies_verified === false) {
-    html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #dc2626;border-radius:6px;background:#dc262615;">' +
-      '<div style="font-size:12px;color:#dc2626;font-weight:700;">× VAT not valid in VIES registry</div>' +
-    '</div>';
+    // VAT remediation panel -- offer concrete actions to verify or override
+    var vatRaw = (doc.vat_number || '').toUpperCase().replace(/[\s-]/g, '');
+    var country = vatRaw.substring(0, 2);
+    var number = vatRaw.substring(2);
+    var viesUrl = vatRaw ? ('https://ec.europa.eu/taxation_customs/vies/#/vat-validation?memberStateCode=' + encodeURIComponent(country) + '&number=' + encodeURIComponent(number)) : 'https://ec.europa.eu/taxation_customs/vies/';
+    var lvLookupUrl = (country === 'LV' && number) ? ('https://www.lursoft.lv/?l=lv&q=' + encodeURIComponent(number)) : '';
+    var eeLookupUrl = (country === 'EE' && number) ? ('https://ariregister.rik.ee/eng/find_company?name=&company_number=' + encodeURIComponent(number)) : '';
+    var manuallyVerified = doc.vat_manually_verified;
+    if (manuallyVerified) {
+      html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #f59e0b;border-radius:6px;background:#f59e0b15;">' +
+        '<div style="font-size:12px;color:#b45309;font-weight:700;">⚠️ VAT not in VIES, but marked manually verified by ' + esc(doc.vat_verified_by || 'user') + '</div>' +
+      '</div>';
+    } else {
+      html += '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dc2626;border-left:4px solid #dc2626;border-radius:6px;background:#dc262615;">' +
+        '<div style="font-size:13px;color:#dc2626;font-weight:700;margin-bottom:6px;">× VAT not valid in VIES registry</div>' +
+        '<div style="font-size:12px;color:var(--text);margin-bottom:8px;">VIES might be temporarily down for ' + esc(country || 'this country') + ', the OCR may have misread a digit, or the vendor recently changed VAT. Investigate before approving.</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+          '<a href="' + viesUrl + '" target="_blank" rel="noopener" style="padding:5px 10px;background:#fff;border:1px solid #dc2626;border-radius:4px;font-size:12px;color:#dc2626;font-weight:600;text-decoration:none;">\u{1F50D} Re-check in VIES</a>' +
+          (lvLookupUrl ? '<a href="' + lvLookupUrl + '" target="_blank" rel="noopener" style="padding:5px 10px;background:#fff;border:1px solid #dc2626;border-radius:4px;font-size:12px;color:#dc2626;font-weight:600;text-decoration:none;">\u{1F1F1}\u{1F1FB} Lursoft (LV)</a>' : '') +
+          (eeLookupUrl ? '<a href="' + eeLookupUrl + '" target="_blank" rel="noopener" style="padding:5px 10px;background:#fff;border:1px solid #dc2626;border-radius:4px;font-size:12px;color:#dc2626;font-weight:600;text-decoration:none;">\u{1F1EA}\u{1F1EA} Äriregister (EE)</a>' : '') +
+          '<button onclick="markVatVerified(\'' + doc.id + '\')" style="padding:5px 10px;background:#dc2626;border:1px solid #dc2626;border-radius:4px;font-size:12px;color:#fff;font-weight:600;cursor:pointer;">✓ Mark as manually verified</button>' +
+        '</div>' +
+      '</div>';
+    }
   }
 
   // Enhanced header card
@@ -3249,27 +3400,56 @@ function renderModalActions(doc) {
   var warningHtml = prePC ? '' : '<div style="color:var(--yellow);font-size:12px;margin-top:4px;">Select profit center to approve</div>';
   var selectStyle = prePC ? '' : ' style="border:2px solid var(--yellow);background:rgba(217,119,6,0.08);"';
 
+  // Build the ledger code override dropdown -- lets users change code without
+  // having to find it in the Proposed Classification panel above.
+  var ledgerOverrideOpts = '<option value="">— Ledger code (manual override) —</option>';
+  if (ledgerSchema && ledgerSchema.codes) {
+    var currentCode = doc.ledger_code || selectedCode || '';
+    // Group codes by statement for easier scanning
+    var byStatement = {};
+    ledgerSchema.codes.forEach(function(c) {
+      (byStatement[c.statement] = byStatement[c.statement] || []).push(c);
+    });
+    ['REVENUE','COGS','MARKETING','ADMIN','OPERATIONAL'].forEach(function(stmt) {
+      if (!byStatement[stmt]) return;
+      ledgerOverrideOpts += '<optgroup label="' + esc(stmt) + '">';
+      byStatement[stmt].forEach(function(c) {
+        var sel = c.code === currentCode ? ' selected' : '';
+        ledgerOverrideOpts += '<option value="' + c.code + '"' + sel + '>' + esc(c.code + ' — ' + c.label) + '</option>';
+      });
+      ledgerOverrideOpts += '</optgroup>';
+    });
+  }
+
   el.innerHTML =
-    '<div>' +
-      '<select id="modal-approve-pc" class="fio-select" onchange="onModalPCChange()"' + selectStyle + '>' + pcOptions + '</select>' +
+    '<div id="modal-pc-wrap">' +
+      '<label style="display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Profit Center (override)</label>' +
+      '<select id="modal-approve-pc" class="fio-select" onchange="onModalPCChange();markUnsaved()"' + selectStyle + '>' + pcOptions + '</select>' +
       warningHtml +
     '</div>' +
+    '<div id="modal-ledger-wrap">' +
+      '<label style="display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Ledger code (override)</label>' +
+      '<select id="modal-approve-ledger" class="fio-select" onchange="onModalLedgerChange();markUnsaved()">' + ledgerOverrideOpts + '</select>' +
+    '</div>' +
     '<div id="modal-dept-wrap">' +
-      '<select id="modal-approve-dept" class="fio-select">' +
+      '<label style="display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Department</label>' +
+      '<select id="modal-approve-dept" class="fio-select" onchange="markUnsaved()">' +
         '<option value="">— Department (optional) —</option>' +
       '</select>' +
     '</div>' +
     '<div id="modal-reason-wrap">' +
-      '<select id="modal-approve-reason" class="fio-select">' +
+      '<label style="display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Cost reason</label>' +
+      '<select id="modal-approve-reason" class="fio-select" onchange="markUnsaved()">' +
         '<option value="">— Cost reason (optional) —</option>' +
       '</select>' +
     '</div>' +
     '<div id="modal-approver-wrap">' +
-      '<select id="modal-approver-name" class="fio-select">' +
+      '<label style="display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Approver</label>' +
+      '<select id="modal-approver-name" class="fio-select" onchange="markUnsaved()">' +
         '<option value="">— Approver (Asana name) —</option>' +
       '</select>' +
     '</div>' +
-    '<button class="btn" id="modal-save-btn" onclick="saveFromModal()" style="background:var(--accent);color:#fff;border-color:var(--accent);"><span style="margin-right:4px;">💾</span>Save changes</button>' +
+    '<button class="btn" id="modal-save-btn" onclick="saveFromModal()" style="background:var(--accent);color:#fff;border-color:var(--accent);"><span style="margin-right:4px;">💾</span><span id="modal-save-label">Save changes</span></button>' +
     '<button class="btn btn-success" id="modal-approve-btn" onclick="approveFromModal()"' + disabledAttr + btnStyle + '>Approve &amp; Post</button>' +
     '<button class="btn btn-danger" onclick="rejectFromModal()">Reject</button>' +
     '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto;cursor:pointer;"><input type="checkbox" id="add-rule-check"> Always classify this vendor as selected code</label>';
@@ -3278,6 +3458,42 @@ function renderModalActions(doc) {
   populateDepartmentOptions(prePC, doc.department);
   populateReasonOptions(doc.ledger_code || (selectedCode || ''), doc.cost_reason);
   populateApproverOptions(prePC, doc.approved_by);
+  // Clear any unsaved flag from previous doc
+  window._fioUnsaved = false;
+  updateSaveButtonAppearance();
+}
+
+function onModalLedgerChange() {
+  var sel = document.getElementById('modal-approve-ledger');
+  if (!sel) return;
+  // Keep selectCode in sync (it updates the Proposed Classification highlight + reasons)
+  if (sel.value) {
+    if (typeof selectCode === 'function') selectCode(sel.value);
+  }
+}
+
+function markUnsaved() {
+  window._fioUnsaved = true;
+  updateSaveButtonAppearance();
+}
+
+function updateSaveButtonAppearance() {
+  var btn = document.getElementById('modal-save-btn');
+  var label = document.getElementById('modal-save-label');
+  if (!btn) return;
+  if (window._fioUnsaved) {
+    btn.style.background = '#f59e0b';
+    btn.style.borderColor = '#f59e0b';
+    btn.style.boxShadow = '0 0 0 4px rgba(245,158,11,0.18)';
+    btn.style.animation = 'fio-pulse 1.4s ease-in-out infinite';
+    if (label) label.textContent = 'Save changes (unsaved)';
+  } else {
+    btn.style.background = 'var(--accent)';
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.boxShadow = 'none';
+    btn.style.animation = 'none';
+    if (label) label.textContent = 'Save changes';
+  }
 }
 
 function populateApproverOptions(pc, preselect) {
@@ -3732,6 +3948,28 @@ function onModalPCChange() {
   populateApproverOptions(pcSel.value, prevApprover);
 }
 
+function markVatVerified(docId) {
+  var name = (document.getElementById('modal-approver-name') || {}).value
+          || (document.getElementById('upload-user') || {}).value
+          || localStorage.getItem('fio_uploaded_by')
+          || 'user';
+  var note = prompt('Where did you verify this VAT? (e.g. "Lursoft confirmed", "called vendor")');
+  if (note === null) return;
+  api('POST', '/api/documents/' + docId + '/vat-verify', {
+    verified_by: name,
+    note: note || ''
+  }).then(function(d) {
+    if (d.status === 'verified') {
+      showToast('Marked as manually verified by ' + name, 'success');
+      reloadModal();
+    } else if (d.error) {
+      showToast('Failed: ' + d.error, 'error');
+    }
+  }).catch(function(err) {
+    showToast('Failed: ' + (err.message || err), 'error');
+  });
+}
+
 function saveFromModal() {
   if (!currentDoc) return;
   var body = {};
@@ -3760,6 +3998,8 @@ function saveFromModal() {
 
   api('POST', '/api/documents/' + currentDoc.id + '/save', body).then(function(d) {
     if (d.status === 'saved') {
+      window._fioUnsaved = false;
+      if (typeof updateSaveButtonAppearance === 'function') updateSaveButtonAppearance();
       showToast('Saved ✓  Document still pending approval', 'success');
       // Reload modal to reflect persisted values + reload upload/approve table
       reloadModal();
