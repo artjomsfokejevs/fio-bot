@@ -505,8 +505,8 @@ def delete_doc(doc_id: str):
     if not doc:
         return jsonify({"error": "Not found"}), 404
 
-    # If document was posted, subtract from actuals
-    if doc.get("status") == "posted" and doc.get("ledger_code") and doc.get("amount"):
+    # If document was posted, subtract from actuals (handles split allocations too)
+    if doc.get("status") == "posted":
         _subtract_from_actuals(doc)
 
     # Delete from DB
@@ -534,37 +534,72 @@ def delete_doc(doc_id: str):
 
 
 def _subtract_from_actuals(doc: Dict[str, Any]) -> None:
-    """Remove a deleted document's amount from accounting_actuals.json."""
+    """Remove a deleted document's amount from accounting_actuals.json.
+
+    Handles both single-PC postings and split-allocation postings.
+    """
     try:
         with open(config.ACTUALS_FILE, "r") as f:
             actuals = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return
 
-    pc = doc.get("profit_center", "AG")
     mapping = {"AG": "amitours_group", "AA": "alps2alps", "RR": "rock2rock",
                "BK": "skibookers", "SR": "skipasser", "MT": "mountly",
                "AH": "mountly", "PK": "mypeak_finance", "CF": "mypeak_finance",
                "AL": "alveda"}
-    stream = mapping.get(pc, pc.lower())
-    period = doc.get("period", "")
-    code = doc.get("ledger_code", "")
-    amount = doc.get("amount", 0)
-
+    period = doc.get("period", "") or ""
     streams = actuals.get("streams", {})
-    if stream in streams and period in streams[stream] and code in streams[stream][period]:
-        streams[stream][period][code] = round(streams[stream][period][code] - amount, 2)
-        if streams[stream][period][code] <= 0:
-            del streams[stream][period][code]
-        if not streams[stream][period]:
-            del streams[stream][period]
-        if not streams[stream]:
-            del streams[stream]
+
+    # Build the list of (stream, code, amount) entries that were posted
+    entries: List[Dict[str, Any]] = []
+    allocations_raw = doc.get("allocations_json")
+    parsed_allocs: List[Dict[str, Any]] = []
+    if allocations_raw:
+        try:
+            decoded = json.loads(allocations_raw) if isinstance(allocations_raw, str) else allocations_raw
+            if isinstance(decoded, list):
+                parsed_allocs = [r for r in decoded if isinstance(r, dict)]
+        except (json.JSONDecodeError, TypeError):
+            parsed_allocs = []
+    total_amount = float(doc.get("amount") or 0)
+    if parsed_allocs:
+        for row in parsed_allocs:
+            row_pc = row.get("profit_center") or "AG"
+            row_code = row.get("ledger_code") or doc.get("ledger_code", "")
+            row_amount = row.get("amount")
+            if row_amount is None and row.get("percentage") is not None and total_amount:
+                row_amount = round(total_amount * float(row["percentage"]) / 100.0, 2)
+            entries.append({
+                "stream": mapping.get(row_pc, row_pc.lower()),
+                "code": row_code,
+                "amount": float(row_amount or 0),
+            })
+    else:
+        # Legacy single-PC posting
+        pc = doc.get("profit_center", "AG")
+        entries.append({
+            "stream": mapping.get(pc, pc.lower()),
+            "code": doc.get("ledger_code", ""),
+            "amount": float(doc.get("amount") or 0),
+        })
+
+    for entry in entries:
+        stream, code, amount = entry["stream"], entry["code"], entry["amount"]
+        if not stream or not code or amount <= 0:
+            continue
+        if stream in streams and period in streams[stream] and code in streams[stream][period]:
+            streams[stream][period][code] = round(streams[stream][period][code] - amount, 2)
+            if streams[stream][period][code] <= 0:
+                del streams[stream][period][code]
+            if not streams[stream][period]:
+                del streams[stream][period]
+            if not streams[stream]:
+                del streams[stream]
+        logger.info("Subtracted EUR %.2f (%s/%s/%s) from actuals after delete", amount, stream, period, code)
 
     with open(config.ACTUALS_FILE, "w") as f:
         json.dump(actuals, f, indent=2, ensure_ascii=False)
-
-    logger.info("Subtracted EUR %.2f (%s/%s/%s) from actuals after delete", amount, stream, period, code)
 
 
 # ---------------------------------------------------------------------------

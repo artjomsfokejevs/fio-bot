@@ -2209,6 +2209,28 @@ function renderProfitCenterBadge(pc, dept) {
   return html;
 }
 
+// Multi-PC badge stack -- one tile per allocation row, showing share%.
+// Falls back to the single PC badge when the document isn't split.
+function renderPCBadgesForDoc(doc) {
+  var allocs = (doc.allocations || []).filter(function(a) { return a && a.profit_center; });
+  if (allocs.length <= 1) {
+    return renderProfitCenterBadge(doc.profit_center, doc.department);
+  }
+  return '<div style="display:flex;flex-direction:column;gap:3px;">' +
+    allocs.map(function(a) {
+      var pc = a.profit_center;
+      var label = PC_LABELS[pc] || pc;
+      var color = PC_COLORS[pc] || '#64748b';
+      var pct = a.percentage;
+      var pctText = (pct !== undefined && pct !== null) ? ' · ' + Number(pct).toFixed(0) + '%' : '';
+      return '<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:10px;background:' + color + '15;color:' + color + ';font-size:11px;font-weight:600;border:1px solid ' + color + '33;width:fit-content;">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:' + color + ';"></span>' +
+        esc(pc) + ' · ' + esc(label) + esc(pctText) +
+      '</span>';
+    }).join('') +
+  '</div>';
+}
+
 function renderUploadTable(docs) {
   var tbody = document.getElementById('upload-table-body');
   if (!docs.length) {
@@ -2250,7 +2272,7 @@ function renderUploadTable(docs) {
       '<td>' + esc(doc.vendor || '-') + viesBadge + '</td>' +
       '<td style="font-family:monospace;font-size:12px;">' + esc(vatNr) + '</td>' +
       '<td>' + amount + '</td>' +
-      '<td>' + renderProfitCenterBadge(doc.profit_center, doc.department) + '</td>' +
+      '<td>' + renderPCBadgesForDoc(doc) + '</td>' +
       '<td>' + formatUploadedBy(uploadedBy) + '</td>' +
       '<td style="font-size:12px;color:var(--muted);">' + uploaded + '</td>' +
       '<td><button onclick="deleteDoc(\'' + doc.id + '\')" title="Delete" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;">&#128465;</button></td>' +
