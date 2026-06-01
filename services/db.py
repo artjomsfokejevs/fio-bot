@@ -360,6 +360,10 @@ def get_documents_by_profit_center(
 ) -> List[Dict[str, Any]]:
     """Return documents filtered by profit center.
 
+    Includes docs where the requested PC appears either as the main
+    `profit_center` field (single-stream posting) OR inside the
+    `allocations_json` JSON list (split-allocated docs).
+
     Args:
         profit_center: Profit center code (e.g. 'AA', 'BK').
         status: If provided, also filter by this status.
@@ -368,16 +372,22 @@ def get_documents_by_profit_center(
         List of document dictionaries.
     """
     conn = get_connection()
+    pc_like = '%"profit_center": "' + profit_center + '"%'
     try:
         if status:
             rows = conn.execute(
-                "SELECT * FROM documents WHERE profit_center = ? AND status = ? ORDER BY uploaded_at DESC",
-                (profit_center, status),
+                "SELECT * FROM documents "
+                "WHERE (profit_center = ? OR allocations_json LIKE ?) "
+                "AND status = ? "
+                "ORDER BY uploaded_at DESC",
+                (profit_center, pc_like, status),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM documents WHERE profit_center = ? ORDER BY uploaded_at DESC",
-                (profit_center,),
+                "SELECT * FROM documents "
+                "WHERE profit_center = ? OR allocations_json LIKE ? "
+                "ORDER BY uploaded_at DESC",
+                (profit_center, pc_like),
             ).fetchall()
         return [_row_to_dict(r) for r in rows]
     finally:

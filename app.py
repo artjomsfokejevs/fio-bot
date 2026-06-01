@@ -486,7 +486,13 @@ def upload():
 
 @app.route("/api/documents", methods=["GET"])
 def list_documents():
-    """List all documents, optionally filtered by status, profit_center, and/or ledger_code."""
+    """List documents, optionally filtered by status / profit_center / ledger_code.
+
+    When PC + ledger_code are both passed, also matches split-allocated docs
+    where any allocation row carries that PC+code combination. In that case
+    we attach `display_pc_amount` / `display_pc_share` so the drill-down can
+    render the slice instead of the document's total.
+    """
     status = request.args.get("status")
     profit_center = request.args.get("profit_center")
     ledger_code = request.args.get("ledger_code")
@@ -496,9 +502,58 @@ def list_documents():
     else:
         docs = db.get_documents(status=status)
 
-    # Filter by ledger_code in Python (supports drill-down without DB changes)
+    # Helper: pull the allocation row for (pc, code) from a doc, if any
+    def _alloc_match(doc, pc, code):
+        raw = doc.get("allocations_json")
+        if not raw:
+            return None
+        try:
+            rows = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(rows, list):
+            return None
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            if r.get("profit_center") != pc:
+                continue
+            if code and r.get("ledger_code") and r.get("ledger_code") != code:
+                continue
+            return r
+        return None
+
+    # Apply (ledger_code) filter -- a doc matches if EITHER its main
+    # ledger_code is the requested one OR a split-allocation row carries
+    # that PC + code combo.
     if ledger_code:
-        docs = [d for d in docs if d.get("ledger_code") == ledger_code]
+        filtered = []
+        for d in docs:
+            if d.get("ledger_code") == ledger_code:
+                filtered.append(d)
+                continue
+            if profit_center:
+                row = _alloc_match(d, profit_center, ledger_code)
+                if row:
+                    # Surface the slice so the UI shows the proper amount/share
+                    d_copy = dict(d)
+                    d_copy["display_pc_amount"] = row.get("amount")
+                    d_copy["display_pc_share"] = row.get("percentage")
+                    d_copy["display_pc_note"] = row.get("note") or ""
+                    d_copy["display_pc_origin"] = "split_allocation"
+                    filtered.append(d_copy)
+        docs = filtered
+    elif profit_center:
+        # No ledger filter but PC requested -- enrich split docs with their share
+        for d in docs:
+            if d.get("profit_center") == profit_center:
+                continue
+            row = _alloc_match(d, profit_center, None)
+            if row:
+                d["display_pc_amount"] = row.get("amount")
+                d["display_pc_share"] = row.get("percentage")
+                d["display_pc_note"] = row.get("note") or ""
+                d["display_pc_origin"] = "split_allocation"
 
     for doc in docs:
         _enrich_document(doc)
@@ -1276,7 +1331,11 @@ def payment_queue():
 
     stage = (request.args.get("stage") or "awaiting").strip()
     if stage == "awaiting":
-        target_statuses = ("posted",)
+        # 'awaiting' = needs the Holding-CEO tick. Include both 'approved'
+        # (post_to_actuals didn't run yet) and 'posted' (posted to P&L,
+        # ready to be paid). This fixes the bug where docs sitting at
+        # 'approved' never reached the Confirm tab.
+        target_statuses = ("approved", "posted")
     elif stage == "approved":
         target_statuses = ("confirmed_to_pay",)
     elif stage == "paid":
@@ -1292,11 +1351,23 @@ def payment_queue():
             "SELECT * FROM documents WHERE status IN (%s) ORDER BY uploaded_at DESC" % placeholders,
             target_statuses
         ).fetchall()]
+        # Diagnostic count of every status (helps when 'awaiting' looks empty)
+        status_counts = {
+            row["status"]: row["n"]
+            for row in conn.execute(
+                "SELECT status, COUNT(*) AS n FROM documents GROUP BY status"
+            ).fetchall()
+        }
     finally:
         conn.close()
     for doc in rows:
         _enrich_document(doc)
-    return jsonify({"stage": stage, "count": len(rows), "documents": rows})
+    return jsonify({
+        "stage": stage,
+        "count": len(rows),
+        "documents": rows,
+        "status_counts_all": status_counts,
+    })
 
 
 @app.route("/api/documents/<doc_id>/confirm-payment", methods=["POST"])
@@ -2324,18 +2395,124 @@ def me():
 
 @app.route("/api/users", methods=["GET"])
 def users_with_roles():
-    """List BT4YOU people + their assigned roles. Admin only."""
+    """List ONLY users that the bookkeeper has explicitly imported.
+
+    Per spec: 'нельзя ставить группы людей из BT4YOU.executive.bot' —
+    each person is added one-by-one via Upload Accounts from Asana.
+    """
     err = _require_role(roles_svc.ROLE_ADMIN)
     if err:
         return err
-    people_list = load_people()
-    merged = roles_svc.list_users_with_roles(people_list)
+    roles_data = roles_svc.load_roles()
+    # Also enrich with title from BT4YOU snapshot when we can find a match.
+    bt_by_name = {p["name"]: p for p in load_people()}
+    out = []
+    for name, entry in sorted(roles_data.items()):
+        bt = bt_by_name.get(name) or {}
+        out.append({
+            "name": name,
+            "title": entry.get("title") or bt.get("title") or "",
+            "asana_gid": bt.get("asana_gid", ""),
+            "profit_center": entry.get("profit_center") or bt.get("profit_center"),
+            "role": entry.get("role") or roles_svc.ROLE_VIEWER,
+            "updated_at": entry.get("updated_at"),
+            "updated_by": entry.get("updated_by"),
+            "in_bt4you": bool(bt),
+        })
     return jsonify({
-        "users": merged,
-        "count": len(merged),
+        "users": out,
+        "count": len(out),
         "all_roles": roles_svc.ALL_ROLES,
         "tab_access": roles_svc.TAB_ACCESS,
     })
+
+
+@app.route("/api/users/import-candidates", methods=["GET"])
+def import_candidates():
+    """Return BT4YOU people NOT yet imported into user_roles.json.
+
+    Used by the 'Upload Accounts from Asana' picker so the bookkeeper can
+    add one person at a time. Admin only.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN)
+    if err:
+        return err
+    roles_data = roles_svc.load_roles()
+    existing_names = set(roles_data.keys())
+    candidates = [p for p in load_people() if p.get("name") not in existing_names]
+    return jsonify({
+        "candidates": candidates,
+        "count": len(candidates),
+        "already_imported": sorted(existing_names),
+    })
+
+
+@app.route("/api/users/import", methods=["POST"])
+def import_user_from_asana():
+    """Import a single BT4YOU person into user_roles.json with default 'viewer'.
+
+    Body: {"name": "Anastasia Lizanets", "role": "viewer" (optional)}
+    Admin only. One person per call -- enforces 'each person responsible
+    for their own actions' (per spec).
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    role = (body.get("role") or roles_svc.ROLE_VIEWER).strip()
+    if role not in roles_svc.ALL_ROLES:
+        return jsonify({"error": "Invalid role",
+                        "allowed": roles_svc.ALL_ROLES}), 400
+    # Look up BT4YOU details for title + profit_center seed
+    bt = next((p for p in load_people() if p.get("name") == name), None)
+    title = (bt or {}).get("title", "")
+    pc = (bt or {}).get("profit_center")
+    try:
+        entry = roles_svc.set_role(
+            user_name=name,
+            role=role,
+            profit_center=pc,
+            title=title,
+            changed_by=_current_user_name() or "admin",
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    db.insert_audit_log("system", "user_imported", {
+        "name": name, "role": role, "from": "BT4YOU/Asana",
+        "by": _current_user_name() or "admin",
+    })
+    return jsonify({"status": "imported", "name": name, "entry": entry})
+
+
+@app.route("/api/users/<path:user_name>", methods=["DELETE"])
+def delete_user(user_name: str):
+    """Remove a user from user_roles.json. Admin only.
+
+    Does NOT touch their historical documents -- their name stays in
+    audit logs and on past approvals as a paper trail.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN)
+    if err:
+        return err
+    roles_data = roles_svc.load_roles()
+    if user_name not in roles_data:
+        return jsonify({"error": "Not found in roles list",
+                        "name": user_name}), 404
+    # Don't let an admin nuke themselves (cuts off their own access)
+    me = _current_user_name()
+    if user_name == me:
+        return jsonify({"error": "You can't delete your own role assignment"}), 400
+    removed = roles_data.pop(user_name)
+    roles_svc.save_roles(roles_data)
+    db.insert_audit_log("system", "user_role_removed", {
+        "name": user_name,
+        "previous_role": removed.get("role"),
+        "by": me or "admin",
+    })
+    return jsonify({"status": "removed", "name": user_name, "previous": removed})
 
 
 @app.route("/api/users/<path:user_name>/role", methods=["POST"])
