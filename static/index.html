@@ -1199,13 +1199,47 @@ tbody tr:hover { background: #f8fafc; }
       <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
       <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Card Audit</button>
       <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
+      <button class="tab-btn" onclick="switchTab('confirm-payment')" data-tab="confirm-payment">Confirm for Payment</button>
+      <button class="tab-btn" onclick="switchTab('admin')" data-tab="admin">Admin</button>
       <button class="tab-btn" onclick="switchTab('legend')" data-tab="legend">FIO Legend</button>
     </nav>
   </div>
   <div class="header-right">
     <span class="bt-status-pill" title="FIO liveness · last sync"><span class="bt-status-dot"></span> ON</span>
+    <button id="signed-in-chip"
+            onclick="openSignInModal()"
+            title="Click to switch user"
+            style="padding:6px 12px;border-radius:14px;border:1px solid var(--border);background:#fff;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-left:8px;">
+      <span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;"></span>
+      <span id="signed-in-name">Sign in…</span>
+      <span id="signed-in-role" style="color:var(--muted);font-size:11px;"></span>
+    </button>
   </div>
 </header>
+
+<!-- ==================== SIGN-IN MODAL ==================== -->
+<div id="signin-overlay" class="modal-overlay" style="display:none;">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>\u{1F464} Who's logged in?</h3>
+      <button class="modal-close" onclick="closeSignInModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:20px;">
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">
+        Pick your name to enable role-specific tabs. Your selection is stored on this browser only —
+        switch by clicking your name in the top-right at any time.
+      </p>
+      <select id="signin-picker" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:6px;">
+        <option value="">— Loading roster... —</option>
+      </select>
+      <div id="signin-role-hint" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
+      <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closeSignInModal()">Cancel</button>
+        <button class="btn btn-success" onclick="confirmSignIn()">Sign in</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="container">
 
@@ -1656,6 +1690,103 @@ tbody tr:hover { background: #f8fafc; }
         <div class="empty-state" style="font-size:13px;">No department-tagged spend yet. Tag documents in Approve to populate this.</div>
       </div>
     </div>
+
+    <!-- Operational cashflow (driven by Confirm-for-Payment workflow) -->
+    <div class="table-wrapper" style="margin-top:20px;">
+      <div class="table-header">
+        <h2>\u{1F4B0} Operational cashflow</h2>
+        <span style="font-size:12px;color:var(--muted);">Driven by the Confirm-for-Payment workflow. <em>posted → confirmed → paid</em>.</span>
+      </div>
+      <div id="analytics-cashflow" style="padding:16px;">
+        <div class="empty-state" style="font-size:13px;">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL 6: CONFIRM FOR PAYMENT ==================== -->
+  <div class="panel" id="panel-confirm-payment">
+    <div style="max-width:1280px;margin:0 auto;padding:4px 8px;">
+      <h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">\u{1F4B0} Confirm for Payment</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">
+        Posted invoices flow here. <strong>Holding CEO</strong> ticks "approve to pay this week" — bookkeeper then makes the payment and records the date.
+        Once <em>Paid</em> is set, the entry shifts into operational cashflow in Analytics.
+      </p>
+
+      <!-- Sub-tabs for the 3 stages -->
+      <div id="cp-stage-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+
+      <div class="table-wrapper">
+        <table style="font-size:12px;">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Business Stream</th>
+              <th>Approved by</th>
+              <th>Ledger</th>
+              <th>Payee (Vendor)</th>
+              <th>Purpose / Reference</th>
+              <th>Amount</th>
+              <th>Paying entity</th>
+              <th>Bank</th>
+              <th>Holding CEO ✓<br><span style="font-weight:400;color:var(--muted);font-size:10px;">date · time · who</span></th>
+              <th>Payment executed<br><span style="font-weight:400;color:var(--muted);font-size:10px;">date · time · who</span></th>
+              <th>Δ time</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="cp-rows"><tr><td colspan="13" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL 7: ADMIN ==================== -->
+  <div class="panel" id="panel-admin">
+    <div style="max-width:1100px;margin:0 auto;padding:4px 8px;">
+      <h2 style="font-size:20px;font-weight:600;margin:0 0 4px;">\u{1F510} Admin — Users &amp; Roles</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">
+        People are pulled from BT4YOU's <code>holding_config.json</code> (Asana-synced). Assign each one a role to control which tabs they see.
+      </p>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:16px;">
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">admin</div>
+          <div style="font-size:12px;margin-top:3px;">Full access · manage users</div>
+        </div>
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">holding_ceo</div>
+          <div style="font-size:12px;margin-top:3px;">Approves weekly payments · sees Confirm tab</div>
+        </div>
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">bookkeeper</div>
+          <div style="font-size:12px;margin-top:3px;">Executes payments · sees Confirm + Card Audit</div>
+        </div>
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">stream_owner</div>
+          <div style="font-size:12px;margin-top:3px;">Sees own stream's Approve + Accounting</div>
+        </div>
+        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">viewer</div>
+          <div style="font-size:12px;margin-top:3px;">Default · Upload + Approve + Legend</div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table style="font-size:13px;">
+          <thead>
+            <tr>
+              <th>Name (from Asana)</th>
+              <th>Title</th>
+              <th>Stream</th>
+              <th>Role</th>
+              <th>Updated</th>
+              <th>Save</th>
+            </tr>
+          </thead>
+          <tbody id="admin-users-rows"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- ==================== PANEL 5: FIO LEGEND ==================== -->
@@ -1937,6 +2068,10 @@ function switchTab(tabName) {
     loadAccountingPanel();
   } else if (tabName === 'card-audit') {
     initCardAuditTab();
+  } else if (tabName === 'confirm-payment') {
+    loadConfirmPaymentPanel();
+  } else if (tabName === 'admin') {
+    loadAdminPanel();
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();
   }
@@ -1988,6 +2123,7 @@ function loadAnalyticsPanel() {
     renderAnalyticsKPIs(data);
     renderAnalyticsSuggestions(data);
     renderAnalyticsSuspicious(data);
+    renderAnalyticsCashflow(data);
     renderAnalyticsByPeriod(data);
     renderAnalyticsProjection(data);
     renderAnalyticsVendors(data);
@@ -2119,6 +2255,59 @@ function renderAnalyticsCodes(data) {
   }).join('');
 }
 
+function renderAnalyticsCashflow(data) {
+  var box = document.getElementById('analytics-cashflow');
+  if (!box) return;
+  var cf = data.operational_cashflow;
+  if (!cf) { box.innerHTML = '<div class="empty-state" style="font-size:13px;">No cashflow data.</div>'; return; }
+  var p = cf.pipeline || {};
+  var pipelineCards =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px;">' +
+      '<div style="padding:12px;background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;">' +
+        '<div style="font-size:10px;color:#1e40af;text-transform:uppercase;font-weight:700;">Posted · awaiting CEO</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#1e40af;margin-top:4px;">' + fmtEUR(p.posted_awaiting_confirm) + '</div>' +
+      '</div>' +
+      '<div style="padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;">' +
+        '<div style="font-size:10px;color:#92400e;text-transform:uppercase;font-weight:700;">Confirmed · awaiting payment</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#92400e;margin-top:4px;">' + fmtEUR(p.confirmed_awaiting_payment) + '</div>' +
+      '</div>' +
+      '<div style="padding:12px;background:#fce7f3;border:1px solid #f9a8d4;border-radius:8px;">' +
+        '<div style="font-size:10px;color:#9d174d;text-transform:uppercase;font-weight:700;">Upcoming this week</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#9d174d;margin-top:4px;">' + fmtEUR(p.upcoming_this_week_confirmed) + '</div>' +
+      '</div>' +
+      '<div style="padding:12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;">' +
+        '<div style="font-size:10px;color:#065f46;text-transform:uppercase;font-weight:700;">Paid · lifetime</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#065f46;margin-top:4px;">' + fmtEUR(p.paid_lifetime) + '</div>' +
+      '</div>' +
+    '</div>';
+
+  var byWeek = '<div><strong style="font-size:13px;">Paid by week</strong>';
+  if ((cf.by_week || []).length) {
+    byWeek += '<table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:4px;">Week starting</th><th style="text-align:right;padding:4px;">Paid</th></tr></thead><tbody>';
+    cf.by_week.forEach(function(w) {
+      byWeek += '<tr><td style="padding:4px;font-family:monospace;">' + esc(w.week_start) + '</td><td style="padding:4px;text-align:right;font-weight:600;">' + fmtEUR(w.amount) + '</td></tr>';
+    });
+    byWeek += '</tbody></table>';
+  } else {
+    byWeek += '<div style="font-size:12px;color:var(--muted);margin-top:4px;">No paid documents yet.</div>';
+  }
+  byWeek += '</div>';
+
+  var byAccount = '<div style="margin-top:14px;"><strong style="font-size:13px;">Paid by paying account</strong>';
+  if ((cf.by_paying_account || []).length) {
+    byAccount += '<ul style="margin:6px 0 0;padding-left:20px;font-size:12px;">';
+    cf.by_paying_account.forEach(function(a) {
+      byAccount += '<li><strong>' + esc(a.account) + '</strong> — ' + fmtEUR(a.amount) + '</li>';
+    });
+    byAccount += '</ul>';
+  } else {
+    byAccount += '<div style="font-size:12px;color:var(--muted);margin-top:4px;">No payments recorded yet.</div>';
+  }
+  byAccount += '</div>';
+
+  box.innerHTML = pipelineCards + byWeek + byAccount;
+}
+
 function renderAnalyticsDepartments(data) {
   var box = document.getElementById('analytics-departments');
   var rows = data.department_load || [];
@@ -2143,6 +2332,14 @@ document.addEventListener('DOMContentLoaded', function() {
   loadSchema();
   loadPeopleList();
   populatePeriodFilter();
+  // Identity bootstrap: figure out who I am, hide forbidden tabs.
+  // If no signed-in user persisted yet, pop the sign-in modal.
+  refreshIdentity().then(function() {
+    if (!localStorage.getItem('fio_signed_in_as')) {
+      // Slight delay so the picker can fetch /api/people first
+      setTimeout(openSignInModal, 300);
+    }
+  });
   setInterval(function() {
     var activePanel = document.querySelector('.panel.active');
     if (activePanel) {
@@ -2158,6 +2355,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // ---------------------------------------------------------------------------
 function api(method, url, body) {
   var opts = { method: method, headers: {} };
+  // Attach the signed-in user so the server can do role checks
+  var me = localStorage.getItem('fio_signed_in_as');
+  if (me) opts.headers['X-FIO-User'] = me;
   if (body && !(body instanceof FormData)) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -2402,6 +2602,295 @@ function loadPeopleList() {
   });
 }
 
+// ===========================================================================
+// Identity, sign-in, and tab gating by role
+// ===========================================================================
+var ME = { signed_in_as: null, role: 'viewer', allowed_tabs: [], is_admin: false };
+
+function refreshIdentity() {
+  return api('GET', '/api/me').then(function(d) {
+    ME = d || ME;
+    var name = ME.signed_in_as || '';
+    var role = ME.role || 'viewer';
+    document.getElementById('signed-in-name').textContent = name || 'Sign in…';
+    var roleEl = document.getElementById('signed-in-role');
+    var roleColors = { admin:'#dc2626', holding_ceo:'#f59e0b', bookkeeper:'#0ea5e9',
+                       stream_owner:'#10b981', viewer:'#94a3b8' };
+    var dot = document.querySelector('#signed-in-chip span');
+    if (dot) dot.style.background = roleColors[role] || '#94a3b8';
+    roleEl.textContent = name ? ('· ' + role) : '';
+    roleEl.style.color = roleColors[role] || 'var(--muted)';
+    applyTabVisibility(ME.allowed_tabs || []);
+  }).catch(function(){});
+}
+
+function applyTabVisibility(allowed) {
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    var tab = btn.getAttribute('data-tab');
+    btn.style.display = allowed.indexOf(tab) >= 0 ? '' : 'none';
+  });
+  // If the currently-active tab was hidden, snap to upload
+  var active = document.querySelector('.tab-btn.active');
+  if (active && active.style.display === 'none') {
+    switchTab('upload');
+  }
+}
+
+function openSignInModal() {
+  var overlay = document.getElementById('signin-overlay');
+  overlay.style.display = 'flex';
+  var sel = document.getElementById('signin-picker');
+  var hint = document.getElementById('signin-role-hint');
+  if (!ALL_PEOPLE.length) {
+    api('GET', '/api/people').then(function(d) { ALL_PEOPLE = d.people || []; renderSignInPicker(); });
+  } else {
+    renderSignInPicker();
+  }
+  function renderSignInPicker() {
+    var current = localStorage.getItem('fio_signed_in_as') || '';
+    var grouped = {};
+    ALL_PEOPLE.forEach(function(p) { (grouped[p.profit_center || 'AG'] = grouped[p.profit_center || 'AG'] || []).push(p); });
+    var html = ['<option value="">— Pick your name —</option>'];
+    var order = ['AG','AA','BK','SR','MT','AH','PK','CF','AL','RR'];
+    order.forEach(function(pc) {
+      if (!grouped[pc]) return;
+      html.push('<optgroup label="' + esc((PC_LABELS && PC_LABELS[pc]) ? (pc + ' — ' + PC_LABELS[pc]) : pc) + '">');
+      grouped[pc].forEach(function(p) {
+        var s = (p.name === current) ? ' selected' : '';
+        html.push('<option value="' + esc(p.name) + '"' + s + '>' + esc(p.name) + (p.title ? ' — ' + esc(p.title.substring(0, 40)) : '') + '</option>');
+      });
+      html.push('</optgroup>');
+    });
+    sel.innerHTML = html.join('');
+    sel.onchange = function() {
+      var picked = sel.value;
+      if (!picked) { hint.textContent = ''; return; }
+      // Probe role for the picked name without changing identity yet
+      var probeHeader = {'X-FIO-User': picked};
+      fetch('/api/me', { headers: probeHeader }).then(function(r){return r.json();}).then(function(d) {
+        hint.textContent = 'Role: ' + (d.role || 'viewer') + ' · access: ' + (d.allowed_tabs || []).join(', ');
+      });
+    };
+    if (current) sel.dispatchEvent(new Event('change'));
+  }
+}
+
+function closeSignInModal() {
+  document.getElementById('signin-overlay').style.display = 'none';
+}
+
+function confirmSignIn() {
+  var sel = document.getElementById('signin-picker');
+  var picked = sel.value;
+  if (!picked) { showToast('Please pick your name first', 'error'); return; }
+  localStorage.setItem('fio_signed_in_as', picked);
+  closeSignInModal();
+  refreshIdentity().then(function() {
+    showToast('Signed in as ' + picked + ' · ' + (ME.role || 'viewer'), 'success');
+  });
+}
+
+// ===========================================================================
+// Admin tab: list users, change roles
+// ===========================================================================
+var ADMIN_USERS_CACHE = [];
+
+function loadAdminPanel() {
+  api('GET', '/api/users').then(function(d) {
+    if (d.error) {
+      document.getElementById('admin-users-rows').innerHTML =
+        '<tr><td colspan="6" class="empty-state" style="color:var(--red);">' + esc(d.message || d.error) + '</td></tr>';
+      return;
+    }
+    ADMIN_USERS_CACHE = d.users || [];
+    renderAdminUsers();
+  });
+}
+
+function renderAdminUsers() {
+  var tbody = document.getElementById('admin-users-rows');
+  if (!ADMIN_USERS_CACHE.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No users found.</td></tr>';
+    return;
+  }
+  var roleOptions = ['admin','holding_ceo','bookkeeper','stream_owner','viewer'];
+  tbody.innerHTML = ADMIN_USERS_CACHE.map(function(u, i) {
+    var roleSel = '<select id="admin-role-' + i + '" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;">' +
+      roleOptions.map(function(r) {
+        return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>';
+      }).join('') + '</select>';
+    var updated = u.updated_at ? (u.updated_at.substring(0,16).replace('T',' ') + (u.updated_by ? ' by ' + esc(u.updated_by) : '')) : '—';
+    return '<tr>' +
+      '<td><strong>' + esc(u.name) + '</strong></td>' +
+      '<td style="font-size:11px;color:var(--muted);">' + esc((u.title || '').substring(0, 60)) + '</td>' +
+      '<td>' + esc(u.profit_center || '—') + '</td>' +
+      '<td>' + roleSel + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);">' + updated + '</td>' +
+      '<td><button class="btn btn-sm btn-success" onclick="saveAdminRole(' + i + ')">Save</button></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function saveAdminRole(idx) {
+  var u = ADMIN_USERS_CACHE[idx];
+  if (!u) return;
+  var newRole = document.getElementById('admin-role-' + idx).value;
+  api('POST', '/api/users/' + encodeURIComponent(u.name) + '/role', {
+    role: newRole,
+    profit_center: u.profit_center,
+    title: u.title
+  }).then(function(d) {
+    if (d.status === 'ok') {
+      showToast(u.name + ' → ' + newRole, 'success');
+      loadAdminPanel();
+    } else {
+      showToast('Failed: ' + (d.message || d.error || 'unknown'), 'error');
+    }
+  });
+}
+
+// ===========================================================================
+// Confirm-for-Payment tab
+// ===========================================================================
+var CP_STAGE = 'awaiting';  // 'awaiting' | 'approved' | 'paid'
+var CP_STAGES = [
+  { id: 'awaiting', label: 'Awaiting CEO approval',  badge: 'badge-classified',
+    statuses: ['posted'], color: '#0ea5e9' },
+  { id: 'approved', label: 'Approved · awaiting payment', badge: 'badge-approved',
+    statuses: ['confirmed_to_pay'], color: '#f59e0b' },
+  { id: 'paid', label: 'Paid',                       badge: 'badge-posted',
+    statuses: ['paid'], color: '#10b981' },
+];
+
+function renderCPStageBar() {
+  var bar = document.getElementById('cp-stage-bar');
+  if (!bar) return;
+  bar.innerHTML = CP_STAGES.map(function(s) {
+    var active = (s.id === CP_STAGE);
+    var bg = active ? s.color : '#fff';
+    var fg = active ? '#fff' : s.color;
+    var bd = active ? s.color : 'var(--border)';
+    return '<button onclick="setCPStage(\'' + s.id + '\')" style="padding:8px 14px;border-radius:18px;border:1px solid ' + bd + ';background:' + bg + ';color:' + fg + ';font-size:13px;font-weight:600;cursor:pointer;">' +
+      esc(s.label) + '</button>';
+  }).join('');
+}
+
+function setCPStage(stage) {
+  CP_STAGE = stage;
+  renderCPStageBar();
+  loadConfirmPaymentPanel();
+}
+
+function loadConfirmPaymentPanel() {
+  renderCPStageBar();
+  api('GET', '/api/payment-queue?stage=' + CP_STAGE).then(function(d) {
+    if (d.error) {
+      document.getElementById('cp-rows').innerHTML =
+        '<tr><td colspan="13" class="empty-state" style="color:var(--red);">' + esc(d.message || d.error) + '</td></tr>';
+      return;
+    }
+    renderCPRows(d.documents || []);
+  });
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return iso.substring(0, 16).replace('T', ' ');
+}
+
+function fmtDelta(a, b) {
+  if (!a || !b) return '—';
+  var t1 = new Date(a).getTime();
+  var t2 = new Date(b).getTime();
+  if (isNaN(t1) || isNaN(t2)) return '—';
+  var diffH = Math.round((t2 - t1) / 3600000);
+  if (diffH < 24) return diffH + 'h';
+  return Math.round(diffH / 24) + 'd';
+}
+
+function renderCPRows(docs) {
+  var tbody = document.getElementById('cp-rows');
+  if (!docs.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No documents in this stage.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = docs.map(function(d) {
+    var pc = d.profit_center || '—';
+    var pcName = (PC_LABELS && PC_LABELS[pc]) ? PC_LABELS[pc] : pc;
+    var amount = d.amount ? (d.currency || 'EUR') + ' ' + Number(d.amount).toLocaleString('en', {minimumFractionDigits:2}) : '—';
+    var ceoCell = '—', paidCell = '—', deltaCell = '—', actionsCell = '—';
+
+    if (CP_STAGE === 'awaiting' && (ME.role === 'admin' || ME.role === 'holding_ceo')) {
+      actionsCell = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">\u{2713} Approve to pay this week</button>';
+    } else if (CP_STAGE === 'approved') {
+      ceoCell = '<div style="font-weight:600;color:#f59e0b;">' + esc(fmtDate(d.confirmed_to_pay_at)) + '</div>' +
+                '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.confirmed_to_pay_by || '—') + '</div>';
+      if (ME.role === 'admin' || ME.role === 'bookkeeper') {
+        actionsCell = '<button class="btn btn-sm btn-success" onclick="markDocPaid(\'' + d.id + '\')">\u{1F4B8} Mark paid</button>';
+      }
+    } else if (CP_STAGE === 'paid') {
+      ceoCell = '<div style="font-weight:600;">' + esc(fmtDate(d.confirmed_to_pay_at)) + '</div>' +
+                '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.confirmed_to_pay_by || '—') + '</div>';
+      paidCell = '<div style="font-weight:600;color:#10b981;">' + esc(fmtDate(d.payment_executed_at)) + '</div>' +
+                 '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.payment_executed_by || '—') + '</div>' +
+                 (d.payment_reference ? '<div style="font-size:10px;font-family:monospace;">ref: ' + esc(d.payment_reference) + '</div>' : '');
+      deltaCell = '<div style="font-size:11px;">approve→pay: ' + esc(fmtDelta(d.confirmed_to_pay_at, d.payment_executed_at)) + '</div>' +
+                  '<div style="font-size:11px;">post→pay: ' + esc(fmtDelta(d.posted_at || d.approved_at, d.payment_executed_at)) + '</div>';
+    }
+
+    return '<tr>' +
+      '<td style="white-space:nowrap;">' + esc(fmtDate(d.uploaded_at || d.posted_at)) + '</td>' +
+      '<td><strong>' + esc(pc) + '</strong> · <span style="color:var(--muted);font-size:11px;">' + esc(pcName) + '</span></td>' +
+      '<td>' + esc(d.approved_by || '—') + '</td>' +
+      '<td><span style="font-family:monospace;font-size:11px;">' + esc(d.ledger_code || '—') + '</span></td>' +
+      '<td><strong>' + esc(d.vendor || '—') + '</strong>' + (d.vat_number ? '<div style="font-size:10px;color:var(--muted);">' + esc(d.vat_number) + '</div>' : '') + '</td>' +
+      '<td style="font-size:11px;">' + esc(((d.cost_reason || d.original_name || '') + '').substring(0, 80)) + '</td>' +
+      '<td style="white-space:nowrap;font-weight:600;">' + amount + '</td>' +
+      '<td style="font-size:11px;">' + esc(d.payment_paying_entity || '—') + '</td>' +
+      '<td style="font-size:11px;">' + esc(d.payment_account || '—') + '</td>' +
+      '<td>' + ceoCell + '</td>' +
+      '<td>' + paidCell + '</td>' +
+      '<td>' + deltaCell + '</td>' +
+      '<td>' + actionsCell + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function confirmPayment(docId) {
+  var note = prompt('Optional note for this approval (e.g. "ok, pay Wed")');
+  api('POST', '/api/documents/' + docId + '/confirm-payment', {
+    confirmed_by: ME.signed_in_as,
+    note: note || ''
+  }).then(function(d) {
+    if (d.status === 'confirmed_to_pay') {
+      showToast('Approved to pay ✓', 'success');
+      loadConfirmPaymentPanel();
+    } else {
+      showToast('Failed: ' + (d.error || 'unknown'), 'error');
+    }
+  });
+}
+
+function markDocPaid(docId) {
+  var account = prompt('Paying account / bank (e.g. "Revolut · Amitours London")');
+  if (account === null) return;
+  var reference = prompt('Payment reference (transaction ID, batch, optional)');
+  if (reference === null) return;
+  api('POST', '/api/documents/' + docId + '/mark-paid', {
+    paid_by: ME.signed_in_as,
+    payment_account: account,
+    payment_reference: reference
+  }).then(function(d) {
+    if (d.status === 'paid') {
+      showToast('Marked as paid ✓ — moved to cashflow', 'success');
+      loadConfirmPaymentPanel();
+    } else {
+      showToast('Failed: ' + (d.error || 'unknown'), 'error');
+    }
+  });
+}
+
+
 function uploadFiles(files) {
   var fd = new FormData();
   for (var i = 0; i < files.length; i++) fd.append('files', files[i]);
@@ -2416,7 +2905,10 @@ function uploadFiles(files) {
   bar.style.display = 'block';
   fill.style.width = '30%';
 
-  fetch('/api/upload', { method: 'POST', body: fd })
+  var uploadHeaders = {};
+  var meUpload = localStorage.getItem('fio_signed_in_as');
+  if (meUpload) uploadHeaders['X-FIO-User'] = meUpload;
+  fetch('/api/upload', { method: 'POST', body: fd, headers: uploadHeaders })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       fill.style.width = '100%';

@@ -28,6 +28,7 @@ from services.bt4you_sync import (
     load_people,
     load_profit_center_departments,
 )
+from services import roles as roles_svc
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -141,6 +142,12 @@ _seed_data_volume()
 # Initialise SQLite at import time so gunicorn workers have tables.
 # init_db() is idempotent (CREATE TABLE IF NOT EXISTS + ALTER for migrations).
 db.init_db()
+
+# Seed user_roles.json on the volume if first boot (idempotent).
+try:
+    roles_svc.seed_if_missing()
+except Exception as exc:
+    logger.warning("Roles seed failed: %s", exc)
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "csv", "xlsx"}
 
@@ -1248,6 +1255,124 @@ def reassign_doc(doc_id: str):
 
 
 # ════════════════════════════════════════════════════════════════
+# Phase 7 — Confirm-for-Payment workflow
+# Posted → Holding CEO ticks → confirmed_to_pay → Bookkeeper pays → paid
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/payment-queue", methods=["GET"])
+def payment_queue():
+    """Return documents in a specific payment stage.
+
+    Query: ?stage=awaiting | approved | paid
+      awaiting  -- status=posted, no confirm yet
+      approved  -- status=confirmed_to_pay, no payment yet
+      paid      -- status=paid
+
+    Visible to admin / holding_ceo / bookkeeper.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_HOLDING_CEO, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
+
+    stage = (request.args.get("stage") or "awaiting").strip()
+    if stage == "awaiting":
+        target_statuses = ("posted",)
+    elif stage == "approved":
+        target_statuses = ("confirmed_to_pay",)
+    elif stage == "paid":
+        target_statuses = ("paid",)
+    else:
+        return jsonify({"error": "Invalid stage",
+                        "allowed": ["awaiting", "approved", "paid"]}), 400
+
+    placeholders = ",".join("?" for _ in target_statuses)
+    conn = db.get_connection()
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM documents WHERE status IN (%s) ORDER BY uploaded_at DESC" % placeholders,
+            target_statuses
+        ).fetchall()]
+    finally:
+        conn.close()
+    for doc in rows:
+        _enrich_document(doc)
+    return jsonify({"stage": stage, "count": len(rows), "documents": rows})
+
+
+@app.route("/api/documents/<doc_id>/confirm-payment", methods=["POST"])
+def confirm_payment(doc_id: str):
+    """Holding CEO (or admin) ticks 'approve to pay this week'.
+
+    Status transitions: posted -> confirmed_to_pay.
+    Captures who + when + optional note.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_HOLDING_CEO)
+    if err:
+        return err
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    if doc.get("status") not in ("posted",):
+        return jsonify({"error": "Only 'posted' docs can be confirmed for payment",
+                        "current_status": doc.get("status")}), 400
+
+    body = request.get_json(silent=True) or {}
+    confirmed_by = body.get("confirmed_by") or _current_user_name() or "user"
+    now = datetime.utcnow().isoformat()
+    db.update_document(doc_id, {
+        "status": "confirmed_to_pay",
+        "confirmed_to_pay_at": now,
+        "confirmed_to_pay_by": confirmed_by,
+        "confirmed_to_pay_note": body.get("note") or None,
+    })
+    db.insert_audit_log(doc_id, "payment_confirmed", {
+        "by": confirmed_by,
+        "at": now,
+        "note": body.get("note") or "",
+    })
+    return jsonify({"status": "confirmed_to_pay", "document": db.get_document(doc_id)})
+
+
+@app.route("/api/documents/<doc_id>/mark-paid", methods=["POST"])
+def mark_paid(doc_id: str):
+    """Bookkeeper records that payment was executed.
+
+    Status transitions: confirmed_to_pay -> paid.
+    Captures who + when + paying account + reference.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    if doc.get("status") not in ("confirmed_to_pay",):
+        return jsonify({"error": "Only 'confirmed_to_pay' docs can be marked paid",
+                        "current_status": doc.get("status")}), 400
+
+    body = request.get_json(silent=True) or {}
+    paid_by = body.get("paid_by") or _current_user_name() or "user"
+    now = datetime.utcnow().isoformat()
+    db.update_document(doc_id, {
+        "status": "paid",
+        "payment_executed_at": now,
+        "payment_executed_by": paid_by,
+        "payment_account": body.get("payment_account") or None,
+        "payment_paying_entity": body.get("paying_entity") or None,
+        "payment_reference": body.get("payment_reference") or None,
+    })
+    db.insert_audit_log(doc_id, "marked_paid", {
+        "by": paid_by,
+        "at": now,
+        "account": body.get("payment_account"),
+        "reference": body.get("payment_reference"),
+    })
+    return jsonify({"status": "paid", "document": db.get_document(doc_id)})
+
+
+# ════════════════════════════════════════════════════════════════
 # Phase 4.2 + 4.3 — CSV / Google Sheets export per business stream
 # ════════════════════════════════════════════════════════════════
 
@@ -1855,7 +1980,77 @@ def analytics_spending():
         "department_load": [{"department": k, "amount": v} for k, v in sorted(dept_load.items(), key=lambda x: -x[1])],
         "total_lifetime_spend": round(sum(by_period.values()), 2),
         "documents_posted": sum(1 for d in docs if d.get("status") == "posted"),
+        "operational_cashflow": _compute_operational_cashflow(docs),
     })
+
+
+def _compute_operational_cashflow(docs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Outflow snapshot driven by the Confirm-for-Payment workflow.
+
+    Returns:
+      pipeline:    {posted: € awaiting confirm, confirmed: € awaiting payment,
+                    paid: € executed (lifetime), upcoming_this_week: €}
+      by_week:     last 6 paid weeks (week_start, amount)
+      by_account:  paid spend grouped by payment_account
+    """
+    from collections import defaultdict
+    pipeline = {
+        "posted_awaiting_confirm": 0.0,
+        "confirmed_awaiting_payment": 0.0,
+        "paid_lifetime": 0.0,
+        "upcoming_this_week_confirmed": 0.0,
+    }
+    by_week: Dict[str, float] = defaultdict(float)
+    by_account: Dict[str, float] = defaultdict(float)
+    by_payee: Dict[str, float] = defaultdict(float)
+
+    today = datetime.utcnow().date()
+    # Monday of current week (UTC)
+    monday = today.fromordinal(today.toordinal() - today.weekday())
+    sunday = today.fromordinal(monday.toordinal() + 6)
+
+    for d in docs:
+        st = d.get("status")
+        amt = float(d.get("amount") or 0)
+        if st == "posted":
+            pipeline["posted_awaiting_confirm"] += amt
+        elif st == "confirmed_to_pay":
+            pipeline["confirmed_awaiting_payment"] += amt
+            # If confirmed during this week, count as upcoming outflow
+            cat = d.get("confirmed_to_pay_at") or ""
+            try:
+                cdate = datetime.fromisoformat(cat[:10]).date() if cat else None
+            except (ValueError, TypeError):
+                cdate = None
+            if cdate and monday <= cdate <= sunday:
+                pipeline["upcoming_this_week_confirmed"] += amt
+        elif st == "paid":
+            pipeline["paid_lifetime"] += amt
+            # Group by ISO week of payment
+            pat = d.get("payment_executed_at") or ""
+            try:
+                pdate = datetime.fromisoformat(pat[:10]).date() if pat else None
+            except (ValueError, TypeError):
+                pdate = None
+            if pdate:
+                week_monday = pdate.fromordinal(pdate.toordinal() - pdate.weekday())
+                by_week[week_monday.isoformat()] += amt
+            acct = (d.get("payment_account") or "").strip() or "Unknown"
+            by_account[acct] += amt
+            payee = (d.get("vendor") or "").strip() or "Unknown"
+            by_payee[payee] += amt
+
+    # Sort by_week descending and keep last 8 weeks
+    week_rows = sorted(by_week.items(), key=lambda x: x[0], reverse=True)[:8]
+    account_rows = sorted(by_account.items(), key=lambda x: -x[1])[:10]
+    payee_rows = sorted(by_payee.items(), key=lambda x: -x[1])[:10]
+
+    return {
+        "pipeline": {k: round(v, 2) for k, v in pipeline.items()},
+        "by_week": [{"week_start": w, "amount": round(a, 2)} for w, a in week_rows],
+        "by_paying_account": [{"account": k, "amount": round(v, 2)} for k, v in account_rows],
+        "top_paid_payees": [{"vendor": k, "amount": round(v, 2)} for k, v in payee_rows],
+    }
 
 
 def _detect_suspicious(docs: List[Dict[str, Any]], by_vendor: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -2069,6 +2264,112 @@ def people():
     if pc:
         roster = [p for p in roster if p["profit_center"] == pc]
     return jsonify({"people": roster, "count": len(roster)})
+
+
+# ────────────────────────────────────────────────────────────────────
+# Phase 7 — Identity + role-based access
+# ────────────────────────────────────────────────────────────────────
+
+def _current_user_name() -> Optional[str]:
+    """Pull the signed-in user name from the X-FIO-User header.
+
+    Frontend sets this from localStorage (fio_signed_in_as) on every fetch.
+    Returns None when nothing set -- treated as anonymous / viewer.
+    """
+    name = (request.headers.get("X-FIO-User") or "").strip()
+    return name or None
+
+
+def _require_role(*allowed_roles: str):
+    """Decorator-style guard for admin-only endpoints.
+
+    Usage:
+        err = _require_role(roles_svc.ROLE_ADMIN)
+        if err: return err
+    """
+    user = _current_user_name()
+    role = roles_svc.get_role(user)
+    if role not in allowed_roles:
+        return jsonify({
+            "error": "forbidden",
+            "message": "Role '%s' is not allowed here. Required: %s" % (role, list(allowed_roles)),
+            "you": user,
+            "your_role": role,
+        }), 403
+    return None
+
+
+@app.route("/api/me", methods=["GET"])
+def me():
+    """Tell the browser who it is and what tabs it can see.
+
+    Reads X-FIO-User header (set by frontend from localStorage).
+    Returns role + allowed tabs + profit center scope.
+    """
+    name = _current_user_name()
+    role = roles_svc.get_role(name)
+    allowed_tabs = roles_svc.tabs_for_role(role)
+    roles_data = roles_svc.load_roles()
+    entry = roles_data.get(name) if name else None
+    return jsonify({
+        "signed_in_as": name,
+        "role": role,
+        "allowed_tabs": allowed_tabs,
+        "profit_center": (entry or {}).get("profit_center"),
+        "title": (entry or {}).get("title"),
+        "is_admin": role == roles_svc.ROLE_ADMIN,
+        "all_roles": roles_svc.ALL_ROLES,
+    })
+
+
+@app.route("/api/users", methods=["GET"])
+def users_with_roles():
+    """List BT4YOU people + their assigned roles. Admin only."""
+    err = _require_role(roles_svc.ROLE_ADMIN)
+    if err:
+        return err
+    people_list = load_people()
+    merged = roles_svc.list_users_with_roles(people_list)
+    return jsonify({
+        "users": merged,
+        "count": len(merged),
+        "all_roles": roles_svc.ALL_ROLES,
+        "tab_access": roles_svc.TAB_ACCESS,
+    })
+
+
+@app.route("/api/users/<path:user_name>/role", methods=["POST"])
+def set_user_role(user_name: str):
+    """Set or update a user's role. Admin only.
+
+    Body: {"role": "admin|holding_ceo|bookkeeper|stream_owner|viewer",
+           "profit_center": "AA"  (optional)}
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    new_role = (body.get("role") or "").strip()
+    if new_role not in roles_svc.ALL_ROLES:
+        return jsonify({"error": "Invalid role",
+                        "allowed": roles_svc.ALL_ROLES}), 400
+    try:
+        updated = roles_svc.set_role(
+            user_name=user_name,
+            role=new_role,
+            profit_center=body.get("profit_center"),
+            title=body.get("title"),
+            changed_by=_current_user_name() or "admin",
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    db.insert_audit_log("system", "role_changed", {
+        "user": user_name,
+        "new_role": new_role,
+        "profit_center": body.get("profit_center"),
+        "by": _current_user_name() or "admin",
+    })
+    return jsonify({"status": "ok", "user": user_name, "entry": updated})
 
 
 @app.route("/api/audit-log", methods=["GET"])

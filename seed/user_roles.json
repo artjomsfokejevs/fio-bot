@@ -1,0 +1,23 @@
+{
+  "Artjoms Fokejevs": {
+    "role": "admin",
+    "profit_center": "AA",
+    "title": "CEO Alps2Alps · seeded admin",
+    "updated_by": "bootstrap",
+    "updated_at": "2026-06-01T00:00:00"
+  },
+  "Rita": {
+    "role": "admin",
+    "profit_center": "AG",
+    "title": "Bookkeeper + Admin · seeded",
+    "updated_by": "bootstrap",
+    "updated_at": "2026-06-01T00:00:00"
+  },
+  "Raitis Bullits": {
+    "role": "holding_ceo",
+    "profit_center": "AG",
+    "title": "Holding CEO · approves weekly payments",
+    "updated_by": "bootstrap",
+    "updated_at": "2026-06-01T00:00:00"
+  }
+}

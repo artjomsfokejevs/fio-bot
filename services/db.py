@@ -151,6 +151,16 @@ def init_db() -> None:
             ("vendor_verified_by", "ALTER TABLE documents ADD COLUMN vendor_verified_by TEXT"),
             ("vendor_verified_at", "ALTER TABLE documents ADD COLUMN vendor_verified_at TEXT"),
             ("vendor_verified_note", "ALTER TABLE documents ADD COLUMN vendor_verified_note TEXT"),
+            # Phase 7 — Confirm-for-Payment workflow (CEO Holding approves week,
+            # bookkeeper executes). New statuses: confirmed_to_pay, paid.
+            ("confirmed_to_pay_at", "ALTER TABLE documents ADD COLUMN confirmed_to_pay_at TEXT"),
+            ("confirmed_to_pay_by", "ALTER TABLE documents ADD COLUMN confirmed_to_pay_by TEXT"),
+            ("confirmed_to_pay_note", "ALTER TABLE documents ADD COLUMN confirmed_to_pay_note TEXT"),
+            ("payment_executed_at", "ALTER TABLE documents ADD COLUMN payment_executed_at TEXT"),
+            ("payment_executed_by", "ALTER TABLE documents ADD COLUMN payment_executed_by TEXT"),
+            ("payment_account", "ALTER TABLE documents ADD COLUMN payment_account TEXT"),
+            ("payment_paying_entity", "ALTER TABLE documents ADD COLUMN payment_paying_entity TEXT"),
+            ("payment_reference", "ALTER TABLE documents ADD COLUMN payment_reference TEXT"),
         ):
             try:
                 conn.execute("SELECT %s FROM documents LIMIT 1" % col)
