@@ -1003,6 +1003,7 @@ def manually_verify_vat(doc_id: str):
     body = request.get_json(silent=True) or {}
     verified_by = body.get("verified_by") or "user"
     note = body.get("note", "")
+    verification_url = (body.get("verification_url") or "").strip()
 
     # Merge override into parsed_json.vendor so /api/documents/<id>
     # surfaces it on next fetch.
@@ -1016,6 +1017,8 @@ def manually_verify_vat(doc_id: str):
     vendor["vat_manually_verified"] = True
     vendor["vat_verified_by"] = verified_by
     vendor["vat_verified_at"] = datetime.utcnow().isoformat()
+    if verification_url:
+        vendor["vat_verification_url"] = verification_url
     if note:
         vendor["vat_verification_note"] = note
     parsed["vendor"] = vendor
@@ -1024,6 +1027,7 @@ def manually_verify_vat(doc_id: str):
     db.insert_audit_log(doc_id, "vat_manually_verified", {
         "verified_by": verified_by,
         "vat_number": doc.get("vat_number"),
+        "verification_url": verification_url,
         "note": note,
     })
     return jsonify({"status": "verified", "document": db.get_document(doc_id)})
@@ -1159,13 +1163,47 @@ def save_allocations(doc_id: str):
             if r["percentage"] is not None and r["amount"] is None:
                 r["amount"] = round(total_doc * r["percentage"] / 100.0, 2)
 
+    # ---- BUG-FIX: when allocations are saved on a doc that was already posted
+    # (e.g. auto-posted on upload due to high confidence), the previous single-PC
+    # posting is stale -- it only updated one stream's actuals. We must subtract
+    # the old posting and re-post using the new allocations so every PC's P&L
+    # gets its proportional share.
+    was_posted = doc.get("status") == "posted"
+    doc_before = dict(doc)  # snapshot BEFORE we update allocations_json
+
     db.update_document(doc_id, {"allocations_json": json.dumps(cleaned, ensure_ascii=False)})
     db.insert_audit_log(doc_id, "allocations_set", {
         "splits":    len(cleaned),
         "summary":   [{"pc": c["profit_center"], "pct": c["percentage"], "amt": c["amount"]} for c in cleaned],
         "saved_by":  body.get("saved_by", "user"),
+        "was_posted_repost": was_posted,
     })
-    return jsonify({"status": "saved", "allocations": cleaned})
+
+    if was_posted:
+        # Roll back the previous posting (uses doc_before's state: either old
+        # allocations_json or the single-PC fallback) then re-post with the
+        # new allocations_json that lives in the freshly-fetched doc.
+        try:
+            _subtract_from_actuals(doc_before)
+        except Exception:
+            logger.exception("Failed to subtract old posting for %s during alloc update", doc_id)
+        # Re-post with the new split. post_to_actuals reads allocations_json
+        # from the doc itself, so we refresh it first.
+        refreshed = db.get_document(doc_id)
+        if refreshed:
+            try:
+                # post_to_actuals also sets status=posted + posted_at. Since the
+                # doc is already 'posted', this is idempotent w.r.t. status.
+                post_to_actuals(refreshed)
+            except Exception:
+                logger.exception("Failed to re-post %s after allocation update", doc_id)
+                return jsonify({
+                    "status": "saved",
+                    "warning": "Allocations saved but re-posting to actuals failed -- check logs",
+                    "allocations": cleaned,
+                }), 200
+
+    return jsonify({"status": "saved", "allocations": cleaned, "reposted": was_posted})
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1542,6 +1580,9 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
         # Manual VAT verification override (set by POST /api/documents/<id>/vat-verify)
         doc["vat_manually_verified"] = bool(vendor_data.get("vat_manually_verified"))
         doc["vat_verified_by"] = vendor_data.get("vat_verified_by")
+        doc["vat_verification_url"] = vendor_data.get("vat_verification_url")
+        doc["vat_verification_note"] = vendor_data.get("vat_verification_note")
+        doc["vat_verified_at"] = vendor_data.get("vat_verified_at")
     else:
         doc["vat_number"] = None
         doc["vies_verified"] = None
@@ -1549,6 +1590,9 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
         doc["vendor_address"] = None
         doc["vat_manually_verified"] = False
         doc["vat_verified_by"] = None
+        doc["vat_verification_url"] = None
+        doc["vat_verification_note"] = None
+        doc["vat_verified_at"] = None
 
     # Surface parser failure category and warnings for UI banner
     doc["parser_failure_category"] = parsed.get("parser_failure_category")

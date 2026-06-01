@@ -1759,6 +1759,52 @@ tbody tr:hover { background: #f8fafc; }
         </div>
 
         <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">\u{1F517} How FIO talks to BT4YOU Executive Bot</h3>
+          <p style="margin:0 0 8px 0;font-size:13px;line-height:1.6;color:var(--text);">FIO does not invent its own roster of people or department names. It pulls them from <strong>BT4YOU Executive Bot</strong> — the holding's source-of-truth for who works on what.</p>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li><strong>People</strong> (52 humans) come from <code>BT4YOU/data/holding_config.json</code> &rarr; <code>nodes[].person_name</code>. Each node also carries the Asana GID, role title, and parent — so when you pick "Uploaded by" in Upload or "Approver" in Approve, you're picking the same Artjoms / Rita / Anastasiia who lives in Asana.</li>
+            <li><strong>Departments</strong> (6 of them: Product / BD / F&amp;A / Operations / Marketing / HR) come from <code>BT4YOU/data/brand.json</code> &rarr; <code>departments</code>. The colors of the badges and dropdowns are the brand colors defined there.</li>
+            <li><strong>Profit-center &harr; department</strong> mapping lives in FIO's <code>services/bt4you_sync.py</code>: Alps2Alps and Holding expose all 6 departments, Skibookers / Skipasser show 4, Mountly shows 3, etc.</li>
+            <li><strong>Why this matters:</strong> when Asana adds a new manager to a stream, BT4YOU picks them up first; FIO reads BT4YOU's snapshot on every API call to <code>/api/people</code>. <em>One add — appears everywhere.</em> No duplicate maintenance.</li>
+            <li><strong>Outbound: P&amp;L feed</strong>. FIO can push its accounting actuals back to BT4YOU's holding dashboard via <code>/api/sync-bt4you</code> &rarr; BT4YOU's <code>/api/holding/cashflow/fact/generic</code>. So the executive bot's CEO view of cashflow comes from FIO posts.</li>
+            <li><strong>Cloud snapshot:</strong> the deployed instance on Fly bundles a snapshot of BT4YOU data taken at deploy time (no shared filesystem with your laptop). When BT4YOU changes meaningfully, ping me to re-snapshot.</li>
+          </ul>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 12px 0;font-size:16px;">\u{1F4C4} Anatomy of a document card (View modal)</h3>
+          <p style="margin:0 0 8px 0;font-size:13px;line-height:1.6;color:var(--muted);">When you click <em>View</em> on any row, this modal opens. Top to bottom:</p>
+          <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.8;">
+            <li><strong>Parser-failure banner</strong> (red, only if shown) — Anthropic credits ran out, or the file is blank / unreadable. Vendor and amount will be empty; fill them manually.</li>
+            <li><strong>VIES verification badge</strong>:
+              <ul style="margin:4px 0 4px 0;padding-left:18px;">
+                <li>\u{2713} green — official EU registry confirms the VAT and we auto-filled the legal name + address.</li>
+                <li>\u{00D7} red — VAT looks like one but VIES says invalid. Use the remediation buttons (Re-check VIES / Lursoft for LV / Äriregister for EE / Mark as manually verified with a registry URL).</li>
+                <li>No badge — vendor has no EU VAT (e.g. US company). That's fine, just review manually.</li>
+              </ul>
+            </li>
+            <li><strong>Header card</strong>: vendor name, VAT, address, total amount in € + tax/net breakdown, document date. All extracted by Claude Vision.</li>
+            <li><strong>Terminal-receipt link</strong> (only if applicable) — when the parser detected a card terminal receipt that matches a purchase invoice, both are linked here.</li>
+            <li><strong>Expense Policy badges</strong> — quick green/yellow/red status checks (corporate-policy compliance, missing VAT, etc.).</li>
+            <li><strong>Warnings</strong> — anything the parser wanted to flag (e.g. "currency ambiguous", "multiple totals detected").</li>
+            <li><strong>Proposed Classification</strong> — Claude's top 2-3 ledger codes with confidence scores. Click any to select. Codes &ge; 90% confidence auto-post on upload.</li>
+            <li><strong>Override</strong> — manual ledger code + profit center, in case Claude's suggestions are wrong. <em>Hidden when the doc is Split-allocated</em> (each split row carries its own code).</li>
+            <li><strong>Line Items</strong> — each detected line of the invoice. If the invoice mixes categories (e.g. food + travel on one bank statement), per-line dropdowns let you attribute each line separately. <em>Hidden when split.</em></li>
+            <li><strong>Cost allocation</strong> (collapsed block) — <em>this is the "Split" feature</em>. Add rows of <code>Profit center</code> / <code>Ledger code</code> / <code>Share %</code> / <code>Amount €</code> / <code>Note</code>. Picking percent auto-fills amount and vice-versa. Sum of shares must be 100. <strong>Save allocation</strong> commits the split — if the doc was already posted, FIO automatically subtracts the old single-PC posting and re-posts to each stream pro-rata (no double-counting).</li>
+            <li><strong>Bottom controls (action bar)</strong>:
+              <ul style="margin:4px 0 4px 0;padding-left:18px;">
+                <li><em>Profit Center / Ledger code / Department / Cost reason / Approver</em> — five labelled dropdowns.</li>
+                <li>\u{1F4BE} <strong>Save changes</strong> (blue) — persist edits without posting. <em>Button pulses orange when there are unsaved changes.</em></li>
+                <li>\u{2705} <strong>Approve &amp; Post</strong> (green) — finalize. Writes to P&amp;L, appears in Accounting and Analytics.</li>
+                <li>\u{1F6AB} <strong>Reject</strong> (red) — decline with a reason.</li>
+                <li>"<em>Always classify this vendor as selected code</em>" — train the classifier. Next document from the same vendor auto-picks this code.</li>
+              </ul>
+            </li>
+            <li><strong>👍 / 👎 feedback buttons</strong> (in the Approve table row, not in the modal) — quick ML feedback for the classifier. 👎 opens a what's-wrong checklist.</li>
+          </ol>
+        </div>
+
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
           <h3 style="margin:0 0 12px 0;font-size:16px;">\u{1F6A8} Suspicious findings (Analytics)</h3>
           <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
             <li>\u{1F534} <strong>high</strong>: amount outlier (&gt;3 sigma above mean for the same code).</li>
@@ -3034,8 +3080,15 @@ function renderDetails(doc) {
     var eeLookupUrl = (country === 'EE' && number) ? ('https://ariregister.rik.ee/eng/find_company?name=&company_number=' + encodeURIComponent(number)) : '';
     var manuallyVerified = doc.vat_manually_verified;
     if (manuallyVerified) {
+      var urlLine = '';
+      if (doc.vat_verification_url) {
+        urlLine = '<div style="font-size:11px;margin-top:3px;"><a href="' + esc(doc.vat_verification_url) + '" target="_blank" rel="noopener" style="color:#b45309;">\u{1F517} ' + esc(doc.vat_verification_url.substring(0, 80)) + (doc.vat_verification_url.length > 80 ? '...' : '') + '</a></div>';
+      }
+      var noteLine = doc.vat_verification_note ? '<div style="font-size:11px;color:#78350f;margin-top:3px;font-style:italic;">"' + esc(doc.vat_verification_note) + '"</div>' : '';
+      var atLine = doc.vat_verified_at ? '<div style="font-size:10px;color:#a16207;margin-top:3px;">at ' + esc(doc.vat_verified_at.substring(0, 16).replace('T', ' ')) + ' UTC</div>' : '';
       html += '<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #f59e0b;border-radius:6px;background:#f59e0b15;">' +
         '<div style="font-size:12px;color:#b45309;font-weight:700;">⚠️ VAT not in VIES, but marked manually verified by ' + esc(doc.vat_verified_by || 'user') + '</div>' +
+        urlLine + noteLine + atLine +
       '</div>';
     } else {
       html += '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dc2626;border-left:4px solid #dc2626;border-radius:6px;background:#dc262615;">' +
@@ -3203,6 +3256,28 @@ function renderDetails(doc) {
     html += '<div style="color:var(--muted);font-size:13px;">No classification available.</div>';
   }
 
+  // When the document is split across multiple business units, the single-PC
+  // Override + per-line classification lose meaning -- each allocation row has
+  // its own code/PC. Show a 'split summary' banner instead of these sections.
+  var docIsSplit = (doc.allocations || []).filter(function(a) { return a && a.profit_center; }).length > 1;
+
+  if (docIsSplit) {
+    var splitSummary = (doc.allocations || []).map(function(a) {
+      var pct = (a.percentage !== null && a.percentage !== undefined) ? Number(a.percentage).toFixed(0) + '%' : '';
+      var amt = (a.amount !== null && a.amount !== undefined) ? (doc.currency || 'EUR') + ' ' + Number(a.amount).toFixed(2) : '';
+      var code = a.ledger_code ? ' (' + a.ledger_code + ')' : '';
+      return esc(a.profit_center) + code + ' — ' + esc(pct) + (amt ? ' / ' + esc(amt) : '');
+    }).join(' &nbsp;·&nbsp; ');
+    html += '<div style="margin-top:14px;padding:12px 14px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;">' +
+      '<div style="font-weight:700;color:#92400e;margin-bottom:4px;">❖ Split-allocated across ' + (doc.allocations || []).length + ' streams</div>' +
+      '<div style="font-size:12px;color:#78350f;">' + splitSummary + '</div>' +
+      '<div style="font-size:11px;color:#a16207;margin-top:6px;">Override and per-line classification are hidden because each allocation row carries its own code &amp; profit center. Edit the Cost allocation table above to change.</div>' +
+    '</div>';
+    // Keep #edit-code element so other functions (selectCode) don't break, but make it invisible
+    html += '<input type="hidden" id="edit-code" value="' + esc(doc.ledger_code || selectedCode || '') + '">';
+    html += '<input type="hidden" id="edit-pc" value="' + esc(doc.profit_center || '') + '">';
+  } else {
+
   // Edit row
   html += '<h4>Override</h4>';
   html += '<div class="edit-row">';
@@ -3332,6 +3407,8 @@ function renderDetails(doc) {
               'Per-row dropdowns work too. Saved when you click Save or Approve.</div>';
     }
   }
+
+  }  // ← close the `if (!docIsSplit)` else-branch from above
 
   // ── Phase 3.5 — Multi-stream cost allocation (Katia split-entity case)
   var existingAllocs = [];
@@ -3975,14 +4052,25 @@ function markVatVerified(docId) {
           || (document.getElementById('upload-user') || {}).value
           || localStorage.getItem('fio_uploaded_by')
           || 'user';
-  var note = prompt('Where did you verify this VAT? (e.g. "Lursoft confirmed", "called vendor")');
-  if (note === null) return;
+  // Two-step dialog: URL of the registry where verified + short note
+  var url = prompt(
+    'Paste the URL of the registry page where you verified this VAT.\n' +
+    '(e.g. https://www.lursoft.lv/...  or  https://ariregister.rik.ee/...)\n\n' +
+    'Required — leave blank to cancel.'
+  );
+  if (!url) return;
+  url = url.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    if (!confirm('That doesn\'t look like a URL. Save anyway?')) return;
+  }
+  var note = prompt('Optional note: what did you confirm? (e.g. "company active, VAT valid")') || '';
   api('POST', '/api/documents/' + docId + '/vat-verify', {
     verified_by: name,
-    note: note || ''
+    verification_url: url,
+    note: note
   }).then(function(d) {
     if (d.status === 'verified') {
-      showToast('Marked as manually verified by ' + name, 'success');
+      showToast('VAT verified by ' + name + ' ✓  (URL recorded for audit)', 'success');
       reloadModal();
     } else if (d.error) {
       showToast('Failed: ' + d.error, 'error');
