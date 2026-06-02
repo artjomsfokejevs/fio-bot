@@ -1748,7 +1748,10 @@ table .actions { min-width: 90px; }
       <div id="cp-stage-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
 
       <!-- Per-status counter strip (diagnostic + jump-to-stage) -->
-      <div id="cp-status-counts" style="margin-bottom:14px;"></div>
+      <div id="cp-status-counts" style="margin-bottom:10px;"></div>
+
+      <!-- Totals: grand total + breakdown by profit center, this stage only -->
+      <div id="cp-totals" style="margin-bottom:14px;"></div>
 
       <div class="table-wrapper cp-table-wrapper">
         <table class="cp-table" style="font-size:12px;">
@@ -2921,6 +2924,8 @@ function loadConfirmPaymentPanel() {
     }
     try { renderCPStatusCounts((d && d.status_counts_all) || {}); }
     catch (e) { console.error('renderCPStatusCounts failed', e); }
+    try { renderCPTotals((d && d.documents) || []); }
+    catch (e) { console.error('renderCPTotals failed', e); }
     try { renderCPRows((d && d.documents) || []); }
     catch (e) {
       console.error('renderCPRows failed', e);
@@ -2931,6 +2936,95 @@ function loadConfirmPaymentPanel() {
       '<tr><td colspan="13" class="empty-state" style="color:var(--red);">Failed to load: ' +
       esc(err.message || String(err)) + '</td></tr>';
   });
+}
+
+function renderCPTotals(docs) {
+  var box = document.getElementById('cp-totals');
+  if (!box) return;
+  if (!docs.length) { box.innerHTML = ''; return; }
+
+  // Aggregate: { currency -> { pc -> amount } } and { currency -> total }
+  // For split-allocated docs, distribute amount per allocation row's PC.
+  var byCcyByPc = {};
+  var totalsByCcy = {};
+  var docCountByCcy = {};
+
+  docs.forEach(function(d) {
+    var ccy = (d.currency || 'EUR').toUpperCase();
+    var amount = Number(d.amount) || 0;
+    if (!amount) return;
+    docCountByCcy[ccy] = (docCountByCcy[ccy] || 0) + 1;
+
+    var allocs = (d.allocations || []).filter(function(a) { return a && a.profit_center; });
+    if (allocs.length >= 2) {
+      // Distribute by allocation row -- prefer explicit amount, fall back to percentage of total
+      allocs.forEach(function(a) {
+        var pc = a.profit_center || '—';
+        var slice;
+        if (a.amount !== null && a.amount !== undefined) {
+          slice = Number(a.amount) || 0;
+        } else if (a.percentage !== null && a.percentage !== undefined) {
+          slice = amount * Number(a.percentage) / 100;
+        } else {
+          slice = 0;
+        }
+        if (!byCcyByPc[ccy]) byCcyByPc[ccy] = {};
+        byCcyByPc[ccy][pc] = (byCcyByPc[ccy][pc] || 0) + slice;
+        totalsByCcy[ccy] = (totalsByCcy[ccy] || 0) + slice;
+      });
+    } else {
+      var pc = d.profit_center || '—';
+      if (!byCcyByPc[ccy]) byCcyByPc[ccy] = {};
+      byCcyByPc[ccy][pc] = (byCcyByPc[ccy][pc] || 0) + amount;
+      totalsByCcy[ccy] = (totalsByCcy[ccy] || 0) + amount;
+    }
+  });
+
+  var ccys = Object.keys(totalsByCcy).sort();
+  if (!ccys.length) { box.innerHTML = ''; return; }
+
+  var stageName = (CP_STAGES.find ? CP_STAGES.find(function(s){return s.id===CP_STAGE;}) : null);
+  stageName = stageName ? stageName.label : CP_STAGE;
+
+  var html = '<div style="padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:10px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:10px;">' +
+      '<div style="font-size:13px;color:var(--text);font-weight:600;">' +
+        '💰 To allocate · ' + esc(stageName) +
+      '</div>' +
+      '<div style="font-size:13px;">' +
+        ccys.map(function(c) {
+          return '<strong>' + esc(c) + ' ' + Number(totalsByCcy[c]).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) +
+                 '</strong> <span style="color:var(--muted);font-size:11px;">across ' + docCountByCcy[c] + ' doc' + (docCountByCcy[c]===1?'':'s') + '</span>';
+        }).join(' &nbsp;·&nbsp; ') +
+      '</div>' +
+    '</div>';
+
+  // Per-currency, per-PC breakdown
+  ccys.forEach(function(ccy) {
+    var pcSums = byCcyByPc[ccy] || {};
+    var entries = Object.keys(pcSums).map(function(pc) { return { pc: pc, amount: pcSums[pc] }; })
+                  .sort(function(a, b) { return b.amount - a.amount; });
+    var total = totalsByCcy[ccy] || 1;
+
+    html += '<div style="margin-top:6px;">' +
+      (ccys.length > 1 ? '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">' + esc(ccy) + '</div>' : '') +
+      entries.map(function(e) {
+        var pct = total > 0 ? (e.amount / total * 100) : 0;
+        var pcLabel = (PC_LABELS && PC_LABELS[e.pc]) ? PC_LABELS[e.pc] : (e.pc === '—' ? 'Unassigned' : e.pc);
+        var color = (PC_COLORS && PC_COLORS[e.pc]) ? PC_COLORS[e.pc] : '#94a3b8';
+        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;font-size:12px;">' +
+          '<div style="width:28px;font-family:monospace;color:' + color + ';font-weight:700;">' + esc(e.pc) + '</div>' +
+          '<div style="width:120px;">' + esc(pcLabel) + '</div>' +
+          '<div style="flex:1;height:8px;background:#eef2f7;border-radius:4px;overflow:hidden;"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + color + ';"></div></div>' +
+          '<div style="width:140px;text-align:right;font-weight:600;">' + esc(ccy) + ' ' + Number(e.amount).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</div>' +
+          '<div style="width:50px;text-align:right;color:var(--muted);font-size:11px;">' + pct.toFixed(1) + '%</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  });
+
+  html += '</div>';
+  box.innerHTML = html;
 }
 
 function renderCPStatusCounts(counts) {
