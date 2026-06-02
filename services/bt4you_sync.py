@@ -62,6 +62,30 @@ def get_bt4you_data_path() -> str:
     return os.path.join(base, "data")
 
 
+def _is_group_entry(name: str) -> bool:
+    """Detect a holding_config 'person_name' that actually packs multiple
+    humans into one row (BD Managers, BD Team, etc.).
+
+    Heuristics:
+      - contains ',' (comma-separated names)
+      - contains '...' or '…' (truncation indicating more names)
+      - contains ' & ' (English 'and')
+      - contains ' и ' or ' und ' (other languages)
+    """
+    if not name:
+        return False
+    lower = name.lower()
+    if "," in name:
+        return True
+    if "..." in name or "…" in name:
+        return True
+    if " & " in name or " and " in lower:
+        return True
+    if " и " in (" " + lower + " ") or " und " in lower:
+        return True
+    return False
+
+
 def _read_json(path: str) -> Optional[Any]:
     """Read a JSON file; return None on any failure (logs warning)."""
     try:
@@ -138,6 +162,11 @@ def load_people() -> List[Dict[str, Any]]:
             continue
         name = (node.get("person_name") or "").strip()
         if not name or name.upper() == "VACANT":
+            continue
+        # Skip group entries (multiple people packed into one node).
+        # Per spec: 'каждый человек отвечает за свои действия' -- only
+        # individual humans get an FIO identity.
+        if _is_group_entry(name):
             continue
         if name in seen_names:
             continue

@@ -37,12 +37,24 @@ a:hover { text-decoration: underline; }
 /* Header */
 .header {
   background: linear-gradient(135deg, #102a52 0%, #1a3f7a 50%, #1a56db 100%);
-  padding: 0 28px;
+  padding: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
+  justify-content: center;
   height: 56px;
   border-bottom: none;
+}
+.header > .header-left,
+.header > .header-right {
+  display: flex;
+  align-items: center;
+}
+/* Inner constraint so tabs + chip stay aligned to the 1400px content column */
+.header { gap: 0; }
+.header-left { padding-left: 28px; flex: 1 1 auto; min-width: 0; max-width: 1100px; }
+.header-right { padding-right: 28px; flex: 0 0 auto; }
+@media (min-width: 1500px) {
+  .header { padding: 0 calc((100vw - 1400px) / 2); }
 }
 .header-left {
   display: flex;
@@ -1218,22 +1230,22 @@ tbody tr:hover { background: #f8fafc; }
 </header>
 
 <!-- ==================== SIGN-IN MODAL ==================== -->
-<div id="signin-overlay" class="modal-overlay" style="display:none;">
-  <div class="modal" style="max-width:480px;">
+<div id="signin-overlay" class="modal-overlay">
+  <div class="modal" style="max-width:500px;width:calc(100vw - 40px);">
     <div class="modal-header">
-      <h3>👤 Who's logged in?</h3>
+      <h3 style="margin:0;">👤 Who's logged in?</h3>
       <button class="modal-close" onclick="closeSignInModal()">&times;</button>
     </div>
-    <div class="modal-body" style="padding:20px;">
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">
+    <div class="modal-body" style="padding:20px;overflow-wrap:break-word;word-wrap:break-word;">
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">
         Pick your name to enable role-specific tabs. Your selection is stored on this browser only —
         switch by clicking your name in the top-right at any time.
       </p>
-      <select id="signin-picker" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:6px;">
+      <select id="signin-picker" style="width:100%;max-width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:6px;box-sizing:border-box;">
         <option value="">— Loading roster... —</option>
       </select>
-      <div id="signin-role-hint" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
-      <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">
+      <div id="signin-role-hint" style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.5;overflow-wrap:break-word;word-break:break-word;"></div>
+      <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="closeSignInModal()">Cancel</button>
         <button class="btn btn-success" onclick="confirmSignIn()">Sign in</button>
       </div>
@@ -1712,8 +1724,11 @@ tbody tr:hover { background: #f8fafc; }
         Once <em>Paid</em> is set, the entry shifts into operational cashflow in Analytics.
       </p>
 
-      <!-- Sub-tabs for the 3 stages -->
-      <div id="cp-stage-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+      <!-- Sub-tabs for the 4 stages -->
+      <div id="cp-stage-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
+
+      <!-- Per-status counter strip (diagnostic + jump-to-stage) -->
+      <div id="cp-status-counts" style="margin-bottom:14px;"></div>
 
       <div class="table-wrapper">
         <table style="font-size:12px;">
@@ -1796,7 +1811,7 @@ tbody tr:hover { background: #f8fafc; }
   </div>
 
   <!-- Asana import picker modal -->
-  <div id="asana-import-overlay" class="modal-overlay" style="display:none;">
+  <div id="asana-import-overlay" class="modal-overlay">
     <div class="modal" style="max-width:560px;">
       <div class="modal-header">
         <h3>📥 Import an Asana account</h3>
@@ -2667,7 +2682,7 @@ function applyTabVisibility(allowed) {
 
 function openSignInModal() {
   var overlay = document.getElementById('signin-overlay');
-  overlay.style.display = 'flex';
+  overlay.classList.add('active');  // CSS handles flex-centering on .active
   var sel = document.getElementById('signin-picker');
   var hint = document.getElementById('signin-role-hint');
   if (!ALL_PEOPLE.length) {
@@ -2705,7 +2720,7 @@ function openSignInModal() {
 }
 
 function closeSignInModal() {
-  document.getElementById('signin-overlay').style.display = 'none';
+  document.getElementById('signin-overlay').classList.remove('active');
 }
 
 function confirmSignIn() {
@@ -2786,7 +2801,7 @@ function deleteAdminUser(name) {
 var ASANA_IMPORT_CANDIDATES = [];
 
 function openImportFromAsana() {
-  document.getElementById('asana-import-overlay').style.display = 'flex';
+  document.getElementById('asana-import-overlay').classList.add('active');
   document.getElementById('asana-import-filter').value = '';
   api('GET', '/api/users/import-candidates').then(function(d) {
     ASANA_IMPORT_CANDIDATES = d.candidates || [];
@@ -2795,7 +2810,7 @@ function openImportFromAsana() {
 }
 
 function closeImportFromAsana() {
-  document.getElementById('asana-import-overlay').style.display = 'none';
+  document.getElementById('asana-import-overlay').classList.remove('active');
 }
 
 function renderImportCandidates() {
@@ -2860,14 +2875,12 @@ function saveAdminRole(idx) {
 // ===========================================================================
 // Confirm-for-Payment tab
 // ===========================================================================
-var CP_STAGE = 'awaiting';  // 'awaiting' | 'approved' | 'paid'
+var CP_STAGE = 'budget_check';  // 4-stage workflow per spec
 var CP_STAGES = [
-  { id: 'awaiting', label: 'Awaiting CEO approval',  badge: 'badge-classified',
-    statuses: ['posted'], color: '#0ea5e9' },
-  { id: 'approved', label: 'Approved · awaiting payment', badge: 'badge-approved',
-    statuses: ['confirmed_to_pay'], color: '#f59e0b' },
-  { id: 'paid', label: 'Paid',                       badge: 'badge-posted',
-    statuses: ['paid'], color: '#10b981' },
+  { id: 'budget_check',     label: 'Budget check (Bookkeeper)',     color: '#0ea5e9' },
+  { id: 'awaiting_ceo',     label: 'Awaiting Holding CEO',          color: '#f59e0b' },
+  { id: 'awaiting_payment', label: 'Approved · awaiting payment',   color: '#ec4899' },
+  { id: 'paid',             label: 'Paid',                          color: '#10b981' },
 ];
 
 function renderCPStageBar() {
@@ -2895,10 +2908,46 @@ function loadConfirmPaymentPanel() {
     if (d.error) {
       document.getElementById('cp-rows').innerHTML =
         '<tr><td colspan="13" class="empty-state" style="color:var(--red);">' + esc(d.message || d.error) + '</td></tr>';
+      renderCPStatusCounts({});
       return;
     }
+    renderCPStatusCounts(d.status_counts_all || {});
     renderCPRows(d.documents || []);
   });
+}
+
+function renderCPStatusCounts(counts) {
+  var box = document.getElementById('cp-status-counts');
+  if (!box) return;
+  var keys = Object.keys(counts);
+  if (!keys.length) { box.innerHTML = ''; return; }
+  var STATUS_COLORS = {
+    pending: '#94a3b8', parsed: '#0ea5e9', classified: '#3b82f6',
+    approved: '#8b5cf6', posted: '#0284c7',
+    budget_validated: '#0ea5e9', confirmed_to_pay: '#f59e0b',
+    paid: '#10b981', rejected: '#dc2626',
+  };
+  // Map each FIO status to which CP stage it's visible in (or empty if none)
+  var STAGE_FOR = {
+    approved: 'budget_check', posted: 'budget_check',
+    budget_validated: 'awaiting_ceo',
+    confirmed_to_pay: 'awaiting_payment',
+    paid: 'paid',
+  };
+  var total = keys.reduce(function(s, k) { return s + (counts[k] || 0); }, 0);
+  box.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px;">' +
+    '<span style="color:var(--muted);">Status snapshot · total ' + total + ':</span>' +
+    keys.map(function(k) {
+      var c = STATUS_COLORS[k] || '#64748b';
+      var inThisStage = STAGE_FOR[k] === CP_STAGE;
+      var border = inThisStage ? ('2px solid ' + c) : ('1px solid ' + c + '44');
+      var goto = '';
+      if (STAGE_FOR[k]) {
+        goto = ' onclick="setCPStage(\'' + STAGE_FOR[k] + '\')" style="cursor:pointer;"';
+      }
+      return '<span' + goto + ' title="Click to jump to this stage" style="padding:3px 8px;border-radius:10px;background:' + c + '15;color:' + c + ';border:' + border + ';font-weight:600;">' +
+        esc(k) + ' · ' + counts[k] + '</span>';
+    }).join('') + '</div>';
 }
 
 function fmtDate(iso) {
@@ -2928,9 +2977,15 @@ function renderCPRows(docs) {
     var amount = d.amount ? (d.currency || 'EUR') + ' ' + Number(d.amount).toLocaleString('en', {minimumFractionDigits:2}) : '—';
     var ceoCell = '—', paidCell = '—', deltaCell = '—', actionsCell = '—';
 
-    if (CP_STAGE === 'awaiting' && (ME.role === 'admin' || ME.role === 'holding_ceo')) {
-      actionsCell = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay this week</button>';
-    } else if (CP_STAGE === 'approved') {
+    if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
+      actionsCell = '<button class="btn btn-sm btn-success" onclick="markBudgetOK(\'' + d.id + '\')">✓ Budget OK</button>';
+    } else if (CP_STAGE === 'awaiting_ceo') {
+      ceoCell = '<div style="font-size:11px;color:#0ea5e9;">budget OK at ' + esc(fmtDate(d.budget_validated_at)) + '</div>' +
+                '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.budget_validated_by || '—') + '</div>';
+      if (ME.role === 'admin' || ME.role === 'holding_ceo') {
+        actionsCell = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay this week</button>';
+      }
+    } else if (CP_STAGE === 'awaiting_payment') {
       ceoCell = '<div style="font-weight:600;color:#f59e0b;">' + esc(fmtDate(d.confirmed_to_pay_at)) + '</div>' +
                 '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.confirmed_to_pay_by || '—') + '</div>';
       if (ME.role === 'admin' || ME.role === 'bookkeeper') {
@@ -2964,6 +3019,21 @@ function renderCPRows(docs) {
   }).join('');
 }
 
+function markBudgetOK(docId) {
+  var note = prompt('Optional budget note (e.g. "within Q2 consulting envelope")') || '';
+  api('POST', '/api/documents/' + docId + '/budget-validate', {
+    validated_by: ME.signed_in_as,
+    note: note
+  }).then(function(d) {
+    if (d.status === 'budget_validated') {
+      showToast('Budget OK ✓ — handed to CEO', 'success');
+      loadConfirmPaymentPanel();
+    } else {
+      showToast('Failed: ' + (d.error || 'unknown'), 'error');
+    }
+  });
+}
+
 function confirmPayment(docId) {
   var note = prompt('Optional note for this approval (e.g. "ok, pay Wed")');
   api('POST', '/api/documents/' + docId + '/confirm-payment', {
@@ -2971,7 +3041,7 @@ function confirmPayment(docId) {
     note: note || ''
   }).then(function(d) {
     if (d.status === 'confirmed_to_pay') {
-      showToast('Approved to pay ✓', 'success');
+      showToast('Approved to pay ✓ — handed to bookkeeper', 'success');
       loadConfirmPaymentPanel();
     } else {
       showToast('Failed: ' + (d.error || 'unknown'), 'error');

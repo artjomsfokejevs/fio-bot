@@ -1329,20 +1329,24 @@ def payment_queue():
     if err:
         return err
 
-    stage = (request.args.get("stage") or "awaiting").strip()
-    if stage == "awaiting":
-        # 'awaiting' = needs the Holding-CEO tick. Include both 'approved'
-        # (post_to_actuals didn't run yet) and 'posted' (posted to P&L,
-        # ready to be paid). This fixes the bug where docs sitting at
-        # 'approved' never reached the Confirm tab.
+    stage = (request.args.get("stage") or "budget_check").strip()
+    # 4-stage workflow (per spec — bookkeeper validates budget first, then CEO,
+    # then bookkeeper pays):
+    #
+    #   posted/approved → [Bookkeeper: Budget OK] → budget_validated
+    #                  → [Holding CEO: Approve to pay] → confirmed_to_pay
+    #                  → [Bookkeeper: Mark paid] → paid
+    if stage in ("budget_check", "awaiting"):  # 'awaiting' kept for back-compat
         target_statuses = ("approved", "posted")
-    elif stage == "approved":
+    elif stage == "awaiting_ceo":
+        target_statuses = ("budget_validated",)
+    elif stage in ("awaiting_payment", "approved"):  # 'approved' kept for back-compat
         target_statuses = ("confirmed_to_pay",)
     elif stage == "paid":
         target_statuses = ("paid",)
     else:
         return jsonify({"error": "Invalid stage",
-                        "allowed": ["awaiting", "approved", "paid"]}), 400
+                        "allowed": ["budget_check", "awaiting_ceo", "awaiting_payment", "paid"]}), 400
 
     placeholders = ",".join("?" for _ in target_statuses)
     conn = db.get_connection()
@@ -1370,12 +1374,46 @@ def payment_queue():
     })
 
 
+@app.route("/api/documents/<doc_id>/budget-validate", methods=["POST"])
+def budget_validate(doc_id: str):
+    """Bookkeeper (or admin) confirms the cost fits the budget.
+
+    Status transitions: approved | posted -> budget_validated.
+    First step in the 4-stage payment workflow.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    if doc.get("status") not in ("approved", "posted"):
+        return jsonify({"error": "Only 'approved' or 'posted' docs can be budget-validated",
+                        "current_status": doc.get("status")}), 400
+
+    body = request.get_json(silent=True) or {}
+    validated_by = body.get("validated_by") or _current_user_name() or "user"
+    now = datetime.utcnow().isoformat()
+    db.update_document(doc_id, {
+        "status": "budget_validated",
+        "budget_validated_at": now,
+        "budget_validated_by": validated_by,
+        "budget_validated_note": body.get("note") or None,
+    })
+    db.insert_audit_log(doc_id, "budget_validated", {
+        "by": validated_by, "at": now, "note": body.get("note") or "",
+    })
+    return jsonify({"status": "budget_validated", "document": db.get_document(doc_id)})
+
+
 @app.route("/api/documents/<doc_id>/confirm-payment", methods=["POST"])
 def confirm_payment(doc_id: str):
     """Holding CEO (or admin) ticks 'approve to pay this week'.
 
-    Status transitions: posted -> confirmed_to_pay.
-    Captures who + when + optional note.
+    Status transitions: budget_validated -> confirmed_to_pay.
+    (Legacy 'posted'/'approved' also accepted for back-compat when the
+    bookkeeper step was skipped.)
     """
     err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_HOLDING_CEO)
     if err:
@@ -1384,8 +1422,8 @@ def confirm_payment(doc_id: str):
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
-    if doc.get("status") not in ("posted",):
-        return jsonify({"error": "Only 'posted' docs can be confirmed for payment",
+    if doc.get("status") not in ("budget_validated", "approved", "posted"):
+        return jsonify({"error": "Doc must be budget-validated (or at least posted/approved) before CEO can confirm",
                         "current_status": doc.get("status")}), 400
 
     body = request.get_json(silent=True) or {}

@@ -156,6 +156,10 @@ def init_db() -> None:
             ("confirmed_to_pay_at", "ALTER TABLE documents ADD COLUMN confirmed_to_pay_at TEXT"),
             ("confirmed_to_pay_by", "ALTER TABLE documents ADD COLUMN confirmed_to_pay_by TEXT"),
             ("confirmed_to_pay_note", "ALTER TABLE documents ADD COLUMN confirmed_to_pay_note TEXT"),
+            # Bookkeeper budget pre-check (Phase 7.2)
+            ("budget_validated_at", "ALTER TABLE documents ADD COLUMN budget_validated_at TEXT"),
+            ("budget_validated_by", "ALTER TABLE documents ADD COLUMN budget_validated_by TEXT"),
+            ("budget_validated_note", "ALTER TABLE documents ADD COLUMN budget_validated_note TEXT"),
             ("payment_executed_at", "ALTER TABLE documents ADD COLUMN payment_executed_at TEXT"),
             ("payment_executed_by", "ALTER TABLE documents ADD COLUMN payment_executed_by TEXT"),
             ("payment_account", "ALTER TABLE documents ADD COLUMN payment_account TEXT"),
