@@ -386,8 +386,14 @@ tbody tr:hover { background: #f8fafc; }
 .btn-success { background: var(--green); color: white; }
 .btn-danger { background: var(--red); color: white; }
 .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-.btn-sm { padding: 4px 10px; font-size: 11px; }
-.actions { display: flex; gap: 6px; }
+.btn-sm { padding: 4px 10px; font-size: 11px; white-space: nowrap; }
+/* Action cells in dense tables: let buttons wrap to a second line instead of
+   getting clipped on narrower viewports. */
+.actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.actions .btn { flex: 0 0 auto; }
+table .actions { min-width: 90px; }
+/* Approve / Upload tables: always allow horizontal scroll if columns won't fit */
+.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 /* Modal */
 .modal-overlay {
@@ -2904,15 +2910,28 @@ function setCPStage(stage) {
 
 function loadConfirmPaymentPanel() {
   renderCPStageBar();
+  var rowsEl = document.getElementById('cp-rows');
+  if (rowsEl) rowsEl.innerHTML = '<tr><td colspan="13" class="empty-state">Loading…</td></tr>';
   api('GET', '/api/payment-queue?stage=' + CP_STAGE).then(function(d) {
-    if (d.error) {
-      document.getElementById('cp-rows').innerHTML =
-        '<tr><td colspan="13" class="empty-state" style="color:var(--red);">' + esc(d.message || d.error) + '</td></tr>';
+    if (d && d.error) {
+      rowsEl.innerHTML =
+        '<tr><td colspan="13" class="empty-state" style="color:var(--red);">' +
+        esc(d.message || d.error) + '<br><span style="font-size:11px;">your role: ' +
+        esc(d.your_role || (ME && ME.role) || 'unknown') + '</span></td></tr>';
       renderCPStatusCounts({});
       return;
     }
-    renderCPStatusCounts(d.status_counts_all || {});
-    renderCPRows(d.documents || []);
+    try { renderCPStatusCounts((d && d.status_counts_all) || {}); }
+    catch (e) { console.error('renderCPStatusCounts failed', e); }
+    try { renderCPRows((d && d.documents) || []); }
+    catch (e) {
+      console.error('renderCPRows failed', e);
+      rowsEl.innerHTML = '<tr><td colspan="13" class="empty-state" style="color:var(--red);">UI error: ' + esc(e.message || String(e)) + '</td></tr>';
+    }
+  }).catch(function(err) {
+    rowsEl.innerHTML =
+      '<tr><td colspan="13" class="empty-state" style="color:var(--red);">Failed to load: ' +
+      esc(err.message || String(err)) + '</td></tr>';
   });
 }
 
