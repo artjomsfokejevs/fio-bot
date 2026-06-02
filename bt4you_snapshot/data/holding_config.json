@@ -334,17 +334,6 @@
     {
       "asana_gid": "",
       "color": "#f59e0b",
-      "id": "a2a_ops_cs_team",
-      "notes": "Streams: A2A, R2R, UpSale, Food delivery, Ski delivery, SkiPasser, Mountly, Skibookers",
-      "okr": "",
-      "parent": "a2a_ops_cs",
-      "person_name": "—",
-      "title": "(III) Customer Service Team (7/15)",
-      "type": "team"
-    },
-    {
-      "asana_gid": "",
-      "color": "#f59e0b",
       "id": "a2a_ops_cs_care",
       "notes": "Customer care — escalations",
       "okr": "",
@@ -673,83 +662,6 @@
       "type": "team"
     },
     {
-      "asana_gid": "1210045689780884",
-      "color": "#0ea5e9",
-      "id": "vs_skibookers",
-      "notes": "Venture — Skibookers (B2C ski booking)",
-      "okr": "",
-      "parent": "vs_root",
-      "person_name": "Anastasia Lizanets",
-      "title": "(II) SKIBOOKERS — BO",
-      "type": "team"
-    },
-    {
-      "asana_gid": "1212615753086858",
-      "color": "#0ea5e9",
-      "id": "vs_sb_cto",
-      "notes": "CTO",
-      "okr": "",
-      "parent": "vs_skibookers",
-      "person_name": "Anton Terekhov",
-      "title": "CTO — Skibookers",
-      "type": "person"
-    },
-    {
-      "asana_gid": "1210696096858478",
-      "color": "#0ea5e9",
-      "id": "vs_sb_bdmgr",
-      "notes": "BD lead",
-      "okr": "",
-      "parent": "vs_skibookers",
-      "person_name": "Miguel Goncalves",
-      "title": "BD Manager",
-      "type": "person"
-    },
-    {
-      "asana_gid": "1210842991614367",
-      "color": "#0ea5e9",
-      "id": "vs_sb_coord",
-      "notes": "Coordination",
-      "okr": "",
-      "parent": "vs_skibookers",
-      "person_name": "Diana Beisenova",
-      "title": "Team Coordinator",
-      "type": "person"
-    },
-    {
-      "asana_gid": "1211947515000623",
-      "color": "#0ea5e9",
-      "id": "vs_sb_data",
-      "notes": "Analytics (Semen)",
-      "okr": "",
-      "parent": "vs_skibookers",
-      "person_name": "Simeon Kazakov",
-      "title": "Data Analyst",
-      "type": "person"
-    },
-    {
-      "asana_gid": "1211963738224126",
-      "color": "#0ea5e9",
-      "id": "vs_sb_bdteam",
-      "notes": "BD team",
-      "okr": "",
-      "parent": "vs_skibookers",
-      "person_name": "Davit Bagashvili, …",
-      "title": "BD Managers",
-      "type": "team"
-    },
-    {
-      "asana_gid": "",
-      "color": "#0ea5e9",
-      "id": "vs_sb_acct",
-      "notes": "Shared accountant",
-      "okr": "",
-      "parent": "vs_skibookers",
-      "person_name": "Suzan",
-      "title": "Accountant (hourly based)",
-      "type": "person"
-    },
-    {
       "asana_gid": "1210579585370926",
       "color": "#f97316",
       "id": "vs_skipasser",
@@ -891,6 +803,17 @@
       "person_name": "Aleksandra Kulagina",
       "title": "UX/UI Designer (part time)",
       "type": "person"
+    },
+    {
+      "asana_gid": "",
+      "color": "#f59e0b",
+      "id": "a2a_ops_cs_team",
+      "notes": "Streams: A2A, R2R, UpSale, Food delivery, Ski delivery, SkiPasser, Mountly, Skibookers",
+      "okr": "",
+      "parent": "a2a_ops_cs",
+      "person_name": "—",
+      "title": "(III) Customer Service Team (7/15)",
+      "type": "team"
     }
   ],
   "tagline": "Alps2Alps · Venture Studio · Shared Resources · Governance"

@@ -217,6 +217,149 @@ def _make_id(source: str, batch_id: str, row: Dict[str, Any]) -> str:
 # Import
 # ─────────────────────────────────────────────────────────────────
 
+def import_statement(
+    file_bytes: bytes,
+    filename: str,
+    imported_by: str = "user",
+    source_override: Optional[str] = None,
+    profit_center: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Dispatch a bank statement file (CSV / XLSX / PDF) into the CSV pipeline.
+
+    XLSX and PDF are converted to CSV-shaped bytes and routed through the
+    existing import_csv() parser. Each row in the resulting batch can be
+    tagged with `profit_center` so the stakeholder's own stream is pre-set.
+    """
+    name_low = (filename or "").lower()
+    if name_low.endswith(".xlsx") or name_low.endswith(".xls"):
+        try:
+            csv_bytes = _xlsx_to_csv_bytes(file_bytes)
+        except Exception as exc:
+            raise ValueError("Failed to parse XLSX: %s" % exc)
+    elif name_low.endswith(".pdf"):
+        try:
+            csv_bytes = _pdf_to_csv_bytes(file_bytes)
+        except Exception as exc:
+            raise ValueError("Failed to parse PDF: %s" % exc)
+    else:
+        csv_bytes = file_bytes  # assume CSV / TSV
+
+    result = import_csv(csv_bytes, filename, imported_by=imported_by,
+                        source_override=source_override)
+
+    # If the stakeholder pre-set a profit center, stamp the newly inserted rows.
+    if profit_center:
+        pc = profit_center.strip().upper()[:4]
+        if pc:
+            conn = db.get_connection()
+            try:
+                conn.execute(
+                    "UPDATE card_transactions SET profit_center = ? WHERE batch_id = ?",
+                    (pc, result["batch_id"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            result["profit_center_stamped"] = pc
+    return result
+
+
+def _xlsx_to_csv_bytes(xlsx_bytes: bytes) -> bytes:
+    """Convert XLSX → CSV bytes. First worksheet only, all cells stringified."""
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    for row in ws.iter_rows(values_only=True):
+        writer.writerow(["" if c is None else str(c) for c in row])
+    wb.close()
+    return buf.getvalue().encode("utf-8")
+
+
+# Bank-statement PDF parsing heuristic.
+# Lines of interest typically look like:
+#   "01.05.2026   PAYMENT TO ACME LTD   -1,234.56 EUR"
+#   "2026-05-01   ACME LTD   EUR  1,234.56"
+# We extract any line containing a date AND a number that looks like an amount.
+_PDF_DATE_RE = re.compile(
+    r"(?P<date>(?:\d{1,2}[./-]\d{1,2}[./-]\d{2,4})|(?:\d{4}[./-]\d{1,2}[./-]\d{1,2}))"
+)
+_PDF_AMOUNT_RE = re.compile(
+    r"(?P<sign>[-+]?)\s*"
+    r"(?P<num>\d{1,3}(?:[ ,.]\d{3})*[.,]\d{2}|\d+[.,]\d{2})"
+    r"\s*(?P<ccy>EUR|USD|GBP|CHF|PLN|SEK|NOK|DKK|€|\$|£)?"
+)
+
+
+def _pdf_to_csv_bytes(pdf_bytes: bytes) -> bytes:
+    """Extract transactions from a bank-statement PDF into CSV bytes.
+
+    Heuristic: any line that contains BOTH a date pattern and an amount
+    pattern is treated as a transaction. Description = whatever text sits
+    between the date and the amount.
+
+    Output columns match the 'generic' format spec so detect_format() can
+    consume it: posted_at, amount, currency, description.
+    """
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    all_text = []
+    for page in reader.pages:
+        try:
+            t = page.extract_text() or ""
+        except Exception:
+            t = ""
+        all_text.append(t)
+    text = "\n".join(all_text)
+
+    rows: List[Tuple[str, str, str, str]] = []  # (date, amount, currency, description)
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if len(line) < 8:
+            continue
+        d = _PDF_DATE_RE.search(line)
+        if not d:
+            continue
+        a = _PDF_AMOUNT_RE.search(line[d.end():]) or _PDF_AMOUNT_RE.search(line)
+        if not a:
+            continue
+        date_s = d.group("date")
+        amt_raw = a.group("num").replace(" ", "")
+        # European format "1.234,56" → "1234.56"; US format "1,234.56" already OK
+        if amt_raw.count(",") == 1 and amt_raw.count(".") >= 1:
+            amt_raw = amt_raw.replace(".", "").replace(",", ".")
+        elif amt_raw.count(",") == 1 and amt_raw.count(".") == 0:
+            amt_raw = amt_raw.replace(",", ".")
+        elif amt_raw.count(",") > 1:
+            amt_raw = amt_raw.replace(",", "")
+        sign = a.group("sign") or ""
+        amt = sign + amt_raw
+        ccy_raw = (a.group("ccy") or "").upper()
+        ccy = {"€": "EUR", "$": "USD", "£": "GBP"}.get(ccy_raw, ccy_raw) or "EUR"
+
+        # Description = text between date end and amount start
+        desc = line[d.end():a.start() if a.re == _PDF_AMOUNT_RE and a is not None else None].strip()
+        if not desc or len(desc) < 2:
+            desc = line[:d.start()].strip() or line.strip()
+        # Trim trailing tokens (running balance numbers, etc.)
+        desc = re.sub(r"\s+", " ", desc)[:200]
+
+        rows.append((date_s, amt, ccy, desc))
+
+    if not rows:
+        # If we found nothing, surface a synthetic "no rows" CSV that detect_format
+        # will still accept (zero data rows).
+        return b"date,amount,currency,description\n"
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["date", "amount", "currency", "description"])
+    for row in rows:
+        writer.writerow(row)
+    return buf.getvalue().encode("utf-8")
+
+
 def import_csv(
     csv_bytes: bytes,
     filename: str,

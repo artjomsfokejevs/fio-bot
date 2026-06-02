@@ -30,10 +30,12 @@ card_audit_bp = Blueprint("card_audit", __name__, url_prefix="/api/card-audit")
 
 @card_audit_bp.route("/import", methods=["POST"])
 def card_audit_import() -> Any:
-    """Upload bank/card statement CSV. Auto-detects format and persists rows.
+    """Upload bank/card statement (CSV, XLSX, or PDF). Auto-detects format.
 
-    multipart/form-data with field 'file'. Optional form field 'source' to
-    force format (mercury / revolut / stripe / airwallex / generic).
+    multipart/form-data fields:
+      file: required, the statement
+      source: optional, force format (mercury / revolut / stripe / airwallex / generic)
+      profit_center: optional, stamp all rows in this batch with this PC
     """
     f = request.files.get("file")
     if not f or not f.filename:
@@ -44,13 +46,18 @@ def card_audit_import() -> Any:
 
     auth = request.authorization
     imported_by = (request.form.get("imported_by")
+                   or request.headers.get("X-FIO-User")
                    or (auth.username if auth else None)
                    or "user")
     source_override = (request.form.get("source") or "").strip() or None
+    profit_center = (request.form.get("profit_center") or "").strip() or None
 
     try:
-        result = card_audit.import_csv(
-            raw, f.filename, imported_by=imported_by, source_override=source_override
+        result = card_audit.import_statement(
+            raw, f.filename,
+            imported_by=imported_by,
+            source_override=source_override,
+            profit_center=profit_center,
         )
     except Exception as exc:
         logger.exception("card_audit import failed")
@@ -210,3 +217,88 @@ def card_audit_export() -> Any:
     fname = f"fio_card_audit_{period}{'_' + department if department else ''}.csv"
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@card_audit_bp.route("/non-matching/print", methods=["GET"])
+def card_audit_print_non_matching() -> Any:
+    """Print-friendly HTML page listing all unmatched transactions.
+
+    Stakeholder uses this to chase down missing receipts. Browser's native
+    Cmd+P → Save as PDF turns it into a PDF report.
+
+    Query: ?period=YYYY-MM&profit_center=AA  (both optional)
+    """
+    period = (request.args.get("period") or datetime.utcnow().strftime("%Y-%m"))
+    pc = (request.args.get("profit_center") or "").strip().upper() or None
+    rows = card_audit.list_card_tx(period=period, match_status="unmatched", limit=5000)
+    if pc:
+        rows = [r for r in rows if (r.get("profit_center") or "").upper() == pc]
+
+    total_eur = sum(float(r.get("amount_eur") or 0) for r in rows)
+    pc_label = pc or "All streams"
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    table_rows = []
+    for r in rows:
+        date_s = (r.get("posted_at") or "")[:10]
+        amt = "{:,.2f}".format(float(r.get("amount") or 0))
+        amt_eur = "{:,.2f}".format(float(r.get("amount_eur") or 0))
+        desc = (r.get("description") or "")[:160]
+        cpty = (r.get("counterparty") or "")[:120]
+        ccy = (r.get("currency") or "EUR")
+        table_rows.append(
+            "<tr>"
+            f"<td>{date_s}</td>"
+            f"<td>{cpty}</td>"
+            f"<td class='desc'>{desc}</td>"
+            f"<td class='num'>{amt} {ccy}</td>"
+            f"<td class='num'>€ {amt_eur}</td>"
+            "<td class='action-cell'></td>"
+            "</tr>"
+        )
+
+    html = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>FIO Card Audit — non-matching transactions</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; color: #111; margin: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .meta { color: #555; font-size: 12px; margin-bottom: 18px; }
+  .summary {
+    background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 16px; font-size: 13px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border-bottom: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f1f5f9; }
+  td.num { text-align: right; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+  td.desc { max-width: 320px; }
+  td.action-cell { width: 110px; }
+  .empty { padding: 24px; text-align: center; color: #6b7280; }
+  .print-controls { margin-bottom: 16px; }
+  @media print {
+    body { margin: 12mm; }
+    .print-controls { display: none; }
+    table { font-size: 10px; }
+  }
+</style>
+</head><body>
+<div class="print-controls">
+  <button onclick="window.print()" style="padding:8px 14px;font-size:14px;background:#0ea5e9;color:#fff;border:0;border-radius:6px;cursor:pointer;">🖨️ Print / Save as PDF</button>
+  <span style="margin-left:12px;color:#555;font-size:12px;">Cmd + P also works.</span>
+</div>
+<h1>FIO Card Audit — non-matching transactions</h1>
+<div class="meta">Period: <strong>""" + period + """</strong> · Profit center: <strong>""" + pc_label + """</strong> · Generated at """ + now + """</div>
+<div class="summary">
+  <strong>""" + str(len(rows)) + """</strong> transaction(s) without a matched invoice · total <strong>€ """ + "{:,.2f}".format(total_eur) + """</strong>.
+  Use the rightmost column to note where you found the receipt.
+</div>
+""" + (
+        "<table><thead><tr><th>Date</th><th>Counterparty</th><th>Description</th><th>Amount</th><th>EUR</th><th>Receipt found at…</th></tr></thead><tbody>"
+        + "\n".join(table_rows)
+        + "</tbody></table>"
+        if rows else
+        "<div class='empty'>✅ All transactions in this period have a matching invoice.</div>"
+    ) + """
+</body></html>"""
+    return Response(html, mimetype="text/html")

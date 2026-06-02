@@ -72,13 +72,22 @@ ALL_TABS = [
 ]
 
 # Role -> list of tab IDs that role can see.
+# Updated 2026-06-02 per user spec:
+#   - admin            : everything (manage users)
+#   - holding_ceo      : approves weekly payments + sees all approve/accounting/analytics + Confirm + Legend
+#                         (NO Card Audit — that's the bookkeeper's domain)
+#   - bookkeeper       : executes payments + sees Confirm + Card Audit + all approve/accounting/analytics + Legend
+#   - stream_owner     : sees their own stream only on approve/accounting/card-audit/analytics + Legend
+#                         (frontend constrains by signed-in user's profit_center)
+#   - viewer (default) : Upload + Approve + Legend
 TAB_ACCESS: Dict[str, List[str]] = {
     ROLE_ADMIN:        ALL_TABS,  # everything
     ROLE_HOLDING_CEO:  ["upload", "approve", "accounting", "analytics",
                         "confirm-payment", "legend"],
     ROLE_BOOKKEEPER:   ["upload", "approve", "accounting", "card-audit",
                         "analytics", "confirm-payment", "legend"],
-    ROLE_STREAM_OWNER: ["upload", "approve", "accounting", "analytics", "legend"],
+    ROLE_STREAM_OWNER: ["upload", "approve", "accounting", "card-audit",
+                        "analytics", "legend"],
     ROLE_VIEWER:       ["upload", "approve", "legend"],
 }
 

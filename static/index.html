@@ -1517,25 +1517,37 @@ table .actions { min-width: 90px; }
         <select id="ca-period" class="fio-select" style="min-width:140px;" onchange="loadCardAudit()">
           <!-- populated dynamically -->
         </select>
+        <select id="ca-pc-filter" class="fio-select" style="min-width:160px;" onchange="loadCardAudit()" title="Filter transactions by your profit center">
+          <option value="">All profit centers</option>
+        </select>
         <button class="btn-export" onclick="reconcileCardAudit()" title="Re-run matching against invoices in this period">
           <span class="btn-export-icon">🔄</span><span>Reconcile</span>
         </button>
         <button class="btn-export" onclick="exportCardAudit()" title="Download CSV of card-audit for this period">
           <span class="btn-export-icon">⬇</span><span>Export CSV</span>
         </button>
+        <button class="btn-export" onclick="printNonMatching()" title="Open a print-friendly list of unmatched transactions — Cmd+P saves as PDF" style="background:#0ea5e9;color:#fff;">
+          <span class="btn-export-icon">🖨️</span><span>Print non-matching</span>
+        </button>
       </div>
     </div>
 
-    <!-- Drop-zone -->
+    <!-- Drop-zone: pick PC then upload -->
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+      <label style="font-size:13px;color:var(--muted);">Stamp this upload with profit center:</label>
+      <select id="ca-upload-pc" class="fio-select" style="min-width:200px;">
+        <option value="">— None (don't stamp) —</option>
+      </select>
+    </div>
     <div id="ca-upload-zone" class="upload-zone" style="margin-bottom:18px;"
          ondragover="event.preventDefault();this.classList.add('dragover');"
          ondragleave="this.classList.remove('dragover');"
          ondrop="event.preventDefault();this.classList.remove('dragover');uploadCardCsv(event.dataTransfer.files);"
          onclick="document.getElementById('ca-file-input').click();">
       <div class="icon">📥</div>
-      <p><b>Drop CSV here</b> or click to upload</p>
-      <p class="formats">Mercury · Revolut Business · Stripe · Airwallex · or any CSV with date / amount / description columns</p>
-      <input type="file" id="ca-file-input" accept=".csv,text/csv" onchange="uploadCardCsv(this.files)">
+      <p><b>Drop CSV / XLSX / PDF here</b> or click to upload</p>
+      <p class="formats">Mercury · Revolut Business · Stripe · Airwallex · or any bank statement (CSV, Excel, or PDF). System auto-parses dates and amounts.</p>
+      <input type="file" id="ca-file-input" accept=".csv,.xlsx,.xls,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf" onchange="uploadCardCsv(this.files)">
       <div id="ca-upload-result" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
     </div>
 
@@ -1770,26 +1782,26 @@ table .actions { min-width: 90px; }
         People are pulled from BT4YOU's <code>holding_config.json</code> (Asana-synced). Assign each one a role to control which tabs they see.
       </p>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:16px;">
-        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">admin</div>
-          <div style="font-size:12px;margin-top:3px;">Full access · manage users</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:16px;">
+        <div style="padding:10px 12px;border:1px solid #dc2626;border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:#dc2626;text-transform:uppercase;font-weight:700;">admin</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Full access</strong> · manage users · all tabs incl. Admin</div>
         </div>
-        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">holding_ceo</div>
-          <div style="font-size:12px;margin-top:3px;">Approves weekly payments · sees Confirm tab</div>
+        <div style="padding:10px 12px;border:1px solid #f59e0b;border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:#f59e0b;text-transform:uppercase;font-weight:700;">holding_ceo</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Approves weekly payments</strong> · sees Confirm + all Approve / Accounting / Analytics + Legend</div>
         </div>
-        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">bookkeeper</div>
-          <div style="font-size:12px;margin-top:3px;">Executes payments · sees Confirm + Card Audit</div>
+        <div style="padding:10px 12px;border:1px solid #0ea5e9;border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:#0ea5e9;text-transform:uppercase;font-weight:700;">bookkeeper</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Executes payments</strong> · sees Confirm + Card Audit + all Approve / Accounting / Analytics + Legend</div>
         </div>
-        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">stream_owner</div>
-          <div style="font-size:12px;margin-top:3px;">Sees own stream's Approve + Accounting</div>
+        <div style="padding:10px 12px;border:1px solid #10b981;border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:#10b981;text-transform:uppercase;font-weight:700;">stream_owner</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Owns one stream</strong> · sees their own stream on Approve + Accounting + Card Audit + Analytics + Legend</div>
         </div>
-        <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">viewer</div>
-          <div style="font-size:12px;margin-top:3px;">Default · Upload + Approve + Legend</div>
+        <div style="padding:10px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;font-weight:700;">viewer</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Default</strong> · Upload + Approve + Legend (cannot post or confirm)</div>
         </div>
       </div>
 
@@ -1858,12 +1870,14 @@ table .actions { min-width: 90px; }
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:6px 8px;">Tab</th><th style="padding:6px 8px;">What it's for</th><th style="padding:6px 8px;">Who uses it</th></tr></thead>
             <tbody>
-              <tr><td style="padding:6px 8px;"><strong>Upload</strong></td><td style="padding:6px 8px;">Drop the file. AI extracts vendor, VAT, amount, line items.</td><td style="padding:6px 8px;">Anyone in the holding</td></tr>
-              <tr><td style="padding:6px 8px;"><strong>Approve</strong></td><td style="padding:6px 8px;">Review parsed data, pick PC / Department / Reason, post to P&amp;L. Split across PCs if needed.</td><td style="padding:6px 8px;">Bookkeeper + business-stream owners</td></tr>
-              <tr><td style="padding:6px 8px;"><strong>Accounting</strong></td><td style="padding:6px 8px;">Live P&amp;L per stream. Drill into any code.</td><td style="padding:6px 8px;">Bookkeeper, CFO, stream owners</td></tr>
-              <tr><td style="padding:6px 8px;"><strong>Card Audit</strong></td><td style="padding:6px 8px;">Reconcile card-terminal receipts against bank statements.</td><td style="padding:6px 8px;">Bookkeeper</td></tr>
-              <tr><td style="padding:6px 8px;"><strong>Analytics</strong></td><td style="padding:6px 8px;">Spend trends, projections, optimization opportunities, suspicious findings.</td><td style="padding:6px 8px;">CEO, CFO, stream owners</td></tr>
-              <tr><td style="padding:6px 8px;"><strong>FIO Legend</strong></td><td style="padding:6px 8px;">This page.</td><td style="padding:6px 8px;">You, right now</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Upload</strong></td><td style="padding:6px 8px;">Drop the file. AI extracts vendor, VAT, amount, line items.</td><td style="padding:6px 8px;">Everyone (all roles)</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Approve</strong></td><td style="padding:6px 8px;">Review parsed data, pick PC / Department / Reason, post to P&amp;L. Split across PCs if needed.</td><td style="padding:6px 8px;">All roles see; only Bookkeeper / Stream owner / CEO / Admin can Approve &amp; Post</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Accounting</strong></td><td style="padding:6px 8px;">Live P&amp;L per stream. Drill into any code.</td><td style="padding:6px 8px;">Admin · Holding CEO · Bookkeeper see all streams; Stream owner sees own only</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Card Audit</strong></td><td style="padding:6px 8px;">Upload bank statements (CSV / XLSX / PDF), reconcile against approved documents, list non-matching transactions, print PDF for chase-down.</td><td style="padding:6px 8px;">Admin · Bookkeeper · Stream owner (own stream)</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Analytics</strong></td><td style="padding:6px 8px;">Spend trends, projections, optimization opportunities, suspicious findings, operational cashflow.</td><td style="padding:6px 8px;">Admin · Holding CEO · Bookkeeper all; Stream owner own only</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Confirm for Payment</strong></td><td style="padding:6px 8px;">4-stage workflow: Bookkeeper budget-checks → Holding CEO approves week → Bookkeeper pays → flows into operational cashflow.</td><td style="padding:6px 8px;">Admin · Holding CEO · Bookkeeper</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Admin</strong></td><td style="padding:6px 8px;">Import users from Asana, set per-user role, delete users.</td><td style="padding:6px 8px;">Admin only (Artjoms / Rita)</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>FIO Legend</strong></td><td style="padding:6px 8px;">This page.</td><td style="padding:6px 8px;">Everyone</td></tr>
             </tbody>
           </table>
         </div>
@@ -5184,9 +5198,43 @@ function initCardAuditTab() {
   if (!_caInitialised) {
     _caInitialised = true;
     populateCaPeriodFilter();
+    populateCaPcSelects();
     fetchCaHolders();
   }
   loadCardAudit();
+}
+
+function populateCaPcSelects() {
+  // Fill both the filter dropdown (top-right) and the stamp-on-upload dropdown
+  var PC_LIST = [
+    {code: 'AA', name: 'Alps2Alps'},
+    {code: 'AG', name: 'Amitours Group'},
+    {code: 'BK', name: 'Skibookers'},
+    {code: 'SR', name: 'Skipasser'},
+    {code: 'MT', name: 'Mountly'},
+    {code: 'AH', name: 'Mountly (AH)'},
+    {code: 'PK', name: 'MyPeak Finance'},
+    {code: 'CF', name: 'MyPeak Finance (CF)'},
+    {code: 'AL', name: 'ALVEDA'},
+    {code: 'RR', name: 'Rock2Rock'},
+  ];
+  var filterSel = document.getElementById('ca-pc-filter');
+  var uploadSel = document.getElementById('ca-upload-pc');
+  function fill(el, keepNone) {
+    if (!el || el.children.length > 1) return;
+    PC_LIST.forEach(function(pc) {
+      var opt = document.createElement('option');
+      opt.value = pc.code;
+      opt.textContent = pc.code + ' — ' + pc.name;
+      el.appendChild(opt);
+    });
+  }
+  fill(filterSel, true);
+  fill(uploadSel, true);
+  // Pre-select the signed-in user's profit_center on the upload dropdown
+  if (uploadSel && ME && ME.profit_center) {
+    uploadSel.value = ME.profit_center;
+  }
 }
 
 function populateCaPeriodFilter() {
@@ -5217,9 +5265,15 @@ async function uploadCardCsv(files) {
   resultEl.innerHTML = 'Uploading <b>' + esc(f.name) + '</b>…';
   var fd = new FormData();
   fd.append('file', f);
-  fd.append('imported_by', document.getElementById('upload-user')?.value || 'user');
+  fd.append('imported_by', document.getElementById('upload-user')?.value
+                          || (ME && ME.signed_in_as) || 'user');
+  var uploadPc = document.getElementById('ca-upload-pc');
+  if (uploadPc && uploadPc.value) fd.append('profit_center', uploadPc.value);
+  var headers = {};
+  var meName = localStorage.getItem('fio_signed_in_as');
+  if (meName) headers['X-FIO-User'] = meName;
   try {
-    var r = await fetch('/api/card-audit/import', {method: 'POST', body: fd}).then(r => r.json());
+    var r = await fetch('/api/card-audit/import', {method: 'POST', body: fd, headers: headers}).then(r => r.json());
     if (r.error) {
       resultEl.innerHTML = '<span style="color:var(--red);">Error: ' + esc(r.error) + '</span>';
       return;
@@ -5243,14 +5297,20 @@ async function uploadCardCsv(files) {
 
 async function loadCardAudit() {
   var period = document.getElementById('ca-period')?.value || new Date().toISOString().slice(0, 7);
+  var pcFilter = document.getElementById('ca-pc-filter')?.value || '';
   try {
     var [summary, txWrap] = await Promise.all([
       api('GET', '/api/card-audit/summary?period=' + period),
       api('GET', '/api/card-audit/transactions?limit=2000&period=' + period),
     ]);
+    var allTx = txWrap.transactions || [];
+    // Client-side PC filter (server doesn't currently filter by profit_center on list)
+    if (pcFilter) {
+      allTx = allTx.filter(function(t) { return (t.profit_center || '').toUpperCase() === pcFilter; });
+    }
     renderCaKpis(summary);
     renderCaByDept(summary);
-    renderCaLists(txWrap.transactions || []);
+    renderCaLists(allTx);
   } catch (err) {
     console.error('Card audit load failed:', err);
   }
@@ -5373,6 +5433,15 @@ async function reconcileCardAudit() {
 function exportCardAudit() {
   var period = document.getElementById('ca-period').value;
   window.location.href = '/api/card-audit/export?period=' + period;
+}
+
+function printNonMatching() {
+  var period = document.getElementById('ca-period').value;
+  var pc = document.getElementById('ca-pc-filter').value;
+  var url = '/api/card-audit/non-matching/print?period=' + encodeURIComponent(period);
+  if (pc) url += '&profit_center=' + encodeURIComponent(pc);
+  // Open in a new tab so user can hit Cmd+P
+  window.open(url, '_blank', 'noopener');
 }
 
 // ─── Modal (open card-tx for assign/match/exclude/delete) ───
