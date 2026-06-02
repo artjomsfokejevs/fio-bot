@@ -2113,6 +2113,130 @@ def analytics_spending():
     })
 
 
+@app.route("/api/analytics/ai-report", methods=["POST"])
+def analytics_ai_report():
+    """Generate a written commentary on the current spending snapshot via Claude.
+
+    Body: { focus: "general" | "savings" | "anomalies" | "stream:AA",
+            profit_center: "AA" (optional) }
+    Returns: { report: "...markdown text...", model: "...", saved_to: "..." }
+
+    Falls back gracefully if ANTHROPIC_API_KEY is missing or credits are out.
+    """
+    if not config.ANTHROPIC_API_KEY:
+        return jsonify({
+            "status": "no_api_key",
+            "report": ("**AI report unavailable** — set `ANTHROPIC_API_KEY` "
+                       "on Fly to enable Claude-generated commentary."),
+        }), 200
+
+    body = request.get_json(silent=True) or {}
+    focus = (body.get("focus") or "general").strip()[:30]
+    pc_filter = (body.get("profit_center") or "").strip().upper() or None
+
+    # Reuse the same data the analytics_spending endpoint computes so the
+    # commentary matches what the user sees on screen.
+    try:
+        with open(config.ACTUALS_FILE, "r", encoding="utf-8") as f:
+            actuals = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        actuals = {"streams": {}}
+    if pc_filter:
+        stream_filter = _PC_TO_STREAM_NAME.get(pc_filter)
+        if stream_filter and stream_filter in actuals.get("streams", {}):
+            actuals = {"streams": {stream_filter: actuals["streams"][stream_filter]}}
+        else:
+            actuals = {"streams": {}}
+
+    docs = db.get_documents()
+    if pc_filter:
+        docs = [d for d in docs if (d.get("profit_center") or "").upper() == pc_filter]
+
+    # Compose a compact JSON snapshot for the prompt (don't send raw docs)
+    snapshot: Dict[str, Any] = {
+        "scope": pc_filter or "all_streams",
+        "focus": focus,
+        "actuals": actuals,
+        "documents_posted": sum(1 for d in docs if d.get("status") == "posted"),
+        "documents_pending_approval": sum(
+            1 for d in docs if d.get("status") in ("classified", "approved")
+        ),
+        "documents_paid": sum(1 for d in docs if d.get("status") == "paid"),
+        "cashflow": _compute_operational_cashflow(docs),
+    }
+
+    # Prompt: business-controller persona, specific, no marketing fluff
+    focus_steer = {
+        "savings": "Identify the top 3 specific cost-cutting opportunities. Name vendors and amounts. Suggest replacements where reasonable.",
+        "anomalies": "Find anomalies: vendors charging above category averages, unusual single-doc spikes, duplicate services, missing VAT.",
+        "general": "Give an executive summary: where money flows, which streams burn the most, what trend the data shows.",
+    }
+    if focus.startswith("stream:"):
+        focus_text = "Focus only on stream %s. Compare its spend mix vs typical mix for similar holdings." % focus.split(":", 1)[1]
+    else:
+        focus_text = focus_steer.get(focus, focus_steer["general"])
+
+    prompt = (
+        "You are the business controller for Amitours Holding, advising the CFO. "
+        "Below is the current FIO accounting snapshot. Write a concise commentary "
+        "in markdown — 4 to 8 short paragraphs, with concrete numbers and named "
+        "vendors. Use headings (##). Skip fluff and disclaimers.\n\n"
+        "Specific focus: " + focus_text + "\n\n"
+        "Data:\n```json\n" + json.dumps(snapshot, ensure_ascii=False, indent=2)[:18000] + "\n```\n\n"
+        "Write the commentary now."
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        resp = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = resp.content[0].text if resp.content else ""
+    except Exception as exc:
+        logger.exception("Analytics AI report failed")
+        return jsonify({
+            "status": "llm_error",
+            "report": "**Could not generate report.** Error: " + str(exc)[:300],
+        }), 200
+
+    # Persist for later reference
+    reports_dir = os.path.join(os.path.dirname(config.DB_PATH), "ai_reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    fname = "report_%s_%s_%s.md" % (
+        datetime.utcnow().strftime("%Y%m%dT%H%M%S"),
+        pc_filter or "all",
+        focus,
+    )
+    saved = os.path.join(reports_dir, fname)
+    try:
+        with open(saved, "w", encoding="utf-8") as f:
+            f.write("# FIO AI Report\n\n")
+            f.write("- generated_at: " + datetime.utcnow().isoformat() + "\n")
+            f.write("- focus: " + focus + "\n")
+            f.write("- profit_center: " + (pc_filter or "all") + "\n\n---\n\n")
+            f.write(text)
+    except OSError as exc:
+        logger.warning("Could not save AI report: %s", exc)
+
+    db.insert_audit_log("system", "ai_report_generated", {
+        "focus": focus,
+        "profit_center": pc_filter,
+        "by": _current_user_name() or "user",
+        "saved_to": saved,
+    })
+    return jsonify({
+        "status": "ok",
+        "report": text,
+        "model": "claude-sonnet-4-20250514",
+        "focus": focus,
+        "profit_center": pc_filter,
+        "generated_at": datetime.utcnow().isoformat(),
+    })
+
+
 def _compute_operational_cashflow(docs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Outflow snapshot driven by the Confirm-for-Payment workflow.
 
@@ -2393,6 +2517,50 @@ def people():
     if pc:
         roster = [p for p in roster if p["profit_center"] == pc]
     return jsonify({"people": roster, "count": len(roster)})
+
+
+@app.route("/api/people/refresh-from-asana", methods=["POST"])
+def refresh_from_asana():
+    """Pull live user list directly from Asana, replacing the BT4YOU snapshot.
+
+    Bypasses BT4YOU's holding_config.json (which packs multiple humans into
+    one row, e.g. 'Rita Petukhova, Olga Guk, Dmitriy'). Admin only.
+
+    Requires `ASANA_PAT` (Personal Access Token) set as a Fly secret.
+    Gracefully reports missing-token state for the UI.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN)
+    if err:
+        return err
+
+    token = os.environ.get("ASANA_PAT", "").strip()
+    if not token:
+        return jsonify({
+            "status": "token_missing",
+            "message": ("ASANA_PAT is not configured. Generate a Personal "
+                        "Access Token at https://app.asana.com/0/my-apps "
+                        "and set it via: fly secrets set ASANA_PAT=... "
+                        "--app fio-amitours"),
+        }), 503
+
+    try:
+        from services.asana_sync import fetch_users_from_asana
+    except ImportError:
+        return jsonify({"status": "error",
+                        "message": "asana_sync service not deployed"}), 500
+
+    try:
+        result = fetch_users_from_asana(token=token,
+                                        workspace_id=os.environ.get("ASANA_WORKSPACE_ID"))
+    except Exception as exc:
+        logger.exception("Asana refresh failed")
+        return jsonify({"status": "error", "message": str(exc)}), 502
+
+    db.insert_audit_log("system", "asana_refresh", {
+        "pulled": result.get("count", 0),
+        "by": _current_user_name() or "admin",
+    })
+    return jsonify({"status": "ok", **result})
 
 
 # ────────────────────────────────────────────────────────────────────

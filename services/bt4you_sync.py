@@ -157,39 +157,91 @@ def load_people() -> List[Dict[str, Any]]:
 
     seen_names = set()
     people: List[Dict[str, Any]] = []
+    # We iterate twice: once to harvest individual identities packed inside
+    # group entries (so e.g. 'Rita Petukhova, Olga Guk, Dmitriy' surfaces 3
+    # separate people sharing the same node_id + title), then once for normal
+    # single-name nodes. The unpacked entries are tagged from_group=True so
+    # the UI can show a small hint and the admin can dismiss any mis-parse.
+    raw_nodes = []
     for node in data["nodes"]:
         if not isinstance(node, dict):
             continue
         name = (node.get("person_name") or "").strip()
         if not name or name.upper() == "VACANT":
             continue
-        # Skip group entries (multiple people packed into one node).
-        # Per spec: 'каждый человек отвечает за свои действия' -- only
-        # individual humans get an FIO identity.
-        if _is_group_entry(name):
-            continue
-        if name in seen_names:
-            continue
-        seen_names.add(name)
+        raw_nodes.append((node, name))
 
+    for node, name in raw_nodes:
         node_id = node.get("id", "")
+        title = node.get("title", "")
+        asana_gid = node.get("asana_gid", "")
         pc = "AG"
         for prefix, mapped_pc in prefix_to_pc.items():
             if node_id.startswith(prefix):
                 pc = mapped_pc
                 break
 
+        # Group entry: split into separate individuals
+        if _is_group_entry(name):
+            parts = _split_group(name)
+            for idx, part in enumerate(parts):
+                if not part or part in seen_names:
+                    continue
+                seen_names.add(part)
+                people.append({
+                    "id": f"{node_id}::g{idx}",
+                    "name": part,
+                    "title": title,
+                    "asana_gid": asana_gid if idx == 0 else "",
+                    "profit_center": pc,
+                    "from_group": True,
+                })
+            continue
+
+        if name in seen_names:
+            continue
+        seen_names.add(name)
         people.append({
             "id": node_id,
             "name": name,
-            "title": node.get("title", ""),
-            "asana_gid": node.get("asana_gid", ""),
+            "title": title,
+            "asana_gid": asana_gid,
             "profit_center": pc,
+            "from_group": False,
         })
 
     people.sort(key=lambda p: p["name"])
-    logger.info("Loaded %d people from BT4YOU holding_config", len(people))
+    logger.info("Loaded %d people from BT4YOU holding_config "
+                "(%d unpacked from group entries)",
+                len(people), sum(1 for p in people if p.get("from_group")))
     return people
+
+
+def _split_group(name: str) -> List[str]:
+    """Split a packed-group person_name into individual humans.
+
+    Handles: 'Rita Petukhova, Olga Guk, Dmitriy' → ['Rita Petukhova', 'Olga Guk', 'Dmitriy']
+    Strips trailing '...' / '…' and ' & ' / ' and ' / ' и ' / ' und '.
+    Drops fragments shorter than 2 chars or that look like an ellipsis-only entry.
+    """
+    raw = (name or "").replace("…", ",").replace("...", ",")
+    for sep in (" & ", " and ", " и ", " und "):
+        raw = raw.replace(sep, ",")
+    parts = []
+    seen = set()
+    for chunk in raw.split(","):
+        cleaned = chunk.strip(" \t.,;")
+        if not cleaned or len(cleaned) < 2:
+            continue
+        # Skip obvious non-name tokens
+        low = cleaned.lower()
+        if low in {"etc", "etc.", "team", "and others", "others"}:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        parts.append(cleaned)
+    return parts
 
 
 # ═══════════════════════════════════════════════════════════════

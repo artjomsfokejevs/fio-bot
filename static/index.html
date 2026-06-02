@@ -1673,6 +1673,35 @@ table .actions { min-width: 90px; }
       </div>
     </div>
 
+    <!-- AI Report -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2>🤖 AI Report — business controller commentary</h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <select id="ai-report-focus" class="fio-select" style="font-size:12px;padding:6px 10px;">
+            <option value="general">General executive summary</option>
+            <option value="savings">Cost-cutting opportunities</option>
+            <option value="anomalies">Anomalies & policy gaps</option>
+          </select>
+          <button class="btn btn-sm" onclick="generateAiReport()" style="background:#0ea5e9;color:#fff;">
+            Generate report
+          </button>
+        </div>
+      </div>
+      <div id="analytics-ai-report" style="padding:16px;min-height:60px;">
+        <div class="empty-state" style="font-size:13px;">No report yet. Pick a focus + click <b>Generate report</b> — Claude analyses the current snapshot.</div>
+      </div>
+    </div>
+
+    <!-- Trend sparkline -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header">
+        <h2>📈 Spend trend (monthly)</h2>
+        <span style="font-size:12px;color:var(--muted);">Last 12 months of posted spend; bars colored by trend direction.</span>
+      </div>
+      <div id="analytics-trend-chart" style="padding:16px;"></div>
+    </div>
+
     <!-- Suspicious findings -->
     <div class="table-wrapper" style="margin-bottom:20px;">
       <div class="table-header">
@@ -2187,6 +2216,7 @@ function loadAnalyticsPanel() {
   api('GET', url).then(function(data) {
     renderAnalyticsKPIs(data);
     renderAnalyticsSuggestions(data);
+    try { renderAnalyticsTrend(data); } catch (e) { console.error('trend chart failed', e); }
     renderAnalyticsSuspicious(data);
     renderAnalyticsCashflow(data);
     renderAnalyticsByPeriod(data);
@@ -2197,6 +2227,89 @@ function loadAnalyticsPanel() {
   }).catch(function(err) {
     document.getElementById('analytics-suggestions').innerHTML =
       '<div class="empty-state">Failed to load analytics: ' + esc(err.message || err) + '</div>';
+  });
+}
+
+function renderAnalyticsTrend(data) {
+  var box = document.getElementById('analytics-trend-chart');
+  if (!box) return;
+  var periods = (data && data.by_period) || [];
+  if (!periods.length) {
+    box.innerHTML = '<div class="empty-state" style="font-size:13px;">No spend periods yet.</div>';
+    return;
+  }
+  // Keep last 12 periods (oldest → newest for left-to-right rendering)
+  var last = periods.slice(-12);
+  var max = Math.max.apply(null, last.map(function(p) { return Math.abs(p.amount); }));
+  if (!max) max = 1;
+  // SVG sparkline-bar chart with month-over-month delta colouring
+  var W = Math.max(360, last.length * 60);
+  var H = 160;
+  var pad = 24;
+  var barW = (W - pad * 2) / last.length;
+  var bars = last.map(function(p, i) {
+    var prev = i > 0 ? Math.abs(last[i - 1].amount) : null;
+    var v = Math.abs(p.amount);
+    var rising = prev !== null && v > prev * 1.05;
+    var falling = prev !== null && v < prev * 0.95;
+    var color = rising ? '#dc2626' : (falling ? '#10b981' : '#0ea5e9');
+    var h = (v / max) * (H - 50);
+    var x = pad + i * barW + 6;
+    var y = H - 24 - h;
+    var label = (p.period || '').slice(2);
+    var valLabel = '€' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0));
+    return '<g>' +
+      '<rect x="' + x + '" y="' + y + '" width="' + (barW - 12) + '" height="' + h + '" fill="' + color + '" rx="3"></rect>' +
+      '<text x="' + (x + (barW - 12) / 2) + '" y="' + (y - 4) + '" font-size="10" fill="#475569" text-anchor="middle">' + valLabel + '</text>' +
+      '<text x="' + (x + (barW - 12) / 2) + '" y="' + (H - 8) + '" font-size="10" fill="#64748b" text-anchor="middle">' + esc(label) + '</text>' +
+    '</g>';
+  }).join('');
+  box.innerHTML =
+    '<div style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--muted);margin-bottom:6px;">' +
+      '<span><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;vertical-align:middle;"></span> Falling</span>' +
+      '<span><span style="display:inline-block;width:10px;height:10px;background:#0ea5e9;border-radius:2px;vertical-align:middle;"></span> Stable</span>' +
+      '<span><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;vertical-align:middle;"></span> Rising &gt;5%</span>' +
+    '</div>' +
+    '<div style="overflow-x:auto;">' +
+      '<svg width="' + W + '" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' + bars +
+        '<line x1="' + pad + '" y1="' + (H - 24) + '" x2="' + (W - pad) + '" y2="' + (H - 24) + '" stroke="#cbd5e1"></line>' +
+      '</svg>' +
+    '</div>';
+}
+
+function generateAiReport() {
+  var focusEl = document.getElementById('ai-report-focus');
+  var box = document.getElementById('analytics-ai-report');
+  if (!box) return;
+  var focus = focusEl ? focusEl.value : 'general';
+  box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' +
+    '<span class="spinner"></span> Asking Claude for commentary…</div>';
+  var body = { focus: focus };
+  if (ANALYTICS_PC) body.profit_center = ANALYTICS_PC;
+  api('POST', '/api/analytics/ai-report', body).then(function(d) {
+    if (!d) { box.innerHTML = '<div class="empty-state" style="color:var(--red);">Empty response</div>'; return; }
+    if (d.status === 'no_api_key') {
+      box.innerHTML = '<div style="padding:14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:13px;">' + esc(d.report || 'API key missing') + '</div>';
+      return;
+    }
+    if (d.status === 'llm_error') {
+      box.innerHTML = '<div style="padding:14px;background:#fee2e2;border:1px solid #dc2626;border-radius:6px;font-size:13px;">' + esc(d.report) + '</div>';
+      return;
+    }
+    var text = d.report || '(empty report)';
+    // Minimal markdown to HTML
+    var html = esc(text)
+      .replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 6px;font-size:15px;font-weight:600;">$1</h3>')
+      .replace(/^# (.+)$/gm, '<h2 style="margin:14px 0 6px;font-size:17px;font-weight:700;">$1</h2>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">$1</code>')
+      .replace(/\n\n/g, '</p><p style="margin:8px 0;">')
+      .replace(/^- (.+)$/gm, '<li>$1</li>');
+    box.innerHTML =
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">model: ' + esc(d.model || '—') + ' · focus: <b>' + esc(d.focus || focus) + '</b>' + (d.profit_center ? ' · scope: ' + esc(d.profit_center) : '') + ' · generated ' + esc((d.generated_at || '').slice(0, 16).replace('T', ' ')) + '</div>' +
+      '<div style="font-size:13px;line-height:1.55;"><p style="margin:8px 0;">' + html + '</p></div>';
+  }).catch(function(err) {
+    box.innerHTML = '<div class="empty-state" style="color:var(--red);">Failed: ' + esc(err.message || String(err)) + '</div>';
   });
 }
 
