@@ -1351,7 +1351,9 @@ def payment_queue():
     placeholders = ",".join("?" for _ in target_statuses)
     conn = db.get_connection()
     try:
-        rows = [dict(r) for r in conn.execute(
+        # Use _row_to_dict so parsed_json / classification_json are decoded
+        # into real dicts -- _enrich_document expects this shape.
+        rows = [db._row_to_dict(r) for r in conn.execute(
             "SELECT * FROM documents WHERE status IN (%s) ORDER BY uploaded_at DESC" % placeholders,
             target_statuses
         ).fetchall()]
@@ -1800,8 +1802,26 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
     Extracts vat_number from parsed_json.vendor.vat_number and runs
     the expense policy checker.
     """
+    # Defensive: payment_queue + some other callers fetch rows via dict(r)
+    # which leaves parsed_json / classification_json as raw JSON strings. The
+    # db._row_to_dict helper decodes them but isn't always used. Handle both
+    # shapes here.
     parsed = doc.get("parsed_json") or {}
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except (json.JSONDecodeError, TypeError):
+            parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
     classification = doc.get("classification_json") or {}
+    if isinstance(classification, str):
+        try:
+            classification = json.loads(classification)
+        except (json.JSONDecodeError, TypeError):
+            classification = {}
+    if not isinstance(classification, dict):
+        classification = {}
 
     # Extract VAT number
     vendor_data = parsed.get("vendor") or {}
