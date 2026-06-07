@@ -415,9 +415,18 @@ tbody tr:hover { background: #f8fafc; }
    getting clipped on narrower viewports. */
 .actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .actions .btn { flex: 0 0 auto; }
-table .actions { min-width: 90px; }
-/* Approve / Upload tables: always allow horizontal scroll if columns won't fit */
-.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Actions column reserves enough room for View+Approve+Reject so the rightmost
+   button is never clipped on borderline-narrow viewports (FIO retro 2026-06-07). */
+table .actions { min-width: 110px; }
+thead th:last-child, tbody td:last-child { padding-right: 20px; }
+/* Approve / Upload tables: always allow horizontal scroll if columns won't fit.
+   .table-wrapper sets overflow-x:auto, the table itself declares a min-width
+   below its natural size threshold so the wrapper engages the scrollbar
+   instead of letting browsers squash cells. */
+/* hidden for Y so rounded corners still clip the table; auto for X so
+   wide tables get a horizontal scrollbar instead of squashing cells. */
+.table-wrapper { overflow: hidden; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-wrapper > table { min-width: 1100px; }
 
 /* Modal */
 .modal-overlay {
