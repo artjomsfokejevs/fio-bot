@@ -2138,6 +2138,8 @@ def analytics_spending():
 
     Query params:
       - profit_center: filter all metrics to a single stream (e.g. AA, BK).
+      - date_from, date_to: ISO YYYY-MM-DD or YYYY-MM. (P3.1, 2026-06-07)
+        If only date_from set: open-ended forward. If only date_to: open back.
 
     Returns:
       - by_period, by_code, by_vendor, projection
@@ -2154,15 +2156,44 @@ def analytics_spending():
     pc_filter = (request.args.get("profit_center") or "").strip().upper()
     stream_filter = _PC_TO_STREAM_NAME.get(pc_filter)
 
+    # 2026-06-07 P3.1 — date range filter. Inputs accept YYYY-MM-DD or YYYY-MM
+    # (a period). Normalise to YYYY-MM for the actuals/by_period dict, and to
+    # YYYY-MM-DD for doc-level filtering against uploaded_at / approved_at.
+    date_from_raw = (request.args.get("date_from") or "").strip()
+    date_to_raw   = (request.args.get("date_to") or "").strip()
+
+    def _period_of(s: str) -> str:
+        # YYYY-MM-DD → YYYY-MM ; YYYY-MM stays
+        return s[:7] if s and len(s) >= 7 else s
+
+    period_from = _period_of(date_from_raw) or None
+    period_to   = _period_of(date_to_raw) or None
+
+    def _period_in_range(p: str) -> bool:
+        if period_from and p < period_from: return False
+        if period_to   and p > period_to:   return False
+        return True
+
     # Filter actuals by stream if requested
     if stream_filter and stream_filter in actuals.get("streams", {}):
         actuals = {"streams": {stream_filter: actuals["streams"][stream_filter]}}
     elif pc_filter and not stream_filter:
         actuals = {"streams": {}}  # Unknown PC -- empty
 
+    # Apply date range to actuals (drop periods outside the window)
+    if period_from or period_to:
+        actuals = {
+            "streams": {
+                stream: {p: codes for p, codes in periods.items() if _period_in_range(p)}
+                for stream, periods in actuals.get("streams", {}).items()
+            }
+        }
+
     docs = db.get_documents()
     if pc_filter:
         docs = [d for d in docs if (d.get("profit_center") or "").upper() == pc_filter]
+    if period_from or period_to:
+        docs = [d for d in docs if _period_in_range(d.get("period") or "")]
 
     # 1. By period (across streams)
     by_period: Dict[str, float] = {}
@@ -2306,6 +2337,9 @@ def analytics_ai_report():
     body = request.get_json(silent=True) or {}
     focus = (body.get("focus") or "general").strip()[:30]
     pc_filter = (body.get("profit_center") or "").strip().upper() or None
+    # 2026-06-07 P3.2 — user-supplied prompt overrides the default focus steer.
+    # Trimmed to 2000 chars to keep the LLM call bounded.
+    custom_prompt = (body.get("custom_prompt") or "").strip()[:2000]
 
     # Reuse the same data the analytics_spending endpoint computes so the
     # commentary matches what the user sees on screen.
@@ -2344,7 +2378,11 @@ def analytics_ai_report():
         "anomalies": "Find anomalies: vendors charging above category averages, unusual single-doc spikes, duplicate services, missing VAT.",
         "general": "Give an executive summary: where money flows, which streams burn the most, what trend the data shows.",
     }
-    if focus.startswith("stream:"):
+    if custom_prompt:
+        # P3.2 — user has steered the analysis themselves; keep the persona
+        # framing but substitute their instructions for the focus block.
+        focus_text = custom_prompt
+    elif focus.startswith("stream:"):
         focus_text = "Focus only on stream %s. Compare its spend mix vs typical mix for similar holdings." % focus.split(":", 1)[1]
     else:
         focus_text = focus_steer.get(focus, focus_steer["general"])
@@ -2407,6 +2445,76 @@ def analytics_ai_report():
         "focus": focus,
         "profit_center": pc_filter,
         "generated_at": datetime.utcnow().isoformat(),
+    })
+
+
+# ════════════════════════════════════════════════════════════════
+# 2026-06-07 P3.3 — Spend-trend monthly drill-down
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/analytics/month-breakdown", methods=["GET"])
+def analytics_month_breakdown():
+    """Return stream × ledger breakdown for one month.
+
+    Powers the Spend Trend drill-down: user clicks a monthly bar →
+    modal shows "where did this period's spend go" by stream and by
+    ledger group, with click-through to the source documents.
+
+    Query: period=YYYY-MM (required), profit_center=AA (optional filter)
+    """
+    period = (request.args.get("period") or "").strip()
+    if not period or len(period) != 7:
+        return jsonify({"error": "period=YYYY-MM is required"}), 400
+    pc_filter = (request.args.get("profit_center") or "").strip().upper() or None
+
+    # Source of truth = documents (the actuals JSON aggregates by code only,
+    # losing the stream × code × vendor cross-section we need for drill-down).
+    docs = db.get_documents()
+    docs = [d for d in docs if d.get("period") == period
+            and d.get("status") in ("posted", "paid", "confirmed_to_pay",
+                                    "budget_validated", "approved")]
+    if pc_filter:
+        docs = [d for d in docs if (d.get("profit_center") or "").upper() == pc_filter]
+
+    # Load ledger schema for grouping by statement_group (HR, SUB, CON, etc.)
+    schema = {"codes": []}
+    try:
+        with open(config.LEDGER_FILE, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    code_to_group = {}
+    for c in schema.get("codes", []):
+        code_to_group[c["code"]] = c.get("group", c.get("statement", "Other"))
+
+    by_stream: Dict[str, Dict[str, Any]] = {}
+    by_group:  Dict[str, Dict[str, Any]] = {}
+    total = 0.0
+
+    for d in docs:
+        pc = (d.get("profit_center") or "—").upper()
+        amount = float(d.get("amount") or 0)
+        code = d.get("ledger_code") or "?"
+        group = code_to_group.get(code, "Other")
+        total += amount
+        s = by_stream.setdefault(pc, {"profit_center": pc, "amount": 0.0,
+                                     "doc_count": 0, "doc_ids": []})
+        s["amount"] = round(s["amount"] + amount, 2)
+        s["doc_count"] += 1
+        s["doc_ids"].append(d["id"])
+        g = by_group.setdefault(group, {"group": group, "amount": 0.0,
+                                        "doc_count": 0, "doc_ids": []})
+        g["amount"] = round(g["amount"] + amount, 2)
+        g["doc_count"] += 1
+        g["doc_ids"].append(d["id"])
+
+    return jsonify({
+        "period": period,
+        "profit_center_filter": pc_filter,
+        "total": round(total, 2),
+        "document_count": len(docs),
+        "by_stream": sorted(by_stream.values(), key=lambda x: -x["amount"]),
+        "by_ledger_group": sorted(by_group.values(), key=lambda x: -x["amount"]),
     })
 
 

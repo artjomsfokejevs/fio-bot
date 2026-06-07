@@ -1685,7 +1685,25 @@ table thead th:last-child { background: #f8fafc; z-index: 3; }
     <div style="margin-bottom:16px;">
       <h2 style="font-size:20px;font-weight:600;margin:0 0 4px 0;">Cost &amp; Spending Analytics</h2>
       <p style="color:var(--muted);font-size:13px;margin:0 0 12px 0;">Where money flows, what's coming, and where you can save.</p>
-      <div id="analytics-stream-filter" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      <div id="analytics-stream-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+      <!-- ────────────────────────────────────────────────────────── -->
+      <!-- 2026-06-07 P3.1 — Date range picker + quick presets       -->
+      <!-- ────────────────────────────────────────────────────────── -->
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;">
+        <span style="font-size:11px;color:var(--muted);font-weight:600;margin-right:4px;">📅 Period:</span>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="setAnalyticsRange('this_month')">This month</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="setAnalyticsRange('last_month')">Last month</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="setAnalyticsRange('last_30d')">Last 30d</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="setAnalyticsRange('last_90d')">Last 90d</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="setAnalyticsRange('ytd')">YTD</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="setAnalyticsRange('all')">All time</button>
+        <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
+        <span style="font-size:11px;color:var(--muted);">Custom:</span>
+        <input type="date" id="analytics-date-from" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;">
+        <span style="font-size:11px;color:var(--muted);">→</span>
+        <input type="date" id="analytics-date-to" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;">
+        <button class="btn btn-primary btn-sm" style="font-size:11px;" onclick="applyAnalyticsCustomRange()">Apply</button>
+      </div>
     </div>
 
     <!-- KPI strip -->
@@ -1728,14 +1746,29 @@ table thead th:last-child { background: #f8fafc; z-index: 3; }
             <option value="general">General executive summary</option>
             <option value="savings">Cost-cutting opportunities</option>
             <option value="anomalies">Anomalies & policy gaps</option>
+            <option value="custom">— Custom prompt below —</option>
           </select>
           <button class="btn btn-sm" onclick="generateAiReport()" style="background:#0ea5e9;color:#fff;">
             Generate report
           </button>
         </div>
       </div>
+      <!-- 2026-06-07 P3.2 — Custom prompt editor, recent history dropdown -->
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:#f8fafc;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">✍️ Custom prompt (optional)</label>
+          <select id="ai-report-history" class="fio-select" style="font-size:11px;padding:3px 6px;margin-left:auto;" onchange="loadAiPromptFromHistory()">
+            <option value="">— recent custom prompts —</option>
+          </select>
+        </div>
+        <textarea id="ai-report-prompt"
+                  placeholder='e.g. "Tell me what HR-related vendors spiked vs last quarter and suggest 2 to renegotiate." Leave empty to use the dropdown above.'
+                  rows="3"
+                  style="width:100%;font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;resize:vertical;font-family:inherit;"></textarea>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Tip: when the dropdown is "Custom", the textarea is sent verbatim. Otherwise the textarea takes priority if non-empty.</div>
+      </div>
       <div id="analytics-ai-report" style="padding:16px;min-height:60px;">
-        <div class="empty-state" style="font-size:13px;">No report yet. Pick a focus + click <b>Generate report</b> — Claude analyses the current snapshot.</div>
+        <div class="empty-state" style="font-size:13px;">No report yet. Pick a focus or write a custom prompt + click <b>Generate report</b>.</div>
       </div>
     </div>
 
@@ -1968,6 +2001,23 @@ table thead th:last-child { background: #f8fafc; z-index: 3; }
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ──────────────────────────────────────────────────────────── -->
+  <!-- 2026-06-07 P3.3 — Spend trend monthly drill-down modal     -->
+  <!-- Click any bar in 📈 Spend trend → shows breakdown for that  -->
+  <!-- month by stream + by ledger group.                         -->
+  <!-- ──────────────────────────────────────────────────────────── -->
+  <div id="spend-trend-drilldown-overlay" class="modal-overlay">
+    <div class="modal" style="max-width:780px;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border);">
+        <h3 id="spend-drill-title" style="margin:0;font-size:16px;font-weight:600;">📈 Month breakdown</h3>
+        <button class="modal-close" onclick="closeSpendTrendDrilldown()">&times;</button>
+      </div>
+      <div class="modal-body" id="spend-drill-body" style="padding:20px;max-height:70vh;overflow-y:auto;">
+        <div class="empty-state">Loading…</div>
+      </div>
     </div>
   </div>
 
@@ -2330,9 +2380,48 @@ function setAnalyticsStream(pc) {
   loadAnalyticsPanel();
 }
 
+// 2026-06-07 P3.1 — Analytics date range state. Both ISO dates (or empty
+// = no bound on that side). Quick presets call setAnalyticsRange().
+var ANALYTICS_FROM = '';
+var ANALYTICS_TO = '';
+
+function setAnalyticsRange(preset) {
+  var now = new Date();
+  var y = now.getFullYear(), m = now.getMonth(); // 0-11
+  function fmt(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function ymStart(year, month) { return fmt(new Date(year, month, 1)); }
+  function ymEnd(year, month) { return fmt(new Date(year, month + 1, 0)); }
+  var from = '', to = fmt(now);
+  if (preset === 'this_month')   { from = ymStart(y, m); to = ymEnd(y, m); }
+  else if (preset === 'last_month') { var ly = m === 0 ? y - 1 : y; var lm = m === 0 ? 11 : m - 1; from = ymStart(ly, lm); to = ymEnd(ly, lm); }
+  else if (preset === 'last_30d') { var d30 = new Date(now); d30.setDate(d30.getDate() - 30); from = fmt(d30); }
+  else if (preset === 'last_90d') { var d90 = new Date(now); d90.setDate(d90.getDate() - 90); from = fmt(d90); }
+  else if (preset === 'ytd')      { from = ymStart(y, 0); }
+  else if (preset === 'all')      { from = ''; to = ''; }
+  ANALYTICS_FROM = from;
+  ANALYTICS_TO = to;
+  var fEl = document.getElementById('analytics-date-from');
+  var tEl = document.getElementById('analytics-date-to');
+  if (fEl) fEl.value = from;
+  if (tEl) tEl.value = to;
+  loadAnalyticsPanel();
+}
+
+function applyAnalyticsCustomRange() {
+  ANALYTICS_FROM = document.getElementById('analytics-date-from').value || '';
+  ANALYTICS_TO = document.getElementById('analytics-date-to').value || '';
+  loadAnalyticsPanel();
+}
+
 function loadAnalyticsPanel() {
   renderAnalyticsStreamFilter();
-  var url = '/api/analytics/spending' + (ANALYTICS_PC ? '?profit_center=' + ANALYTICS_PC : '');
+  refreshAiPromptHistory();  // P3.2 — populate the dropdown
+  // P3.1 — date range query params
+  var qs = [];
+  if (ANALYTICS_PC) qs.push('profit_center=' + encodeURIComponent(ANALYTICS_PC));
+  if (ANALYTICS_FROM) qs.push('date_from=' + encodeURIComponent(ANALYTICS_FROM));
+  if (ANALYTICS_TO) qs.push('date_to=' + encodeURIComponent(ANALYTICS_TO));
+  var url = '/api/analytics/spending' + (qs.length ? '?' + qs.join('&') : '');
   api('GET', url).then(function(data) {
     renderAnalyticsKPIs(data);
     renderAnalyticsSuggestions(data);
@@ -2367,6 +2456,7 @@ function renderAnalyticsTrend(data) {
   var H = 160;
   var pad = 24;
   var barW = (W - pad * 2) / last.length;
+  // P3.3 (2026-06-07) — each bar is clickable → opens month drill-down modal
   var bars = last.map(function(p, i) {
     var prev = i > 0 ? Math.abs(last[i - 1].amount) : null;
     var v = Math.abs(p.amount);
@@ -2378,7 +2468,11 @@ function renderAnalyticsTrend(data) {
     var y = H - 24 - h;
     var label = (p.period || '').slice(2);
     var valLabel = '€' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0));
-    return '<g>' +
+    var period = p.period || '';
+    var tooltip = 'Click for ' + period + ' breakdown';
+    return '<g onclick="openSpendTrendDrilldown(\'' + esc(period) + '\')" style="cursor:pointer;">' +
+      '<title>' + esc(tooltip) + '</title>' +
+      '<rect x="' + (pad + i * barW) + '" y="0" width="' + barW + '" height="' + H + '" fill="transparent"></rect>' +
       '<rect x="' + x + '" y="' + y + '" width="' + (barW - 12) + '" height="' + h + '" fill="' + color + '" rx="3"></rect>' +
       '<text x="' + (x + (barW - 12) / 2) + '" y="' + (y - 4) + '" font-size="10" fill="#475569" text-anchor="middle">' + valLabel + '</text>' +
       '<text x="' + (x + (barW - 12) / 2) + '" y="' + (H - 8) + '" font-size="10" fill="#64748b" text-anchor="middle">' + esc(label) + '</text>' +
@@ -2397,15 +2491,140 @@ function renderAnalyticsTrend(data) {
     '</div>';
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// P3.3 (2026-06-07) — Spend trend monthly drill-down
+// Click a bar in 📈 Spend trend → modal with by-stream + by-ledger-group.
+// Each row in either breakdown is itself clickable → opens source docs.
+// ───────────────────────────────────────────────────────────────────────
+function openSpendTrendDrilldown(period) {
+  if (!period) return;
+  var overlay = document.getElementById('spend-trend-drilldown-overlay');
+  var titleEl = document.getElementById('spend-drill-title');
+  var bodyEl = document.getElementById('spend-drill-body');
+  if (!overlay || !bodyEl) return;
+  titleEl.textContent = '📈 ' + period + ' breakdown' +
+                        (ANALYTICS_PC ? ' · ' + ANALYTICS_PC : '');
+  bodyEl.innerHTML = '<div class="empty-state"><span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #cbd5e1;border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;"></span> Loading breakdown for ' + esc(period) + '…</div>';
+  overlay.classList.add('active');
+
+  var qs = 'period=' + encodeURIComponent(period);
+  if (ANALYTICS_PC) qs += '&profit_center=' + encodeURIComponent(ANALYTICS_PC);
+  api('GET', '/api/analytics/month-breakdown?' + qs).then(function(d) {
+    if (!d || d.error) {
+      bodyEl.innerHTML = '<div class="empty-state" style="color:var(--red);">' + esc((d && d.error) || 'No data') + '</div>';
+      return;
+    }
+    var total = Number(d.total || 0);
+    var fmtEur = function(n) { return '€' + Number(n).toLocaleString('en', {minimumFractionDigits:0, maximumFractionDigits:2}); };
+    function renderRows(rows, label, key) {
+      if (!rows || !rows.length) return '<div class="empty-state" style="padding:14px;">No ' + label + ' data.</div>';
+      return '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
+        '<thead><tr>' +
+          '<th style="text-align:left;padding:6px 8px;background:#f8fafc;color:var(--muted);font-size:11px;text-transform:uppercase;">' + esc(label) + '</th>' +
+          '<th style="text-align:right;padding:6px 8px;background:#f8fafc;color:var(--muted);font-size:11px;text-transform:uppercase;">Docs</th>' +
+          '<th style="text-align:right;padding:6px 8px;background:#f8fafc;color:var(--muted);font-size:11px;text-transform:uppercase;">EUR</th>' +
+          '<th style="text-align:right;padding:6px 8px;background:#f8fafc;color:var(--muted);font-size:11px;text-transform:uppercase;">%</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function(r) {
+          var pct = total > 0 ? (r.amount / total * 100) : 0;
+          var keyVal = r[key] || '—';
+          var firstDocId = (r.doc_ids && r.doc_ids[0]) || '';
+          var openLink = firstDocId
+            ? '<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 8px;" onclick="closeSpendTrendDrilldown(); openModal(\'' + esc(firstDocId).replace(/\x27/g,"\\\x27") + '\')">View 1st doc →</button>'
+            : '';
+          return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border);">' +
+            '<strong>' + esc(keyVal) + '</strong> ' + openLink +
+          '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">' + r.doc_count + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;font-family:ui-monospace,monospace;font-weight:600;">' + fmtEur(r.amount) + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted);font-size:11px;">' + pct.toFixed(1) + '%</td>' +
+          '</tr>';
+        }).join('') +
+      '</tbody></table>';
+    }
+    bodyEl.innerHTML =
+      '<div style="font-size:14px;margin-bottom:14px;">' +
+        '<strong>' + fmtEur(total) + '</strong> ' +
+        '<span style="color:var(--muted);font-size:12px;">across ' + d.document_count + ' document' + (d.document_count===1?'':'s') + '</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr;gap:20px;">' +
+        '<div><h4 style="font-size:13px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;">By Stream (profit center)</h4>' +
+          renderRows(d.by_stream || [], 'profit center', 'profit_center') +
+        '</div>' +
+        '<div><h4 style="font-size:13px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;">By Ledger group</h4>' +
+          renderRows(d.by_ledger_group || [], 'group', 'group') +
+        '</div>' +
+      '</div>';
+  }).catch(function(err) {
+    bodyEl.innerHTML = '<div class="empty-state" style="color:var(--red);">Failed: ' + esc(err && err.message || err) + '</div>';
+  });
+}
+
+function closeSpendTrendDrilldown() {
+  var ov = document.getElementById('spend-trend-drilldown-overlay');
+  if (ov) ov.classList.remove('active');
+}
+
+// P3.2 (2026-06-07) — recent custom prompts saved client-side
+function saveAiPromptToHistory(text) {
+  if (!text) return;
+  try {
+    var existing = JSON.parse(localStorage.getItem('fio_ai_prompts') || '[]');
+    existing = existing.filter(function(p) { return p !== text; });
+    existing.unshift(text);
+    existing = existing.slice(0, 5);
+    localStorage.setItem('fio_ai_prompts', JSON.stringify(existing));
+    refreshAiPromptHistory();
+  } catch (_) {}
+}
+
+function refreshAiPromptHistory() {
+  var sel = document.getElementById('ai-report-history');
+  if (!sel) return;
+  try {
+    var prompts = JSON.parse(localStorage.getItem('fio_ai_prompts') || '[]');
+    var html = ['<option value="">— recent custom prompts —</option>'];
+    prompts.forEach(function(p, i) {
+      var short = p.length > 70 ? p.substring(0, 70) + '…' : p;
+      html.push('<option value="' + i + '">' + esc(short) + '</option>');
+    });
+    sel.innerHTML = html.join('');
+  } catch (_) {}
+}
+
+function loadAiPromptFromHistory() {
+  var sel = document.getElementById('ai-report-history');
+  var ta = document.getElementById('ai-report-prompt');
+  if (!sel || !ta || sel.value === '') return;
+  try {
+    var prompts = JSON.parse(localStorage.getItem('fio_ai_prompts') || '[]');
+    var p = prompts[parseInt(sel.value, 10)];
+    if (p) {
+      ta.value = p;
+      var focusEl = document.getElementById('ai-report-focus');
+      if (focusEl) focusEl.value = 'custom';
+    }
+  } catch (_) {}
+  sel.value = '';
+}
+
 function generateAiReport() {
   var focusEl = document.getElementById('ai-report-focus');
+  var promptEl = document.getElementById('ai-report-prompt');
   var box = document.getElementById('analytics-ai-report');
   if (!box) return;
   var focus = focusEl ? focusEl.value : 'general';
+  // 2026-06-07 P3.2 — user-supplied prompt overrides preset focus.
+  // Persist last 5 to localStorage for quick re-use.
+  var customPrompt = (promptEl && promptEl.value || '').trim();
+  if (customPrompt) {
+    saveAiPromptToHistory(customPrompt);
+  }
   box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' +
     '<span class="spinner"></span> Asking Claude for commentary…</div>';
   var body = { focus: focus };
   if (ANALYTICS_PC) body.profit_center = ANALYTICS_PC;
+  if (customPrompt) body.custom_prompt = customPrompt;
   api('POST', '/api/analytics/ai-report', body).then(function(d) {
     if (!d) { box.innerHTML = '<div class="empty-state" style="color:var(--red);">Empty response</div>'; return; }
     if (d.status === 'no_api_key') {
@@ -2442,17 +2661,51 @@ function renderAnalyticsSuspicious(data) {
   }
   var sevColors = {high: '#dc2626', medium: '#f59e0b', low: '#64748b'};
   var sevIcons = {high: '🔴', medium: '🟠', low: '⚪'};
-  box.innerHTML = items.map(function(it) {
+  // 2026-06-07 P3.4 — each finding with a doc_id or doc_ids becomes a
+  // drill-down link → opens the source document modal directly. For
+  // multi-doc findings (e.g. "2 docs without VAT"), show count + list.
+  box.innerHTML = items.map(function(it, idx) {
     var color = sevColors[it.severity] || '#64748b';
     var icon = sevIcons[it.severity] || '⚪';
-    return '<div style="padding:12px 14px;border:1px solid var(--border);border-left:4px solid ' + color + ';border-radius:6px;margin-bottom:8px;background:' + color + '08;">' +
+    var docIds = (it.doc_ids && it.doc_ids.length) ? it.doc_ids
+                 : (it.doc_id ? [it.doc_id] : []);
+    var drillBtn = '';
+    if (docIds.length === 1) {
+      drillBtn = '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 10px;" onclick="openModal(\'' + esc(docIds[0]).replace(/\x27/g,"\\\x27") + '\')">View source doc →</button>';
+    } else if (docIds.length > 1) {
+      drillBtn = '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 10px;" onclick="openSuspiciousDocList(' + idx + ')">View ' + docIds.length + ' source docs →</button>';
+    }
+    return '<div data-suspicious-idx="' + idx + '" style="padding:12px 14px;border:1px solid var(--border);border-left:4px solid ' + color + ';border-radius:6px;margin-bottom:8px;background:' + color + '08;">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">' +
         '<div><span style="margin-right:6px;">' + icon + '</span><strong>' + esc(it.title) + '</strong></div>' +
         '<div style="font-size:10px;text-transform:uppercase;color:' + color + ';font-weight:700;letter-spacing:.05em;">' + esc(it.severity) + '</div>' +
       '</div>' +
       '<div style="font-size:13px;color:var(--text);margin-top:4px;">' + esc(it.detail) + '</div>' +
+      (drillBtn ? '<div style="margin-top:8px;">' + drillBtn + '</div>' : '') +
     '</div>';
   }).join('');
+  // Cache so multi-doc drill-down can read the list back
+  window._SUSPICIOUS_CACHE = items;
+}
+
+function openSuspiciousDocList(idx) {
+  var item = (window._SUSPICIOUS_CACHE || [])[idx];
+  if (!item) return;
+  var docIds = (item.doc_ids && item.doc_ids.length) ? item.doc_ids
+               : (item.doc_id ? [item.doc_id] : []);
+  if (!docIds.length) return;
+  // Reuse the Spend trend drill-down modal shell for a simple doc-id list
+  var overlay = document.getElementById('spend-trend-drilldown-overlay');
+  var titleEl = document.getElementById('spend-drill-title');
+  var bodyEl  = document.getElementById('spend-drill-body');
+  titleEl.textContent = '🚨 ' + item.title;
+  bodyEl.innerHTML = '<div style="font-size:13px;margin-bottom:14px;color:var(--text);">' + esc(item.detail) + '</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Source documents (' + docIds.length + '):</div>' +
+    '<ul style="padding-left:18px;font-size:13px;">' +
+    docIds.map(function(id) {
+      return '<li style="margin-bottom:4px;"><button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 8px;" onclick="closeSpendTrendDrilldown(); openModal(\'' + esc(id).replace(/\x27/g,"\\\x27") + '\')">' + esc(id) + ' →</button></li>';
+    }).join('') + '</ul>';
+  overlay.classList.add('active');
 }
 
 function renderAnalyticsKPIs(data) {
