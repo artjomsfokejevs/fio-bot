@@ -1014,7 +1014,11 @@ def save_doc(doc_id: str):
     #     or 'posted'. They never change the financial truth, just routing.
     pre_approval = ("ledger_code", "profit_center", "department", "cost_reason",
                     "amount", "period", "vendor", "currency")
-    post_approval_workflow = ("legal_entity", "payment_comment")
+    post_approval_workflow = (
+        "legal_entity", "payment_comment",
+        # 2026-06-07 P2 — bookkeeper can set these at any stage
+        "desired_payment_date", "payment_state",
+    )
 
     if doc.get("status") in ("posted", "approved", "rejected"):
         # Only the workflow fields are still editable
@@ -1461,6 +1465,13 @@ def mark_paid(doc_id: str):
 
     Status transitions: confirmed_to_pay -> paid.
     Captures who + when + paying account + reference.
+
+    2026-06-07 P2.5 — extended with optional payment-in-original-currency:
+        body.payment_currency        — 'EUR' (default) or invoice's source currency
+        body.payment_amount_orig     — REAL, amount paid in original currency
+        body.payment_fx_rate         — REAL, FX used at payment moment
+    EUR amount stays the accounting truth (already on the doc); the orig
+    fields are surfaced in audit log + reports for the bookkeeper.
     """
     err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
     if err:
@@ -1476,21 +1487,167 @@ def mark_paid(doc_id: str):
     body = request.get_json(silent=True) or {}
     paid_by = body.get("paid_by") or _current_user_name() or "user"
     now = datetime.utcnow().isoformat()
-    db.update_document(doc_id, {
+
+    update = {
         "status": "paid",
+        "payment_state": "paid",     # P2.2 — keep state machine in sync
         "payment_executed_at": now,
         "payment_executed_by": paid_by,
         "payment_account": body.get("payment_account") or None,
         "payment_paying_entity": body.get("paying_entity") or None,
         "payment_reference": body.get("payment_reference") or None,
-    })
+    }
+    # P2.5 — pay-in-original-currency capture
+    pay_ccy = (body.get("payment_currency") or "").strip().upper() or None
+    if pay_ccy:
+        update["payment_currency"] = pay_ccy
+        if body.get("payment_amount_orig") is not None:
+            try:
+                update["payment_amount_orig"] = float(body["payment_amount_orig"])
+            except (TypeError, ValueError):
+                pass
+        if body.get("payment_fx_rate") is not None:
+            try:
+                update["payment_fx_rate"] = float(body["payment_fx_rate"])
+            except (TypeError, ValueError):
+                pass
+
+    db.update_document(doc_id, update)
     db.insert_audit_log(doc_id, "marked_paid", {
         "by": paid_by,
         "at": now,
         "account": body.get("payment_account"),
         "reference": body.get("payment_reference"),
+        "payment_currency": update.get("payment_currency"),
+        "payment_amount_orig": update.get("payment_amount_orig"),
+        "payment_fx_rate": update.get("payment_fx_rate"),
     })
     return jsonify({"status": "paid", "document": db.get_document(doc_id)})
+
+
+# ════════════════════════════════════════════════════════════════
+# 2026-06-07 P2.1 — Already-paid-by-card flag (skip Rita workflow)
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/documents/<doc_id>/mark-already-paid-by-card", methods=["POST"])
+def mark_already_paid_by_card(doc_id: str):
+    """Mark a document as already paid via corporate card.
+
+    Skips the Awaiting CEO → Awaiting Payment stages entirely. The doc
+    transitions straight to status='paid' with payment_state='paid'
+    and a note explaining who paid. This is for invoices like LinkedIn,
+    Fireflies, Hetzner etc. paid by corporate card before the invoice
+    even reached Rita.
+
+    Body:
+      card_holder    — required, who paid (free text or name from roster)
+      paid_at        — optional ISO date; defaults to "today"
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                        roles_svc.ROLE_STREAM_OWNER)
+    if err:
+        return err
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    if doc.get("status") in ("paid", "rejected"):
+        return jsonify({"error": "Document is already %s" % doc.get("status")}), 400
+
+    body = request.get_json(silent=True) or {}
+    card_holder = (body.get("card_holder") or "").strip()
+    if not card_holder:
+        return jsonify({"error": "card_holder is required"}), 400
+
+    now = datetime.utcnow().isoformat()
+    paid_at = body.get("paid_at") or now
+    actor = _current_user_name() or "user"
+
+    db.update_document(doc_id, {
+        "status": "paid",
+        "payment_state": "paid",
+        "already_paid_by_card": 1,
+        "paid_card_holder": card_holder,
+        "payment_executed_at": paid_at,
+        "payment_executed_by": card_holder,
+        "payment_reference": "card payment (no wire)",
+    })
+    db.insert_audit_log(doc_id, "marked_already_paid_by_card", {
+        "card_holder": card_holder, "paid_at": paid_at, "by": actor,
+    })
+    return jsonify({"status": "paid", "document": db.get_document(doc_id)})
+
+
+@app.route("/api/documents/<doc_id>/undo-already-paid-by-card", methods=["POST"])
+def undo_already_paid_by_card(doc_id: str):
+    """Revert the already-paid-by-card flag, send the doc back to budget_check.
+    Useful if bookkeeper clicked the flag by mistake."""
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
+    doc = db.get_document(doc_id)
+    if not doc or not doc.get("already_paid_by_card"):
+        return jsonify({"error": "Not in already-paid state"}), 400
+    db.update_document(doc_id, {
+        "status": "approved",
+        "payment_state": "needs_to_pay",
+        "already_paid_by_card": 0,
+        "paid_card_holder": None,
+        "payment_executed_at": None,
+        "payment_executed_by": None,
+        "payment_reference": None,
+    })
+    db.insert_audit_log(doc_id, "undo_already_paid_by_card",
+                        {"by": _current_user_name() or "user"})
+    return jsonify({"status": "approved", "document": db.get_document(doc_id)})
+
+
+# ════════════════════════════════════════════════════════════════
+# 2026-06-07 P2.2 — desired_payment_date + payment_state transitions
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/documents/<doc_id>/payment-state", methods=["POST"])
+def set_payment_state(doc_id: str):
+    """Update payment workflow state independently of the main `status`.
+
+    Valid transitions:
+        needs_to_pay -> in_progress
+        in_progress  -> paid (use mark-paid for the full record)
+        in_progress  -> needs_to_pay (back off)
+        needs_to_pay -> on_hold
+        on_hold      -> needs_to_pay
+
+    Body:
+        state             — required, one of {needs_to_pay,in_progress,paid,on_hold}
+        desired_payment_date — optional ISO date (YYYY-MM-DD)
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    body = request.get_json(silent=True) or {}
+    state = (body.get("state") or "").strip()
+    VALID = {"needs_to_pay", "in_progress", "paid", "on_hold"}
+    if state and state not in VALID:
+        return jsonify({"error": "state must be one of %s" % sorted(VALID)}), 400
+
+    update: Dict[str, Any] = {}
+    if state:
+        update["payment_state"] = state
+    if "desired_payment_date" in body:
+        update["desired_payment_date"] = (body.get("desired_payment_date") or "").strip() or None
+    if not update:
+        return jsonify({"status": "no_changes"})
+
+    db.update_document(doc_id, update)
+    db.insert_audit_log(doc_id, "payment_state_changed", {
+        "fields": list(update.keys()),
+        "by": _current_user_name() or "user",
+    })
+    return jsonify({"status": "saved", "document": db.get_document(doc_id)})
 
 
 # ════════════════════════════════════════════════════════════════

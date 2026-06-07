@@ -193,6 +193,36 @@ def init_db() -> None:
             # 2026-06-07 P1 — Comments at the Approved-Awaiting-Payment stage
             # (e.g. "wrong bank details", "not enough funds", "on hold").
             ("payment_comment", "ALTER TABLE documents ADD COLUMN payment_comment TEXT"),
+            # ─────────────────────────────────────────────────────────────
+            # 2026-06-07 P2 — Payment workflow extensions (Rita's tester feedback)
+            # ─────────────────────────────────────────────────────────────
+            # P2.1: Already-paid-by-card flag. When true, doc skips the
+            # Awaiting-CEO + Awaiting-Payment stages — bookkeeper has
+            # nothing to wire because someone already paid via corporate
+            # card. We still capture the card holder for reconciliation.
+            ("already_paid_by_card",
+                "ALTER TABLE documents ADD COLUMN already_paid_by_card INTEGER DEFAULT 0"),
+            ("paid_card_holder",
+                "ALTER TABLE documents ADD COLUMN paid_card_holder TEXT"),
+            # P2.2: Desired payment date + payment state machine.
+            # States: needs_to_pay (default) → in_progress → paid.
+            # 'on_hold' is also valid (use payment_comment for reason).
+            ("desired_payment_date",
+                "ALTER TABLE documents ADD COLUMN desired_payment_date TEXT"),
+            ("payment_state",
+                "ALTER TABLE documents ADD COLUMN payment_state TEXT DEFAULT 'needs_to_pay'"),
+            # P2.5: Pay-in-original-currency tracking. Rita pays a HUF
+            # invoice in HUF from a HUF account; we still record EUR for
+            # accounting truth, but also keep the original-currency
+            # amount + FX rate for the audit trail.
+            # payment_currency: 'EUR' (default) | <orig currency code>
+            # If payment_currency == orig currency, the wire was native.
+            ("payment_currency",
+                "ALTER TABLE documents ADD COLUMN payment_currency TEXT"),
+            ("payment_amount_orig",
+                "ALTER TABLE documents ADD COLUMN payment_amount_orig REAL"),
+            ("payment_fx_rate",
+                "ALTER TABLE documents ADD COLUMN payment_fx_rate REAL"),
         ):
             try:
                 conn.execute("SELECT %s FROM documents LIMIT 1" % col)

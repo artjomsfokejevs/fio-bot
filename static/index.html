@@ -3302,11 +3302,14 @@ function setCPStage(stage) {
   loadConfirmPaymentPanel();
 }
 
+var CP_QUEUE_CACHE = [];  // P2.5 — Mark-paid modal reads doc currency from here
+
 function loadConfirmPaymentPanel() {
   renderCPStageBar();
   var rowsEl = document.getElementById('cp-rows');
   if (rowsEl) rowsEl.innerHTML = '<tr><td colspan="13" class="empty-state">Loading…</td></tr>';
   api('GET', '/api/payment-queue?stage=' + CP_STAGE).then(function(d) {
+    CP_QUEUE_CACHE = (d && d.documents) || [];
     if (d && d.error) {
       rowsEl.innerHTML =
         '<tr><td colspan="13" class="empty-state" style="color:var(--red);">' +
@@ -3337,47 +3340,78 @@ function renderCPTotals(docs) {
   if (!docs.length) { box.innerHTML = ''; return; }
 
   // Aggregate: { currency -> { pc -> amount } } and { currency -> total }
-  // For split-allocated docs, distribute amount per allocation row's PC.
-  var byCcyByPc = {};
-  var totalsByCcy = {};
-  var docCountByCcy = {};
+  // P2.6 (2026-06-07) — single EUR allocation panel. All non-EUR docs are
+  // converted via doc.amount_eur (already FX'd at parse time via ECB rate).
+  // Non-EUR original totals are shown as a small "incl. orig" annotation
+  // so Rita still sees the source-currency amount, but the budget bar is
+  // strictly EUR.
+  var pcSums = {};         // { pc -> EUR sum }
+  var pcOrigByCcy = {};    // { pc -> { ccy -> sum } } — annotation only
+  var totalEur = 0;
+  var docCount = 0;
+  var skipped = 0;
+
+  function _docEur(d) {
+    // Prefer amount_eur (FX'd). Fall back to amount if EUR. Otherwise 0.
+    if (d.amount_eur !== null && d.amount_eur !== undefined) return Number(d.amount_eur) || 0;
+    if ((d.currency || 'EUR').toUpperCase() === 'EUR') return Number(d.amount) || 0;
+    return 0;
+  }
 
   docs.forEach(function(d) {
     var ccy = (d.currency || 'EUR').toUpperCase();
     var amount = Number(d.amount) || 0;
     if (!amount) return;
-    docCountByCcy[ccy] = (docCountByCcy[ccy] || 0) + 1;
+    docCount += 1;
+    var docEur = _docEur(d);
+    if (!docEur && ccy !== 'EUR') {
+      skipped += 1;
+      // No FX rate available — fall through to original (will be flagged)
+      docEur = amount;
+    }
 
     var allocs = (d.allocations || []).filter(function(a) { return a && a.profit_center; });
     if (allocs.length >= 2) {
-      // Distribute by allocation row -- prefer explicit amount, fall back to percentage of total
+      var totalAlloc = amount;
       allocs.forEach(function(a) {
         var pc = a.profit_center || '—';
-        var slice;
+        var slice, sliceOrig;
         if (a.amount !== null && a.amount !== undefined) {
-          slice = Number(a.amount) || 0;
+          sliceOrig = Number(a.amount) || 0;
+          slice = sliceOrig * (docEur / totalAlloc);
         } else if (a.percentage !== null && a.percentage !== undefined) {
-          slice = amount * Number(a.percentage) / 100;
+          var pct = Number(a.percentage) / 100;
+          slice = docEur * pct;
+          sliceOrig = amount * pct;
         } else {
-          slice = 0;
+          slice = 0; sliceOrig = 0;
         }
-        if (!byCcyByPc[ccy]) byCcyByPc[ccy] = {};
-        byCcyByPc[ccy][pc] = (byCcyByPc[ccy][pc] || 0) + slice;
-        totalsByCcy[ccy] = (totalsByCcy[ccy] || 0) + slice;
+        pcSums[pc] = (pcSums[pc] || 0) + slice;
+        totalEur += slice;
+        if (ccy !== 'EUR') {
+          if (!pcOrigByCcy[pc]) pcOrigByCcy[pc] = {};
+          pcOrigByCcy[pc][ccy] = (pcOrigByCcy[pc][ccy] || 0) + sliceOrig;
+        }
       });
     } else {
       var pc = d.profit_center || '—';
-      if (!byCcyByPc[ccy]) byCcyByPc[ccy] = {};
-      byCcyByPc[ccy][pc] = (byCcyByPc[ccy][pc] || 0) + amount;
-      totalsByCcy[ccy] = (totalsByCcy[ccy] || 0) + amount;
+      pcSums[pc] = (pcSums[pc] || 0) + docEur;
+      totalEur += docEur;
+      if (ccy !== 'EUR') {
+        if (!pcOrigByCcy[pc]) pcOrigByCcy[pc] = {};
+        pcOrigByCcy[pc][ccy] = (pcOrigByCcy[pc][ccy] || 0) + amount;
+      }
     }
   });
 
-  var ccys = Object.keys(totalsByCcy).sort();
-  if (!ccys.length) { box.innerHTML = ''; return; }
+  if (totalEur <= 0) { box.innerHTML = ''; return; }
 
   var stageName = (CP_STAGES.find ? CP_STAGES.find(function(s){return s.id===CP_STAGE;}) : null);
   stageName = stageName ? stageName.label : CP_STAGE;
+
+  var fmtEur = function(n) {
+    return '€' + Number(n).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+  };
 
   var html = '<div style="padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:10px;">' +
     '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:10px;">' +
@@ -3385,36 +3419,32 @@ function renderCPTotals(docs) {
         '💰 To allocate · ' + esc(stageName) +
       '</div>' +
       '<div style="font-size:13px;">' +
-        ccys.map(function(c) {
-          return '<strong>' + esc(c) + ' ' + Number(totalsByCcy[c]).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) +
-                 '</strong> <span style="color:var(--muted);font-size:11px;">across ' + docCountByCcy[c] + ' doc' + (docCountByCcy[c]===1?'':'s') + '</span>';
-        }).join(' &nbsp;·&nbsp; ') +
+        '<strong>' + fmtEur(totalEur) + '</strong> ' +
+        '<span style="color:var(--muted);font-size:11px;">across ' + docCount + ' doc' + (docCount===1?'':'s') + ' · EUR-normalised' +
+        (skipped ? ' · <span style="color:var(--yellow);">' + skipped + ' missing FX rate</span>' : '') +
+        '</span>' +
       '</div>' +
     '</div>';
 
-  // Per-currency, per-PC breakdown
-  ccys.forEach(function(ccy) {
-    var pcSums = byCcyByPc[ccy] || {};
-    var entries = Object.keys(pcSums).map(function(pc) { return { pc: pc, amount: pcSums[pc] }; })
-                  .sort(function(a, b) { return b.amount - a.amount; });
-    var total = totalsByCcy[ccy] || 1;
-
-    html += '<div style="margin-top:6px;">' +
-      (ccys.length > 1 ? '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">' + esc(ccy) + '</div>' : '') +
-      entries.map(function(e) {
-        var pct = total > 0 ? (e.amount / total * 100) : 0;
-        var pcLabel = (PC_LABELS && PC_LABELS[e.pc]) ? PC_LABELS[e.pc] : (e.pc === '—' ? 'Unassigned' : e.pc);
-        var color = (PC_COLORS && PC_COLORS[e.pc]) ? PC_COLORS[e.pc] : '#94a3b8';
-        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;font-size:12px;">' +
-          '<div style="width:28px;font-family:monospace;color:' + color + ';font-weight:700;">' + esc(e.pc) + '</div>' +
-          '<div style="width:120px;">' + esc(pcLabel) + '</div>' +
-          '<div style="flex:1;height:8px;background:#eef2f7;border-radius:4px;overflow:hidden;"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + color + ';"></div></div>' +
-          '<div style="width:140px;text-align:right;font-weight:600;">' + esc(ccy) + ' ' + Number(e.amount).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</div>' +
-          '<div style="width:50px;text-align:right;color:var(--muted);font-size:11px;">' + pct.toFixed(1) + '%</div>' +
-        '</div>';
-      }).join('') +
+  var entries = Object.keys(pcSums).map(function(pc) { return { pc: pc, amount: pcSums[pc] }; })
+                .sort(function(a, b) { return b.amount - a.amount; });
+  html += entries.map(function(e) {
+    var pct = (e.amount / totalEur * 100);
+    var pcLabel = (PC_LABELS && PC_LABELS[e.pc]) ? PC_LABELS[e.pc] : (e.pc === '—' ? 'Unassigned' : e.pc);
+    var color = (PC_COLORS && PC_COLORS[e.pc]) ? PC_COLORS[e.pc] : '#94a3b8';
+    var origNotes = pcOrigByCcy[e.pc] ? Object.keys(pcOrigByCcy[e.pc]).map(function(c) {
+      return c + ' ' + Number(pcOrigByCcy[e.pc][c]).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }).join(' + ') : '';
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;font-size:12px;">' +
+      '<div style="width:28px;font-family:monospace;color:' + color + ';font-weight:700;">' + esc(e.pc) + '</div>' +
+      '<div style="width:120px;">' + esc(pcLabel) + '</div>' +
+      '<div style="flex:1;height:8px;background:#eef2f7;border-radius:4px;overflow:hidden;"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + color + ';"></div></div>' +
+      '<div style="width:160px;text-align:right;font-weight:600;">' + fmtEur(e.amount) +
+        (origNotes ? '<div style="font-size:10px;color:var(--muted);font-weight:400;">incl. ' + esc(origNotes) + '</div>' : '') +
+      '</div>' +
+      '<div style="width:50px;text-align:right;color:var(--muted);font-size:11px;">' + pct.toFixed(1) + '%</div>' +
     '</div>';
-  });
+  }).join('');
 
   html += '</div>';
   box.innerHTML = html;
@@ -3524,10 +3554,23 @@ function renderCPRows(docs) {
     // Payment comment textarea (P1.6 — wrong bank / no funds / on hold)
     var paymentCommentCell = _cpPaymentCommentCell(d, canEditEntity);
 
+    // Desired payment date + payment state pill (P2.2, 2026-06-07)
+    var desiredDateCell = _cpDesiredDateCell(d, canEditEntity);
+
     // Stage-specific action button
     var actionsCell = '—';
-    if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
-      actionsCell = '<button class="btn btn-sm btn-success" onclick="markBudgetOK(\'' + d.id + '\')">✓ Budget OK</button>';
+    if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper' || ME.role === 'stream_owner')) {
+      // Two actions side-by-side: regular budget-OK flow OR
+      // "skip Rita" — already paid by card (P2.1)
+      actionsCell =
+        '<div style="display:flex;flex-direction:column;gap:4px;">' +
+          '<button class="btn btn-sm btn-success" onclick="markBudgetOK(\'' + d.id + '\')">✓ Budget OK</button>' +
+          '<button class="btn btn-sm" style="background:#fef3c7;color:#92400e;border-color:#fcd34d;" ' +
+                  'onclick="markAlreadyPaidByCard(\'' + d.id + '\')" ' +
+                  'title="Skip CEO + Payment. Use when someone already paid via corporate card.">' +
+            '💳 Already paid (card)' +
+          '</button>' +
+        '</div>';
     } else if (CP_STAGE === 'awaiting_ceo' && (ME.role === 'admin' || ME.role === 'holding_ceo')) {
       actionsCell = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay</button>';
     } else if (CP_STAGE === 'awaiting_payment' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
@@ -3539,10 +3582,12 @@ function renderCPRows(docs) {
     // Compose row per stage
     // 2026-06-07 P1.5: Legal Entity column added to awaiting_ceo + awaiting_payment + paid.
     // 2026-06-07 P1.6: payment_comment column added to awaiting_payment.
+    // 2026-06-07 P2.2: Desired payment date + state pill column added to
+    //                  awaiting_ceo + awaiting_payment.
     var cellsByStage = {
       'budget_check':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, purposeCell, actionsCell],
-      'awaiting_ceo':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, budgetCell, actionsCell],
-      'awaiting_payment': [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, ceoCell, paymentCommentCell, actionsCell],
+      'awaiting_ceo':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, desiredDateCell, budgetCell, actionsCell],
+      'awaiting_payment': [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, desiredDateCell, ceoCell, paymentCommentCell, actionsCell],
       'paid':             [dateCell, streamCell, vendorCell, amountCell, legalEntityCell, ceoCell, paidCell, deltaCell, actionsCell],
     };
     var cells = cellsByStage[CP_STAGE] || [dateCell, streamCell, vendorCell, ledgerCell, amountCell, actionsCell];
@@ -3573,7 +3618,8 @@ function _cpColumnHeaders() {
     return common.concat([
       { label: 'Ledger' },
       { label: 'Amount' },
-      { label: 'Legal Entity' },     // P1.5 (2026-06-07)
+      { label: 'Legal Entity' },             // P1.5 (2026-06-07)
+      { label: 'Desired date · state' },     // P2.2 (2026-06-07)
       { label: 'Budget OK by · when' },
       act,
     ]);
@@ -3582,9 +3628,10 @@ function _cpColumnHeaders() {
     return common.concat([
       { label: 'Ledger' },
       { label: 'Amount' },
-      { label: 'Legal Entity' },     // P1.5 (2026-06-07)
+      { label: 'Legal Entity' },             // P1.5 (2026-06-07)
+      { label: 'Desired date · state' },     // P2.2 (2026-06-07)
       { label: 'CEO ✓ by · when' },
-      { label: 'Comment' },          // P1.6 (2026-06-07)
+      { label: 'Comment' },                  // P1.6 (2026-06-07)
       act,
     ]);
   }
@@ -3671,6 +3718,83 @@ function savePaymentComment(docId, comment) {
   });
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// P2.2 — Desired payment date + payment-state pill (cell renderer)
+// ───────────────────────────────────────────────────────────────────────
+function _cpDesiredDateCell(d, canEdit) {
+  var state = d.payment_state || 'needs_to_pay';
+  var STATE_COLOR = {
+    'needs_to_pay': { bg: '#fef3c7', fg: '#92400e' },
+    'in_progress':  { bg: '#dbeafe', fg: '#1e40af' },
+    'paid':         { bg: '#dcfce7', fg: '#166534' },
+    'on_hold':      { bg: '#fee2e2', fg: '#991b1b' },
+  };
+  var sc = STATE_COLOR[state] || STATE_COLOR['needs_to_pay'];
+  var statePill = '<span class="pill" style="background:' + sc.bg + ';color:' + sc.fg + ';">' +
+                  esc(state.replace(/_/g, ' ')) + '</span>';
+
+  var dateValue = d.desired_payment_date || '';
+  var dateInput = canEdit
+    ? '<input type="date" value="' + esc(dateValue) + '" ' +
+        'onchange="saveDesiredPaymentDate(\'' + d.id + '\', this.value)" ' +
+        'style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;width:120px;">'
+    : '<span style="font-size:11px;color:var(--muted);">' + esc(dateValue || '—') + '</span>';
+
+  var stateSel = canEdit
+    ? '<select onchange="savePaymentState(\'' + d.id + '\', this.value)" class="fio-select" style="font-size:11px;padding:2px 4px;margin-top:3px;width:120px;">' +
+        ['needs_to_pay','in_progress','paid','on_hold'].map(function(s) {
+          var sel = (s === state) ? ' selected' : '';
+          return '<option value="' + s + '"' + sel + '>' + s.replace(/_/g, ' ') + '</option>';
+        }).join('') +
+      '</select>'
+    : '';
+
+  return '<div style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">' +
+           dateInput + statePill + stateSel +
+         '</div>';
+}
+
+function saveDesiredPaymentDate(docId, value) {
+  api('POST', '/api/documents/' + docId + '/payment-state', {
+    desired_payment_date: value
+  }).catch(function(err) {
+    showToast('Save failed: ' + (err && err.message || err), 'error');
+  });
+}
+
+function savePaymentState(docId, state) {
+  api('POST', '/api/documents/' + docId + '/payment-state', { state: state }).then(function() {
+    showToast('State → ' + state.replace(/_/g, ' '), 'success');
+    loadConfirmPaymentPanel();
+  }).catch(function(err) {
+    showToast('Save failed: ' + (err && err.message || err), 'error');
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// P2.1 — Already paid by card (skip CEO + Payment stages)
+// ───────────────────────────────────────────────────────────────────────
+function markAlreadyPaidByCard(docId) {
+  var holder = prompt(
+    'Already paid by corporate card. Who paid?\n\n' +
+    'This skips Holding CEO + Awaiting Payment stages.\n' +
+    'The document goes straight to Paid.'
+  );
+  if (!holder || !holder.trim()) return;
+  api('POST', '/api/documents/' + docId + '/mark-already-paid-by-card', {
+    card_holder: holder.trim()
+  }).then(function(d) {
+    if (d.status === 'paid') {
+      showToast('Marked as paid by card · ' + holder, 'success');
+      loadConfirmPaymentPanel();
+    } else {
+      showToast('Failed: ' + (d.error || 'unknown'), 'error');
+    }
+  }).catch(function(err) {
+    showToast('Failed: ' + (err && err.message || err), 'error');
+  });
+}
+
 function markBudgetOK(docId) {
   var note = prompt('Optional budget note (e.g. "within Q2 consulting envelope")') || '';
   api('POST', '/api/documents/' + docId + '/budget-validate', {
@@ -3702,17 +3826,47 @@ function confirmPayment(docId) {
 }
 
 function markDocPaid(docId) {
+  // P2.5 (2026-06-07) — bookkeeper can wire in EUR OR original currency.
+  // Find the doc in the cached payment queue to read its native currency.
+  var doc = (CP_QUEUE_CACHE || []).find(function(x) { return x.id === docId; }) || {};
+  var origCcy = (doc.currency_orig || doc.currency || 'EUR').toUpperCase();
+  var origAmt = Number(doc.amount_orig || doc.amount || 0);
+  var eurAmt  = Number(doc.amount_eur || doc.amount || 0);
+  var fx      = Number(doc.fx_rate || 1);
+
+  var canChooseOrig = (origCcy && origCcy !== 'EUR' && origAmt);
+  var prompt1 = 'How was the wire sent?\n\n' +
+    '1 — EUR (€' + eurAmt.toFixed(2) + ')';
+  if (canChooseOrig) {
+    prompt1 += '\n2 — ' + origCcy + ' (' + origAmt.toFixed(2) + ' ' + origCcy + ', FX ' + fx.toFixed(4) + ')';
+  }
+  prompt1 += '\n\nEnter 1' + (canChooseOrig ? ' or 2' : '') + ':';
+
+  var choice = prompt(prompt1, canChooseOrig ? '1' : '1');
+  if (choice === null) return;
+  var payCcy = (choice.trim() === '2' && canChooseOrig) ? origCcy : 'EUR';
+
   var account = prompt('Paying account / bank (e.g. "Revolut · Amitours London")');
   if (account === null) return;
   var reference = prompt('Payment reference (transaction ID, batch, optional)');
   if (reference === null) return;
-  api('POST', '/api/documents/' + docId + '/mark-paid', {
+
+  var body = {
     paid_by: ME.signed_in_as,
     payment_account: account,
-    payment_reference: reference
-  }).then(function(d) {
+    payment_reference: reference,
+    payment_currency: payCcy,
+  };
+  if (payCcy !== 'EUR') {
+    body.payment_amount_orig = origAmt;
+    body.payment_fx_rate = fx;
+  }
+
+  api('POST', '/api/documents/' + docId + '/mark-paid', body).then(function(d) {
     if (d.status === 'paid') {
-      showToast('Marked as paid ✓ — moved to cashflow', 'success');
+      var msg = 'Marked paid in ' + payCcy;
+      if (payCcy !== 'EUR') msg += ' (€' + eurAmt.toFixed(2) + ' for accounting)';
+      showToast(msg, 'success');
       loadConfirmPaymentPanel();
     } else {
       showToast('Failed: ' + (d.error || 'unknown'), 'error');
