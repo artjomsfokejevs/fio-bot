@@ -104,6 +104,28 @@ CREATE INDEX IF NOT EXISTS ix_ct_period      ON card_transactions(period);
 CREATE INDEX IF NOT EXISTS ix_ct_department  ON card_transactions(department);
 CREATE INDEX IF NOT EXISTS ix_ct_match       ON card_transactions(match_status);
 CREATE INDEX IF NOT EXISTS ix_ct_holder      ON card_transactions(card_holder);
+
+-- 2026-06-07 P1 — FIO users roster, managed in Admin tab by HR/Bookkeeper.
+-- Replaces the hardcoded "Who is uploading?" dropdown in Upload tab and
+-- becomes the single source of truth for valid uploader/approver names.
+-- We intentionally do NOT use this for auth (Basic Auth stays on the
+-- server middleware); this is a domain-roster table only.
+CREATE TABLE IF NOT EXISTS fio_users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name     TEXT NOT NULL,
+    email         TEXT,
+    role          TEXT NOT NULL DEFAULT 'uploader',
+    profit_center TEXT,
+    department    TEXT,
+    active        INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT NOT NULL,
+    created_by    TEXT,
+    updated_at    TEXT,
+    updated_by    TEXT,
+    UNIQUE(full_name)
+);
+CREATE INDEX IF NOT EXISTS ix_fio_users_active ON fio_users(active);
+CREATE INDEX IF NOT EXISTS ix_fio_users_role   ON fio_users(role);
 """
 
 
@@ -165,6 +187,12 @@ def init_db() -> None:
             ("payment_account", "ALTER TABLE documents ADD COLUMN payment_account TEXT"),
             ("payment_paying_entity", "ALTER TABLE documents ADD COLUMN payment_paying_entity TEXT"),
             ("payment_reference", "ALTER TABLE documents ADD COLUMN payment_reference TEXT"),
+            # 2026-06-07 P1 — Legal Entity column (Stream ≠ Legal Entity per
+            # Rita's feedback). Values from data/legal_entities.json.
+            ("legal_entity", "ALTER TABLE documents ADD COLUMN legal_entity TEXT"),
+            # 2026-06-07 P1 — Comments at the Approved-Awaiting-Payment stage
+            # (e.g. "wrong bank details", "not enough funds", "on hold").
+            ("payment_comment", "ALTER TABLE documents ADD COLUMN payment_comment TEXT"),
         ):
             try:
                 conn.execute("SELECT %s FROM documents LIMIT 1" % col)

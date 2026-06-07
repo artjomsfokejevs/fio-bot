@@ -2795,6 +2795,86 @@ def stream_stats():
     return jsonify(db.get_document_stats_by_stream())
 
 
+# ───────────────────────────────────────────────────────────────────────
+# 2026-06-07 P1 — Users roster (Admin tab) + Legal Entities reference
+# ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/users", methods=["GET"])
+def users_list():
+    """List FIO users for the Admin tab and Upload "Who is uploading" dropdown.
+
+    Query params:
+      active=true   → only active users (default: all)
+      role=<role>   → filter to a single role
+    """
+    from services import users as users_svc
+    active_only = (request.args.get("active") or "").lower() in ("true", "1", "yes")
+    role = request.args.get("role") or None
+    out = users_svc.list_users(active_only=active_only, role=role)
+    return jsonify({"users": out, "roles": users_svc.ROLES})
+
+
+@app.route("/api/users", methods=["POST"])
+def users_create():
+    """Create a user. Admin/HR/Bookkeeper-gated (UI controls visibility)."""
+    from services import users as users_svc
+    body = request.get_json(silent=True) or {}
+    actor = request.headers.get("X-FIO-User") or "admin"
+    try:
+        u = users_svc.create_user(body, created_by=actor)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("create_user failed")
+        return jsonify({"error": str(exc)}), 500
+    db.insert_audit_log("user:" + str(u["id"]), "user_create",
+                        {"full_name": u["full_name"], "role": u["role"]},
+                        performed_by=actor)
+    return jsonify(u), 201
+
+
+@app.route("/api/users/<int:user_id>", methods=["PATCH"])
+def users_update(user_id: int):
+    from services import users as users_svc
+    body = request.get_json(silent=True) or {}
+    actor = request.headers.get("X-FIO-User") or "admin"
+    try:
+        u = users_svc.update_user(user_id, body, updated_by=actor)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not u:
+        return jsonify({"error": "Not found"}), 404
+    db.insert_audit_log("user:" + str(user_id), "user_update",
+                        {"fields": list(body.keys())},
+                        performed_by=actor)
+    return jsonify(u)
+
+
+@app.route("/api/users/<int:user_id>", methods=["DELETE"])
+def users_delete(user_id: int):
+    from services import users as users_svc
+    actor = request.headers.get("X-FIO-User") or "admin"
+    users_svc.delete_user(user_id)
+    db.insert_audit_log("user:" + str(user_id), "user_deactivate",
+                        {}, performed_by=actor)
+    return jsonify({"status": "deactivated"})
+
+
+@app.route("/api/legal-entities", methods=["GET"])
+def legal_entities():
+    """Return the 9 holding legal entities for the Awaiting CEO / Awaiting
+    Payment dropdowns. Stream ≠ Legal Entity — see data/legal_entities.json
+    docstring for the rationale (Rita's 2026-06-07 feedback)."""
+    import json as _json
+    path = os.path.join(os.path.dirname(__file__), "data", "legal_entities.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        return jsonify(data)
+    except (FileNotFoundError, _json.JSONDecodeError) as exc:
+        return jsonify({"entities": [], "error": str(exc)}), 500
+
+
 # ---------------------------------------------------------------------------
 # Blueprint registration (Phase 7.1 refactor — see docs/architecture.md)
 # ---------------------------------------------------------------------------

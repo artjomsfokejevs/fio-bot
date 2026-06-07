@@ -416,13 +416,22 @@ tbody tr:hover { background: #f8fafc; }
 .actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .actions .btn { flex: 0 0 auto; }
 /* Actions column reserves enough room for View+Approve+Reject so the rightmost
-   button is never clipped on borderline-narrow viewports (FIO retro 2026-06-07). */
-table .actions { min-width: 110px; }
-thead th:last-child, tbody td:last-child { padding-right: 20px; }
-/* Approve / Upload tables: always allow horizontal scroll if columns won't fit.
-   .table-wrapper sets overflow-x:auto, the table itself declares a min-width
-   below its natural size threshold so the wrapper engages the scrollbar
-   instead of letting browsers squash cells. */
+   button is never clipped on borderline-narrow viewports.
+   Plus position:sticky pins it to the right edge so the action buttons are
+   always visible even when the user horizontally-scrolls the table (FIO
+   pattern P35 from retro 2026-06-03, applied to Approve here per testers). */
+table .actions, table th.actions { min-width: 130px; }
+table thead th:last-child,
+table tbody td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 6px -4px rgba(0,0,0,0.08);
+  padding-right: 20px;
+}
+table thead th:last-child { background: #f8fafc; z-index: 3; }
 /* hidden for Y so rounded corners still clip the table; auto for X so
    wide tables get a horizontal scrollbar instead of squashing cells. */
 .table-wrapper { overflow: hidden; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1874,6 +1883,73 @@ thead th:last-child, tbody td:last-child { padding-right: 20px; }
           <tbody id="admin-users-rows"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <!-- FIO-managed users (Top-16 P1.2, 2026-06-07)                  -->
+      <!-- HR / Bookkeeper add testers / contractors / shared mailboxes -->
+      <!-- that don't exist in BT4YOU/Asana yet.                        -->
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">➕ FIO-managed users (Admin override)</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
+          Add testers, contractors, or shared mailboxes that are not in BT4YOU/Asana yet. These appear in the Upload "Who is uploading?" dropdown with an <code>(admin)</code> badge. Soft-deactivate to hide without losing audit history.
+        </p>
+
+        <form id="fio-user-form" onsubmit="event.preventDefault(); createFioUser();"
+              style="display:grid;grid-template-columns:1.5fr 1.5fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;padding:12px;background:var(--brand-light);border-radius:8px;border:1px solid #c7d9f0;">
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Full name *</label>
+            <input id="fu-name" required style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Email</label>
+            <input id="fu-email" type="email" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Role *</label>
+            <select id="fu-role" class="fio-select" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Profit center</label>
+            <select id="fu-pc" class="fio-select" style="width:100%;">
+              <option value="">— none —</option>
+              <option value="AG">AG · Amitours Group</option>
+              <option value="AA">AA · Alps2Alps</option>
+              <option value="BK">BK · Skibookers</option>
+              <option value="SR">SR · Skipasser</option>
+              <option value="MT">MT · Mountly</option>
+              <option value="CF">CF · MyPeak Finance</option>
+              <option value="AL">AL · Alveda</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Department</label>
+            <input id="fu-dept" placeholder="e.g. HR, Sales" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <button type="submit" class="btn btn-success" style="white-space:nowrap;">+ Add user</button>
+          </div>
+        </form>
+
+        <div class="table-wrapper">
+          <table style="font-size:13px;">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Profit center</th>
+                <th>Department</th>
+                <th>Active</th>
+                <th>Created</th>
+                <th class="actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="fio-users-rows"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -2812,13 +2888,34 @@ function setupUpload() {
 var ALL_PEOPLE = [];
 
 function loadPeopleList() {
-  api('GET', '/api/people').then(function(data) {
-    ALL_PEOPLE = data.people || [];
+  // Two sources merged: (1) BT4YOU Asana sync, (2) fio_users table managed
+  // in the Admin tab. FIO-side users live in their own optgroup so HR can
+  // add testers / contractors / shared mailboxes that aren't in Asana yet.
+  // (Top-16 P1.3, 2026-06-07 — Rita's feedback "Who is uploading should
+  // populate from Admin".)
+  var pBT = api('GET', '/api/people').catch(function() { return { people: [], _err: 'bt4you' }; });
+  var pFIO = api('GET', '/api/users?active=true').catch(function() { return { users: [], _err: 'fio' }; });
+  Promise.all([pBT, pFIO]).then(function(results) {
+    var bt = results[0] || {}; var fio = results[1] || {};
+    var btPeople = (bt.people || []).map(function(p) {
+      return { name: p.name, title: p.title, profit_center: p.profit_center || 'AG', _src: 'bt4you' };
+    });
+    var fioPeople = (fio.users || []).map(function(u) {
+      return { name: u.full_name, title: u.role, profit_center: u.profit_center || 'AG', _src: 'admin' };
+    });
+    // Dedup by name — FIO entry wins (admin overrides BT4YOU)
+    var seen = {};
+    fioPeople.forEach(function(p) { seen[p.name.toLowerCase()] = p; });
+    btPeople.forEach(function(p) {
+      var k = p.name.toLowerCase();
+      if (!seen[k]) seen[k] = p;
+    });
+    ALL_PEOPLE = Object.values(seen);
+
     var sel = document.getElementById('upload-user');
     var status = document.getElementById('upload-user-status');
     if (!sel) return;
 
-    // Group by profit_center for clearer scanning
     var grouped = {};
     ALL_PEOPLE.forEach(function(p) {
       var pc = p.profit_center || 'AG';
@@ -2826,7 +2923,7 @@ function loadPeopleList() {
       grouped[pc].push(p);
     });
 
-    var html = ['<option value="">— Select your name (synced from Asana via BT4YOU) —</option>'];
+    var html = ['<option value="">— Select your name —</option>'];
     var pcOrder = ['AG', 'AA', 'BK', 'SR', 'MT', 'AH', 'PK', 'CF', 'AL', 'RR'];
     pcOrder.forEach(function(pc) {
       if (!grouped[pc]) return;
@@ -2834,20 +2931,24 @@ function loadPeopleList() {
       html.push('<optgroup label="' + esc(pc + ' — ' + pcName) + '">');
       grouped[pc].forEach(function(p) {
         var titleSnippet = p.title ? ' — ' + p.title.substring(0, 50) : '';
-        html.push('<option value="' + esc(p.name) + '">' + esc(p.name + titleSnippet) + '</option>');
+        var badge = p._src === 'admin' ? ' (admin)' : '';
+        html.push('<option value="' + esc(p.name) + '">' + esc(p.name + titleSnippet) + badge + '</option>');
       });
       html.push('</optgroup>');
     });
     sel.innerHTML = html.join('');
 
-    if (status) status.textContent = ALL_PEOPLE.length + ' people from Asana';
+    if (status) {
+      var srcSummary = [];
+      if (btPeople.length) srcSummary.push(btPeople.length + ' BT4YOU');
+      if (fioPeople.length) srcSummary.push(fioPeople.length + ' admin');
+      status.textContent = ALL_PEOPLE.length + ' people · ' + srcSummary.join(' + ');
+      if (bt._err && fio._err) status.style.color = 'var(--red)';
+      else if (bt._err) status.style.color = 'var(--yellow)';
+    }
 
-    // Restore last selection
     var saved = localStorage.getItem('fio_uploaded_by');
     if (saved) sel.value = saved;
-  }).catch(function() {
-    var status = document.getElementById('upload-user-status');
-    if (status) { status.textContent = 'BT4YOU offline'; status.style.color = 'var(--red)'; }
   });
 }
 
