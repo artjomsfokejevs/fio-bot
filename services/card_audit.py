@@ -308,7 +308,7 @@ def _pdf_to_csv_bytes(pdf_bytes: bytes) -> bytes:
     for page in reader.pages:
         try:
             t = page.extract_text() or ""
-        except Exception:
+        except Exception:  # noqa: BLE001 — pypdf raises a zoo of types on damaged pages; one bad page must not abort the import
             t = ""
         all_text.append(t)
     text = "\n".join(all_text)
@@ -469,7 +469,7 @@ def import_csv(
                         })
                 except sqlite3.IntegrityError:
                     skipped += 1
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — per-row defensive boundary: one malformed row must not abort the whole CSV import; errors are surfaced to the user via the result payload
                 errors.append({"row": row_idx, "error": str(exc)[:120]})
         conn.commit()
     finally:
@@ -548,19 +548,29 @@ def _list_invoice_candidates(period: str) -> List[Dict[str, Any]]:
                  AND period IN (?, ?, ?)""",
             (prev, prefix, nxt),
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [db._row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
 
 def _doc_date(d: Dict[str, Any]) -> Optional[datetime]:
-    # Try parsed_json.dates.document_date first; fallback to period+15
+    """Best document date for matching: parsed_json.dates.document_date, else period+15.
+
+    parsed_json may be a dict (when row came through _row_to_dict) or a raw
+    JSON string (legacy callers) — handle both.
+    """
+    parsed_raw = d.get("parsed_json")
     try:
-        parsed = json.loads(d.get("parsed_json") or "{}")
+        if isinstance(parsed_raw, str):
+            parsed = json.loads(parsed_raw or "{}")
+        elif isinstance(parsed_raw, dict):
+            parsed = parsed_raw
+        else:
+            parsed = {}
         dt = (parsed.get("dates") or {}).get("document_date")
         if dt:
             return datetime.fromisoformat(dt[:10])
-    except Exception:
+    except (ValueError, TypeError, json.JSONDecodeError):
         pass
     if d.get("period"):
         try:
@@ -697,7 +707,7 @@ def list_card_tx(
     sql += " ORDER BY posted_at DESC LIMIT ?"
     params.append(limit)
     try:
-        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        return [db._row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
     finally:
         conn.close()
 
@@ -706,7 +716,7 @@ def get_card_tx(tx_id: str) -> Optional[Dict[str, Any]]:
     conn = db.get_connection()
     try:
         row = conn.execute("SELECT * FROM card_transactions WHERE id=?", (tx_id,)).fetchone()
-        return dict(row) if row else None
+        return db._row_to_dict(row) if row else None
     finally:
         conn.close()
 

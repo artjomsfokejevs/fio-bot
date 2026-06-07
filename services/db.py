@@ -413,16 +413,7 @@ def get_audit_log(limit: int = 50) -> List[Dict[str, Any]]:
             "SELECT * FROM audit_log ORDER BY performed_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
-        result = []
-        for row in rows:
-            d = dict(row)
-            if d.get("details"):
-                try:
-                    d["details"] = json.loads(d["details"])
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            result.append(d)
-        return result
+        return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
@@ -453,10 +444,26 @@ def get_document_stats_by_stream() -> Dict[str, Dict[str, int]]:
         conn.close()
 
 
+# JSON-stored columns across all tables. Keep this list as the single source
+# of truth — any new TEXT column holding JSON must be added here so
+# _row_to_dict() decodes it everywhere. (FIO retro G54, 2026-06-02)
+_JSON_COLUMNS = (
+    "parsed_json",
+    "classification_json",
+    "allocations_json",
+    "raw_row",          # card_transactions
+    "details",          # audit_log
+)
+
+
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    """Convert a sqlite3.Row to a plain dictionary, parsing JSON fields."""
+    """Convert a sqlite3.Row to a plain dictionary, parsing known JSON fields.
+
+    JSON-stored columns (see _JSON_COLUMNS) are decoded with json.loads();
+    malformed payloads stay as raw strings (callers can still introspect).
+    """
     d = dict(row)
-    for key in ("parsed_json", "classification_json"):
+    for key in _JSON_COLUMNS:
         if d.get(key):
             try:
                 d[key] = json.loads(d[key])

@@ -472,7 +472,7 @@ def upload():
 
                 results.append({"id": doc_id, "filename": f.filename, "status": "classified"})
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — batch boundary: one bad upload must not abort the rest
             logger.exception("Auto-parse failed for %s", doc_id)
             db.update_document(doc_id, {"error": str(exc)})
             results.append({"id": doc_id, "filename": f.filename, "status": "pending", "error": str(exc)})
@@ -1516,19 +1516,25 @@ def accounting_export():
             sql += " AND period = ?"
             params.append(period_filter)
         sql += " ORDER BY period DESC, approved_at DESC, uploaded_at DESC"
-        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        rows = [db._row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
     finally:
         conn.close()
 
-    # Flatten: docs with allocations split into multiple CSV rows
+    # Flatten: docs with allocations split into multiple CSV rows.
+    # _row_to_dict already decodes allocations_json → list/dict, but legacy
+    # rows may carry a raw string — handle both shapes.
     csv_rows: List[Dict[str, Any]] = []
     for d in rows:
         allocs = []
-        if include_allocs and d.get("allocations_json"):
-            try:
-                allocs = json.loads(d["allocations_json"])
-            except Exception:
-                allocs = []
+        raw_alloc = d.get("allocations_json")
+        if include_allocs and raw_alloc:
+            if isinstance(raw_alloc, list):
+                allocs = raw_alloc
+            elif isinstance(raw_alloc, str):
+                try:
+                    allocs = json.loads(raw_alloc)
+                except (json.JSONDecodeError, TypeError):
+                    allocs = []
         # Build base row from doc
         base = {
             "document_id":       d.get("id"),
