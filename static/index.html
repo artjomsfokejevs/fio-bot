@@ -4831,17 +4831,39 @@ function renderDetails(doc) {
 
     html += '<div class="line-split-table" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">';
 
+    // P2.4 (2026-06-07) — line item amounts are in the SOURCE currency
+    // of the invoice (the parser doesn't convert per-line). Render both
+    // the original-currency amount AND the EUR equivalent so a HUF/USD
+    // invoice doesn't read as "€110000" when it really is "Ft 110 000".
+    var origCcy = (doc.currency_orig || doc.currency || 'EUR').toUpperCase();
+    var origIsEur = (origCcy === 'EUR');
+    // FX rate: EUR per 1 unit of orig (from parser). Fallback: 1.
+    var docFx = Number(doc.fx_rate || 0);
+    if (!docFx && doc.amount_eur && doc.amount_orig) {
+      docFx = Number(doc.amount_eur) / Number(doc.amount_orig);
+    }
+    if (!docFx) docFx = 1;
+    var CCY_SYM = { EUR: '€', USD: '$', GBP: '£', HUF: 'Ft ', CHF: 'CHF ', AMD: '֏ ', JPY: '¥', PLN: 'zł ' };
+    var sym = CCY_SYM[origCcy] || (origCcy + ' ');
+
     items.forEach(function(item, idx) {
       // Find matching per-line suggestion
       var sug = null;
       perLine.forEach(function(p) { if (p.line_index === idx) sug = p; });
       if (!sug && perLine.length === 1) sug = perLine[0];
 
-      var lineLedger = sug ? sug.code : (selectedCode || '');
-      var linePc = sug ? sug.profit_center : (doc.profit_center || '');
+      // P2.7 (2026-06-07) — auto-populate from doc-level when per-line is
+      // missing OR has empty code. Stakeholders can still override via the
+      // inline dropdown. Empty `—` is no longer the default; the doc's
+      // Override classification cascades to each line.
+      var lineLedger = (sug && sug.code) || selectedCode || doc.ledger_code || '';
+      var linePc    = (sug && sug.profit_center) || doc.profit_center || '';
       var hint = sug ? sug.category_hint : '';
       var descEn = item.description_en || item.description || '-';
-      var amt = item.amount ? Number(item.amount).toFixed(2) : '0.00';
+      var amtN = item.amount ? Number(item.amount) : 0;
+      var amtOrigStr = amtN.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      var amtEurStr = origIsEur ? '' :
+        '€' + (amtN * docFx).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
       html += '<div class="line-split-row" data-line-idx="' + idx + '" style="display:grid;grid-template-columns:28px 1fr 80px 130px 110px;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;background:#fff;">';
 
@@ -4858,8 +4880,11 @@ function renderDetails(doc) {
       }
       html += '</div>';
 
-      // Col 3: amount
-      html += '<div style="text-align:right;font-weight:600;font-family:ui-monospace,monospace;color:var(--text);">€' + amt + '</div>';
+      // Col 3: amount — source currency first; EUR equiv as muted subline (P2.4)
+      html += '<div style="text-align:right;font-weight:600;font-family:ui-monospace,monospace;color:var(--text);">' +
+                esc(sym) + amtOrigStr +
+                (amtEurStr ? '<div style="font-size:10px;color:var(--muted);font-weight:400;">' + amtEurStr + '</div>' : '') +
+              '</div>';
 
       // Col 4: ledger dropdown
       html += '<select class="line-ledger" data-line-idx="' + idx + '" style="font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;">';
