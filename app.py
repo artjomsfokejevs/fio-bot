@@ -1005,12 +1005,22 @@ def save_doc(doc_id: str):
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
-    if doc.get("status") in ("posted", "approved", "rejected"):
-        return jsonify({"error": "Document is %s -- can't edit" % doc.get("status")}), 400
-
     body = request.get_json(silent=True) or {}
-    allowed = ("ledger_code", "profit_center", "department", "cost_reason",
-               "amount", "period", "vendor", "currency")
+    # Two allow-lists:
+    # (1) Metadata fields editable BEFORE approval — vendor, amount, etc.
+    # (2) Workflow-stage fields editable AFTER approval too — legal_entity
+    #     and payment_comment are filled in by the bookkeeper at the
+    #     Awaiting-CEO / Awaiting-Payment stages, when status='approved'
+    #     or 'posted'. They never change the financial truth, just routing.
+    pre_approval = ("ledger_code", "profit_center", "department", "cost_reason",
+                    "amount", "period", "vendor", "currency")
+    post_approval_workflow = ("legal_entity", "payment_comment")
+
+    if doc.get("status") in ("posted", "approved", "rejected"):
+        # Only the workflow fields are still editable
+        allowed = post_approval_workflow
+    else:
+        allowed = pre_approval + post_approval_workflow
     update_fields: Dict[str, Any] = {k: body[k] for k in allowed if k in body}
 
     # Phase 2.5 — per-line ledger split (when user reassigns lines to different codes)
@@ -2796,11 +2806,14 @@ def stream_stats():
 
 
 # ───────────────────────────────────────────────────────────────────────
-# 2026-06-07 P1 — Users roster (Admin tab) + Legal Entities reference
+# 2026-06-07 P1 — FIO users roster (Admin tab) + Legal Entities reference
+# NOTE: namespace is /api/fio-users to avoid the older /api/users endpoint
+# (line ~2628) which serves the role-assignment table from user_roles.json.
+# The two coexist: /api/users = role config; /api/fio-users = HR roster.
 # ───────────────────────────────────────────────────────────────────────
 
-@app.route("/api/users", methods=["GET"])
-def users_list():
+@app.route("/api/fio-users", methods=["GET"])
+def fio_users_list():
     """List FIO users for the Admin tab and Upload "Who is uploading" dropdown.
 
     Query params:
@@ -2814,8 +2827,8 @@ def users_list():
     return jsonify({"users": out, "roles": users_svc.ROLES})
 
 
-@app.route("/api/users", methods=["POST"])
-def users_create():
+@app.route("/api/fio-users", methods=["POST"])
+def fio_users_create():
     """Create a user. Admin/HR/Bookkeeper-gated (UI controls visibility)."""
     from services import users as users_svc
     body = request.get_json(silent=True) or {}
@@ -2827,14 +2840,14 @@ def users_create():
     except Exception as exc:
         logger.exception("create_user failed")
         return jsonify({"error": str(exc)}), 500
-    db.insert_audit_log("user:" + str(u["id"]), "user_create",
+    db.insert_audit_log("user:" + str(u["id"]), "fio_user_create",
                         {"full_name": u["full_name"], "role": u["role"]},
                         performed_by=actor)
     return jsonify(u), 201
 
 
-@app.route("/api/users/<int:user_id>", methods=["PATCH"])
-def users_update(user_id: int):
+@app.route("/api/fio-users/<int:user_id>", methods=["PATCH"])
+def fio_users_update(user_id: int):
     from services import users as users_svc
     body = request.get_json(silent=True) or {}
     actor = request.headers.get("X-FIO-User") or "admin"
@@ -2844,18 +2857,18 @@ def users_update(user_id: int):
         return jsonify({"error": str(exc)}), 400
     if not u:
         return jsonify({"error": "Not found"}), 404
-    db.insert_audit_log("user:" + str(user_id), "user_update",
+    db.insert_audit_log("user:" + str(user_id), "fio_user_update",
                         {"fields": list(body.keys())},
                         performed_by=actor)
     return jsonify(u)
 
 
-@app.route("/api/users/<int:user_id>", methods=["DELETE"])
-def users_delete(user_id: int):
+@app.route("/api/fio-users/<int:user_id>", methods=["DELETE"])
+def fio_users_delete(user_id: int):
     from services import users as users_svc
     actor = request.headers.get("X-FIO-User") or "admin"
     users_svc.delete_user(user_id)
-    db.insert_audit_log("user:" + str(user_id), "user_deactivate",
+    db.insert_audit_log("user:" + str(user_id), "fio_user_deactivate",
                         {}, performed_by=actor)
     return jsonify({"status": "deactivated"})
 

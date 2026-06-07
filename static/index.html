@@ -2267,6 +2267,7 @@ function switchTab(tabName) {
     loadConfirmPaymentPanel();
   } else if (tabName === 'admin') {
     loadAdminPanel();
+    loadFioUsers();  // 2026-06-07 P1.2 — FIO-managed users roster
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();
   }
@@ -2894,7 +2895,7 @@ function loadPeopleList() {
   // (Top-16 P1.3, 2026-06-07 — Rita's feedback "Who is uploading should
   // populate from Admin".)
   var pBT = api('GET', '/api/people').catch(function() { return { people: [], _err: 'bt4you' }; });
-  var pFIO = api('GET', '/api/users?active=true').catch(function() { return { users: [], _err: 'fio' }; });
+  var pFIO = api('GET', '/api/fio-users?active=true').catch(function() { return { users: [], _err: 'fio' }; });
   Promise.all([pBT, pFIO]).then(function(results) {
     var bt = results[0] || {}; var fio = results[1] || {};
     var btPeople = (bt.people || []).map(function(p) {
@@ -3099,6 +3100,99 @@ function deleteAdminUser(name) {
       showToast('Failed: ' + (d.message || d.error || 'unknown'), 'error');
     }
   });
+}
+
+// ===========================================================================
+// Admin → FIO-managed users roster (Top-16 P1.2, 2026-06-07)
+// HR / Bookkeeper add testers / contractors / shared mailboxes that don't
+// exist in BT4YOU/Asana yet. Soft-delete (active=0) preserves audit history.
+// ===========================================================================
+var FIO_USERS_CACHE = [];
+var FIO_ROLES = {};
+
+function loadFioUsers() {
+  api('GET', '/api/fio-users').then(function(d) {
+    FIO_USERS_CACHE = d.users || [];
+    FIO_ROLES = d.roles || {};
+    // Populate the role dropdown in the add-user form
+    var roleSel = document.getElementById('fu-role');
+    if (roleSel && !roleSel.options.length) {
+      var html = [];
+      Object.keys(FIO_ROLES).forEach(function(k) {
+        html.push('<option value="' + esc(k) + '">' + esc(FIO_ROLES[k]) + '</option>');
+      });
+      roleSel.innerHTML = html.join('');
+    }
+    renderFioUsers();
+  }).catch(function(err) {
+    var tb = document.getElementById('fio-users-rows');
+    if (tb) tb.innerHTML = '<tr><td colspan="8" class="empty-state" style="color:var(--red);">Failed to load FIO users: ' + esc(err && err.message || err) + '</td></tr>';
+  });
+}
+
+function renderFioUsers() {
+  var tb = document.getElementById('fio-users-rows');
+  if (!tb) return;
+  if (!FIO_USERS_CACHE.length) {
+    tb.innerHTML = '<tr><td colspan="8" class="empty-state">No FIO-managed users yet. Add the first one using the form above — they\'ll appear in the Upload "Who is uploading?" dropdown with an <code>(admin)</code> badge.</td></tr>';
+    return;
+  }
+  tb.innerHTML = FIO_USERS_CACHE.map(function(u) {
+    var roleLabel = FIO_ROLES[u.role] || u.role;
+    var activeChip = u.active
+      ? '<span class="pill" style="background:#dcfce7;color:#166534;">active</span>'
+      : '<span class="pill" style="background:#fee2e2;color:#991b1b;">inactive</span>';
+    var created = (u.created_at || '').substring(0,10);
+    var actionBtn = u.active
+      ? '<button class="btn btn-danger" style="font-size:11px;padding:4px 10px;" onclick="deactivateFioUser(' + u.id + ', \'' + esc(u.full_name).replace(/\x27/g, "\\\x27") + '\')">Deactivate</button>'
+      : '<button class="btn btn-success" style="font-size:11px;padding:4px 10px;" onclick="reactivateFioUser(' + u.id + ')">Reactivate</button>';
+    return '<tr>' +
+      '<td><strong>' + esc(u.full_name) + '</strong></td>' +
+      '<td style="font-size:12px;color:var(--muted);">' + esc(u.email || '—') + '</td>' +
+      '<td>' + esc(roleLabel) + '</td>' +
+      '<td>' + esc(u.profit_center || '—') + '</td>' +
+      '<td>' + esc(u.department || '—') + '</td>' +
+      '<td>' + activeChip + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);">' + esc(created) + '</td>' +
+      '<td class="actions">' + actionBtn + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function createFioUser() {
+  var body = {
+    full_name:     document.getElementById('fu-name').value.trim(),
+    email:         document.getElementById('fu-email').value.trim(),
+    role:          document.getElementById('fu-role').value,
+    profit_center: document.getElementById('fu-pc').value,
+    department:    document.getElementById('fu-dept').value.trim(),
+  };
+  if (!body.full_name) { showToast('Full name is required', 'error'); return; }
+  api('POST', '/api/fio-users', body).then(function() {
+    showToast('User added: ' + body.full_name, 'success');
+    document.getElementById('fio-user-form').reset();
+    loadFioUsers();
+    loadPeopleList();  // refresh Upload dropdown immediately
+  }).catch(function(err) {
+    showToast('Add failed: ' + (err && err.message || err), 'error');
+  });
+}
+
+function deactivateFioUser(id, name) {
+  if (!confirm('Deactivate ' + name + '? They will be hidden from the Upload dropdown but their history stays.')) return;
+  api('DELETE', '/api/fio-users/' + id).then(function() {
+    showToast('Deactivated', 'success');
+    loadFioUsers();
+    loadPeopleList();
+  }).catch(function(err) { showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function reactivateFioUser(id) {
+  api('PATCH', '/api/fio-users/' + id, { active: true }).then(function() {
+    showToast('Reactivated', 'success');
+    loadFioUsers();
+    loadPeopleList();
+  }).catch(function(err) { showToast('Failed: ' + (err && err.message || err), 'error'); });
 }
 
 // ===========================================================================
@@ -3423,6 +3517,13 @@ function renderCPRows(docs) {
         '<div style="font-size:10px;">post→pay: ' + esc(fmtDelta(d.posted_at || d.approved_at, d.payment_executed_at)) + '</div>'
       : '—';
 
+    // Legal Entity dropdown (P1.4 / P1.5 — bookkeeper picks payer entity)
+    var canEditEntity = (ME.role === 'admin' || ME.role === 'bookkeeper');
+    var legalEntityCell = _cpLegalEntityCell(d, canEditEntity);
+
+    // Payment comment textarea (P1.6 — wrong bank / no funds / on hold)
+    var paymentCommentCell = _cpPaymentCommentCell(d, canEditEntity);
+
     // Stage-specific action button
     var actionsCell = '—';
     if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
@@ -3436,11 +3537,13 @@ function renderCPRows(docs) {
     }
 
     // Compose row per stage
+    // 2026-06-07 P1.5: Legal Entity column added to awaiting_ceo + awaiting_payment + paid.
+    // 2026-06-07 P1.6: payment_comment column added to awaiting_payment.
     var cellsByStage = {
       'budget_check':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, purposeCell, actionsCell],
-      'awaiting_ceo':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, budgetCell, actionsCell],
-      'awaiting_payment': [dateCell, streamCell, vendorCell, ledgerCell, amountCell, ceoCell, actionsCell],
-      'paid':             [dateCell, streamCell, vendorCell, amountCell, ceoCell, paidCell, deltaCell, actionsCell],
+      'awaiting_ceo':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, budgetCell, actionsCell],
+      'awaiting_payment': [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, ceoCell, paymentCommentCell, actionsCell],
+      'paid':             [dateCell, streamCell, vendorCell, amountCell, legalEntityCell, ceoCell, paidCell, deltaCell, actionsCell],
     };
     var cells = cellsByStage[CP_STAGE] || [dateCell, streamCell, vendorCell, ledgerCell, amountCell, actionsCell];
     // The last cell (Actions) gets sticky-right class
@@ -3470,6 +3573,7 @@ function _cpColumnHeaders() {
     return common.concat([
       { label: 'Ledger' },
       { label: 'Amount' },
+      { label: 'Legal Entity' },     // P1.5 (2026-06-07)
       { label: 'Budget OK by · when' },
       act,
     ]);
@@ -3478,13 +3582,16 @@ function _cpColumnHeaders() {
     return common.concat([
       { label: 'Ledger' },
       { label: 'Amount' },
+      { label: 'Legal Entity' },     // P1.5 (2026-06-07)
       { label: 'CEO ✓ by · when' },
+      { label: 'Comment' },          // P1.6 (2026-06-07)
       act,
     ]);
   }
   if (CP_STAGE === 'paid') {
     return common.concat([
       { label: 'Amount' },
+      { label: 'Legal Entity' },     // P1.5 (2026-06-07)
       { label: 'CEO ✓' },
       { label: 'Payment executed' },
       { label: 'Δ time' },
@@ -3492,6 +3599,76 @@ function _cpColumnHeaders() {
     ]);
   }
   return common.concat([act]);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Legal Entity cell — inline dropdown editable by bookkeeper.
+// Source of truth: /api/legal-entities (data/legal_entities.json).
+// (Top-16 P1.4 + P1.5, 2026-06-07)
+// ───────────────────────────────────────────────────────────────────────
+var LEGAL_ENTITIES_CACHE = null;
+
+function ensureLegalEntities() {
+  if (LEGAL_ENTITIES_CACHE) return Promise.resolve(LEGAL_ENTITIES_CACHE);
+  return api('GET', '/api/legal-entities').then(function(d) {
+    LEGAL_ENTITIES_CACHE = (d && d.entities) || [];
+    return LEGAL_ENTITIES_CACHE;
+  }).catch(function() { LEGAL_ENTITIES_CACHE = []; return []; });
+}
+// Warm the cache early
+ensureLegalEntities();
+
+function _cpLegalEntityCell(d, canEdit) {
+  var current = d.legal_entity || '';
+  if (!canEdit) {
+    if (!current) return '<span style="color:var(--muted);font-style:italic;font-size:11px;">unassigned</span>';
+    var label = current;
+    if (LEGAL_ENTITIES_CACHE) {
+      var match = LEGAL_ENTITIES_CACHE.find(function(e) { return e.code === current; });
+      if (match) label = match.name;
+    }
+    return '<span style="font-size:12px;">' + esc(label) + '</span>';
+  }
+  // Editable dropdown
+  var opts = ['<option value="">— pick payer —</option>'];
+  (LEGAL_ENTITIES_CACHE || []).forEach(function(e) {
+    var sel = (e.code === current) ? ' selected' : '';
+    opts.push('<option value="' + esc(e.code) + '"' + sel + '>' + esc(e.name) + '</option>');
+  });
+  return '<select onchange="saveLegalEntity(\'' + d.id + '\', this.value)" class="fio-select" style="font-size:12px;padding:4px 6px;min-width:140px;">' +
+    opts.join('') + '</select>';
+}
+
+function saveLegalEntity(docId, code) {
+  api('POST', '/api/documents/' + docId + '/save', { legal_entity: code }).then(function() {
+    showToast('Legal entity saved', 'success');
+  }).catch(function(err) {
+    showToast('Save failed: ' + (err && err.message || err), 'error');
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Payment comment cell (P1.6) — bookkeeper notes for unpaid invoices
+// ("wrong bank details", "not enough funds", "on hold", etc.)
+// ───────────────────────────────────────────────────────────────────────
+function _cpPaymentCommentCell(d, canEdit) {
+  var current = d.payment_comment || '';
+  if (!canEdit) {
+    return current
+      ? '<span style="font-size:11px;white-space:pre-wrap;">' + esc(current) + '</span>'
+      : '<span style="color:var(--muted);font-size:11px;font-style:italic;">—</span>';
+  }
+  var ph = 'e.g. wrong bank details, on hold, not enough funds';
+  return '<textarea onblur="savePaymentComment(\'' + d.id + '\', this.value)" placeholder="' + ph + '" rows="2" style="width:160px;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;resize:vertical;">' +
+    esc(current) + '</textarea>';
+}
+
+function savePaymentComment(docId, comment) {
+  api('POST', '/api/documents/' + docId + '/save', { payment_comment: comment }).then(function() {
+    // Toast omitted — saving on blur is high-frequency; silence the success path
+  }).catch(function(err) {
+    showToast('Comment save failed: ' + (err && err.message || err), 'error');
+  });
 }
 
 function markBudgetOK(docId) {
