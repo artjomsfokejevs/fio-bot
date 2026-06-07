@@ -1483,6 +1483,24 @@ table thead th:last-child { background: #f8fafc; z-index: 3; }
     <!-- Stream summary cards -->
     <div class="stream-cards-grid" id="stream-cards-grid"></div>
 
+    <!-- ────────────────────────────────────────────────────────────── -->
+    <!-- 2026-06-07 P2.3 — Bookkeeper report: invoices grouped by      -->
+    <!-- Legal Entity. Rita uses this to hand off PDFs+CSV per entity  -->
+    <!-- to the real bookkeeper of each legal entity.                  -->
+    <!-- ────────────────────────────────────────────────────────────── -->
+    <div class="section-card" style="margin-bottom:24px;">
+      <div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <span>🏛 By Legal Entity <span style="font-size:11px;color:var(--muted);font-weight:400;">— bookkeeper handover view</span></span>
+        <label style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="le-include-unassigned" checked onchange="loadByLegalEntity()">
+          Show unassigned ({code}=null)
+        </label>
+      </div>
+      <div id="legal-entity-rows" style="padding:8px 0;">
+        <div class="empty-state" style="padding:16px;">Loading…</div>
+      </div>
+    </div>
+
     <!-- Upload All to BT4YOU -->
     <div style="text-align:center;margin-bottom:24px;">
       <button class="btn btn-primary" style="padding:12px 28px;font-size:14px;" onclick="uploadAllToBT4YOU()">Upload All Business Stream Data to BT4YOU Executive Bot</button>
@@ -5417,11 +5435,22 @@ function exportAccountingCsv(profitCenter, period) {
 async function exportAccountingSheets(profitCenter, period) {
   var sheetName = prompt('Sheet/tab name in your Google Sheet:', 'FIO ' + (profitCenter || 'ALL') + ' ' + (period || 'all'));
   if (!sheetName) return;
-  var r = await api('POST', '/api/accounting/export-sheets', {profit_center: profitCenter || '', period: period || '', sheet_name: sheetName});
-  if (r.error) {
-    showSheetsSetupModal(r.error, r.hint, r.fallback);
-  } else {
+  // P2.8 (2026-06-07) — after the global P67 fix, api() throws on HTTP 4xx/5xx.
+  // The setup-prompt modal is delivered as HTTP 400 with body {error,hint,fallback},
+  // so catch the rejection and surface the payload from err.payload.
+  try {
+    var r = await api('POST', '/api/accounting/export-sheets',
+                      {profit_center: profitCenter || '', period: period || '', sheet_name: sheetName});
     showToast('✓ ' + r.rows_sent + ' rows pushed to "' + sheetName + '"', 'success');
+  } catch (err) {
+    var payload = err && err.payload;
+    if (payload && (payload.error || payload.hint)) {
+      showSheetsSetupModal(payload.error || err.message,
+                           payload.hint,
+                           payload.fallback);
+    } else {
+      showToast('Sheets export failed: ' + (err && err.message || err), 'error');
+    }
   }
 }
 

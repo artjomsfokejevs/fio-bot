@@ -3045,6 +3045,159 @@ def legal_entities():
         return jsonify({"entities": [], "error": str(exc)}), 500
 
 
+@app.route("/api/accounting/by-legal-entity", methods=["GET"])
+def accounting_by_legal_entity():
+    """Per-entity counts + EUR totals for Rita's bookkeeper handover view.
+
+    Query params:
+      period=2026-05            optional period filter (YYYY-MM)
+      include_unassigned=1      include docs with no legal_entity (default: 1)
+    """
+    period = (request.args.get("period") or "").strip() or None
+    include_unassigned = request.args.get("include_unassigned", "1") == "1"
+
+    conn = db.get_connection()
+    try:
+        sql = ("SELECT legal_entity, COUNT(*) as cnt, "
+               "       SUM(COALESCE(amount, 0)) as total_eur, "
+               "       SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END) as paid_cnt "
+               "FROM documents "
+               "WHERE status IN ('approved','posted','confirmed_to_pay','paid','budget_validated','classified')")
+        params: List[Any] = []
+        if period:
+            sql += " AND period = ?"
+            params.append(period)
+        sql += " GROUP BY legal_entity ORDER BY total_eur DESC NULLS LAST"
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
+    # Load the reference list to surface names + zero-count entities
+    import json as _json
+    ref_path = os.path.join(os.path.dirname(__file__), "data", "legal_entities.json")
+    ref = {"entities": []}
+    try:
+        with open(ref_path, "r", encoding="utf-8") as f:
+            ref = _json.load(f)
+    except (FileNotFoundError, _json.JSONDecodeError):
+        pass
+    ref_by_code = {e["code"]: e for e in ref.get("entities", [])}
+
+    groups = []
+    seen = set()
+    for r in rows:
+        code = r[0]
+        if code is None and not include_unassigned:
+            continue
+        seen.add(code)
+        meta = ref_by_code.get(code, {}) if code else {}
+        groups.append({
+            "code":         code,
+            "name":         meta.get("name") if code else "(unassigned)",
+            "country":      meta.get("country", ""),
+            "doc_count":    r[1],
+            "total_eur":    float(r[2] or 0),
+            "paid_count":   r[3],
+            "unpaid_count": r[1] - r[3],
+        })
+    # Surface 0-count entities (so Rita sees the full landscape)
+    for code, meta in ref_by_code.items():
+        if code not in seen:
+            groups.append({
+                "code": code, "name": meta["name"], "country": meta.get("country", ""),
+                "doc_count": 0, "total_eur": 0.0, "paid_count": 0, "unpaid_count": 0,
+            })
+
+    return jsonify({"groups": groups, "period": period})
+
+
+@app.route("/api/accounting/export-by-legal-entity", methods=["GET"])
+def export_by_legal_entity():
+    """Download a single CSV scoped to one Legal Entity.
+
+    Reuses the same row-flattening as /api/accounting/export but adds
+    a `legal_entity` filter. `unassigned` is a magic value for docs with
+    NULL legal_entity (Rita's "what still needs routing" view).
+    """
+    le_code = (request.args.get("legal_entity") or "").strip()
+    if not le_code:
+        return jsonify({"error": "legal_entity is required"}), 400
+    period = (request.args.get("period") or "").strip() or None
+
+    conn = db.get_connection()
+    try:
+        sql = ("SELECT * FROM documents WHERE status IN "
+               "('approved','posted','confirmed_to_pay','paid','budget_validated','classified')")
+        params: List[Any] = []
+        if le_code == "unassigned":
+            sql += " AND (legal_entity IS NULL OR legal_entity = '')"
+        else:
+            sql += " AND legal_entity = ?"
+            params.append(le_code)
+        if period:
+            sql += " AND period = ?"
+            params.append(period)
+        sql += " ORDER BY period DESC, approved_at DESC"
+        rows = [db._row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+    # Build CSV — same shape as accounting_export
+    import csv as _csv
+    import io as _io
+    from flask import Response as _Resp
+
+    fieldnames = ["document_id", "uploaded_at", "vendor", "vat_number",
+                  "period", "profit_center", "ledger_code",
+                  "currency_orig", "amount_orig", "amount_eur",
+                  "legal_entity", "status", "payment_state",
+                  "desired_payment_date", "payment_executed_at",
+                  "payment_currency", "payment_amount_orig",
+                  "payment_account", "payment_reference",
+                  "payment_comment", "approved_by"]
+    buf = _io.StringIO()
+    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    buf.write(f"# Amitours Holding — Per-Legal-Entity Export\n")
+    buf.write(f"# Legal Entity: {le_code}\n")
+    buf.write(f"# Period: {period or 'ALL'}\n")
+    buf.write(f"# Generated at: {generated_at}\n")
+    buf.write(f"# Total documents: {len(rows)}\n\n")
+
+    writer = _csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for d in rows:
+        writer.writerow({
+            "document_id":           d.get("id"),
+            "uploaded_at":           d.get("uploaded_at"),
+            "vendor":                d.get("vendor"),
+            "vat_number":            d.get("vat_number"),
+            "period":                d.get("period"),
+            "profit_center":         d.get("profit_center"),
+            "ledger_code":           d.get("ledger_code"),
+            "currency_orig":         d.get("currency_orig") or d.get("currency"),
+            "amount_orig":           d.get("amount_orig") or d.get("amount"),
+            "amount_eur":            d.get("amount"),
+            "legal_entity":          d.get("legal_entity"),
+            "status":                d.get("status"),
+            "payment_state":         d.get("payment_state"),
+            "desired_payment_date":  d.get("desired_payment_date"),
+            "payment_executed_at":   d.get("payment_executed_at"),
+            "payment_currency":      d.get("payment_currency"),
+            "payment_amount_orig":   d.get("payment_amount_orig"),
+            "payment_account":       d.get("payment_account"),
+            "payment_reference":     d.get("payment_reference"),
+            "payment_comment":       d.get("payment_comment"),
+            "approved_by":           d.get("approved_by"),
+        })
+
+    fname_parts = ["fio_by_entity", le_code]
+    if period:
+        fname_parts.append(period)
+    fname = "_".join(fname_parts) + ".csv"
+    return _Resp(buf.getvalue(), mimetype="text/csv",
+                 headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 # ---------------------------------------------------------------------------
 # Blueprint registration (Phase 7.1 refactor — see docs/architecture.md)
 # ---------------------------------------------------------------------------
