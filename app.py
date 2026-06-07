@@ -129,7 +129,7 @@ def _seed_data_volume() -> None:
         return
     target_dir = os.path.dirname(config.LEDGER_FILE)
     os.makedirs(target_dir, exist_ok=True)
-    for name in ("ledger_schema.json", "accounting_rules.json"):
+    for name in ("ledger_schema.json", "accounting_rules.json", "legal_entities.json"):
         seed = os.path.join(seed_dir, name)
         target = os.path.join(target_dir, name)
         if os.path.exists(seed) and not os.path.exists(target):

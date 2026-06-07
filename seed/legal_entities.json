@@ -1,0 +1,16 @@
+{
+  "_comment": "Legal entities for Amitours Holding — the entity that actually pays a given invoice. Stream is the cost-bearer (business unit), Legal Entity is the bank account / company that wires the money. They are NOT 1:1: a single Stream like 'AA · Alps2Alps' can pay via 'Alps2Alps OU' OR 'Amitours Holding' depending on bank balance / tax optimisation. Bookkeeper picks the payer at the Awaiting CEO / Awaiting Payment stage.",
+  "_source": "Tester request 2026-06-07 (Rita): 'please add legal entity column in order we can see at once from what entity payment should be made / was made.'",
+  "entities": [
+    { "code": "ALPS2ALPS_OU",      "name": "Alps2Alps OÜ",         "country": "EE", "default_currency": "EUR" },
+    { "code": "AMITOURS_LONDON",   "name": "Amitours London",      "country": "GB", "default_currency": "GBP" },
+    { "code": "LORA_TRANS",        "name": "Lora Trans",           "country": "LV", "default_currency": "EUR" },
+    { "code": "DMS",               "name": "DMS",                  "country": "LV", "default_currency": "EUR" },
+    { "code": "AMITOURS_GROUP_SA", "name": "Amitours Group SA",    "country": "CH", "default_currency": "CHF" },
+    { "code": "ALEXCURSION",       "name": "Alexcursion",          "country": "LV", "default_currency": "EUR" },
+    { "code": "SINKOPA",           "name": "Sinkopa",              "country": "LV", "default_currency": "EUR" },
+    { "code": "AMITOURS_HOLDING",  "name": "Amitours Holding",     "country": "LV", "default_currency": "EUR" },
+    { "code": "AMITOURS_CORP",     "name": "Amitours Corp",        "country": "US", "default_currency": "USD" },
+    { "code": "OTHER",             "name": "Other (specify in comment)", "country": "", "default_currency": "EUR" }
+  ]
+}
