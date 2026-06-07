@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any, Dict, List, Optional, Tuple
 
 import config
 
@@ -188,6 +189,7 @@ def add_rule(vendor: str, code: str, profit_center: Optional[str] = None) -> Non
     rules_data["rules"].append(new_rule)
     with open(config.RULES_FILE, "w", encoding="utf-8") as f:
         json.dump(rules_data, f, indent=2, ensure_ascii=False)
+    _invalidate_json_cache(config.RULES_FILE)
     logger.info("Added rule: vendor=%s -> code=%s", vendor, code)
 
 
@@ -195,22 +197,49 @@ def add_rule(vendor: str, code: str, profit_center: Optional[str] = None) -> Non
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _load_rules() -> Dict[str, Any]:
-    """Load the rules JSON file."""
+# mtime-based cache for hot JSON loaders. Without this, a batch import of 1000
+# invoices hits the filesystem ~2000× (rules + schema per document). Re-reads
+# only when the source file changes on disk. (FIO retro Top-10 fix #3, 2026-05-21)
+_JSON_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _cached_json(path: str, default: Dict[str, Any]) -> Dict[str, Any]:
+    """Read a JSON file with mtime-keyed in-memory cache.
+
+    If the file's mtime hasn't changed since last load, returns the cached dict
+    (returned by reference — callers MUST NOT mutate the result). On read error
+    or missing file, returns `default` (also by reference). The cache entry is
+    refreshed automatically when the file is rewritten (e.g. by add_rule).
+    """
     try:
-        with open(config.RULES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return default
+    cached = _JSON_CACHE.get(path)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"rules": []}
+        return default
+    _JSON_CACHE[path] = (mtime, data)
+    return data
+
+
+def _invalidate_json_cache(path: str) -> None:
+    """Drop the cached entry for a path. Call after rewriting the file."""
+    _JSON_CACHE.pop(path, None)
+
+
+def _load_rules() -> Dict[str, Any]:
+    """Load the rules JSON file (cached, mtime-invalidated)."""
+    return _cached_json(config.RULES_FILE, {"rules": []})
 
 
 def _load_ledger_schema() -> Dict[str, Any]:
-    """Load the ledger schema JSON file."""
-    try:
-        with open(config.LEDGER_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"codes": [], "profit_centers": []}
+    """Load the ledger schema JSON file (cached, mtime-invalidated)."""
+    return _cached_json(config.LEDGER_FILE, {"codes": [], "profit_centers": []})
 
 
 def _get_label_for_code(code: str) -> str:

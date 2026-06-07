@@ -23,6 +23,16 @@
     --brand-blue: #1a56db;
     --brand-light: #e8f0fe;
     --font: 'Inter', system-ui, sans-serif;
+    /* Profit-center / brand stream colors (FIO Top-10 fix #7, 2026-06-07).
+       Single source of truth — STREAM_COLORS JS object reads from these via
+       getComputedStyle. Add a new brand here, it appears everywhere. */
+    --stream-aa: #0ea5e9;  /* Alps2Alps */
+    --stream-bk: #8b5cf6;  /* Skibookers */
+    --stream-sr: #f59e0b;  /* Skipasser */
+    --stream-mt: #10b981;  /* Mountly / AH */
+    --stream-cf: #ec4899;  /* MyPeak Finance / PK */
+    --stream-al: #6366f1;  /* Alveda */
+    --stream-ag: #94a3b8;  /* Amitours Group (default) */
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -2097,16 +2107,22 @@ table .actions { min-width: 90px; }
 
 <script>
 // ---------------------------------------------------------------------------
-// Stream color map
+// Stream color map — reads from :root CSS variables so brand changes are a
+// one-line edit in <style>, not a JS hunt-and-replace. (Fix #7, 2026-06-07)
 // ---------------------------------------------------------------------------
+var _CSS_ROOT = getComputedStyle(document.documentElement);
+function _streamVar(name) {
+  var v = _CSS_ROOT.getPropertyValue('--stream-' + name).trim();
+  return v || null;
+}
 var STREAM_COLORS = {
-  'AA': '#0ea5e9', 'alps2alps': '#0ea5e9',
-  'BK': '#8b5cf6', 'skibookers': '#8b5cf6',
-  'SR': '#f59e0b', 'skipasser': '#f59e0b',
-  'AH': '#10b981', 'MT': '#10b981', 'mountly': '#10b981',
-  'CF': '#ec4899', 'PK': '#ec4899', 'mypeak_finance': '#ec4899',
-  'AL': '#6366f1', 'alveda': '#6366f1',
-  'AG': '#94a3b8', 'amitours_group': '#94a3b8'
+  'AA': _streamVar('aa'), 'alps2alps':       _streamVar('aa'),
+  'BK': _streamVar('bk'), 'skibookers':      _streamVar('bk'),
+  'SR': _streamVar('sr'), 'skipasser':       _streamVar('sr'),
+  'AH': _streamVar('mt'), 'MT': _streamVar('mt'), 'mountly': _streamVar('mt'),
+  'CF': _streamVar('cf'), 'PK': _streamVar('cf'), 'mypeak_finance': _streamVar('cf'),
+  'AL': _streamVar('al'), 'alveda':          _streamVar('al'),
+  'AG': _streamVar('ag'), 'amitours_group':  _streamVar('ag')
 };
 
 var STREAM_NAMES = {
@@ -2542,8 +2558,39 @@ function api(method, url, body) {
   } else if (body) {
     opts.body = body;
   }
-  return fetch(url, opts).then(function(r) { return r.json(); });
+  // FIO retro P37 (2026-05-21): on non-OK HTTP the .then() chain still
+  // resolved with body — many callsites silently rendered an error response
+  // as if it were data. Now we throw so a global unhandledrejection handler
+  // (registered below) can surface it as a toast.
+  return fetch(url, opts).then(function(r) {
+    return r.json().catch(function() {
+      // Non-JSON response (e.g. 502 HTML page from a proxy)
+      throw new Error(method + ' ' + url + ' -> HTTP ' + r.status + ' (non-JSON)');
+    }).then(function(payload) {
+      if (!r.ok) {
+        var msg = (payload && (payload.error || payload.message))
+                  || (method + ' ' + url + ' -> HTTP ' + r.status);
+        var e = new Error(msg);
+        e.status = r.status;
+        e.payload = payload;
+        e.url = url;
+        throw e;
+      }
+      return payload;
+    });
+  });
 }
+
+// Global safety net for every .then()-only chain. Before this, a failed
+// fetch left "Loading…" stuck forever and the user had no idea why.
+// Per-callsite .catch() handlers still run first; this only fires when
+// the rejection bubbles out unhandled.
+window.addEventListener('unhandledrejection', function(ev) {
+  var err = ev && ev.reason;
+  var msg = (err && (err.message || err.error)) || 'Background request failed';
+  try { showToast(msg, 'error'); } catch (_) { /* showToast not yet defined during boot */ }
+  if (window.console && console.error) console.error('[unhandled]', err);
+});
 
 function loadStats() {
   api('GET', '/api/stats').then(function(s) {
@@ -2551,6 +2598,11 @@ function loadStats() {
     document.getElementById('stat-approved').textContent = s.approved || 0;
     document.getElementById('stat-rejected').textContent = s.rejected || 0;
     document.getElementById('stat-posted').textContent = s.posted || 0;
+  }).catch(function(err) {
+    ['stat-pending','stat-approved','stat-rejected','stat-posted'].forEach(function(id){
+      var el = document.getElementById(id); if (el) el.textContent = '—';
+    });
+    console.error('loadStats failed:', err);
   });
 }
 
@@ -2558,6 +2610,9 @@ function loadSchema() {
   api('GET', '/api/ledger-schema').then(function(s) {
     ledgerSchema = s;
     populateExportPcFilter();
+  }).catch(function(err) {
+    console.error('loadSchema failed:', err);
+    // ledgerSchema stays undefined; populateExportPcFilter guards on it
   });
 }
 function populateExportPcFilter() {
@@ -2594,6 +2649,13 @@ function loadUploadTable() {
   api('GET', '/api/documents').then(function(docs) {
     allDocs = docs;
     renderUploadTable(docs.slice(0, 20));
+  }).catch(function(err) {
+    var tbody = document.getElementById('upload-rows');
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="99" class="empty-state" style="color:var(--red);">' +
+        'Failed to load documents: ' + esc(err && err.message || err) + '</td></tr>';
+    }
+    console.error('loadUploadTable failed:', err);
   });
 }
 
@@ -5408,9 +5470,29 @@ async function uploadCardCsv(files) {
   document.getElementById('ca-file-input').value = '';
 }
 
+// Shared loading skeleton — clearly distinct from empty state.
+// Distinguishing the two was Top-10 fix #6 from the FIO retro audit.
+function _caLoadingSkeleton(label) {
+  return '<div class="ca-emptystate" style="display:flex;align-items:center;gap:10px;">' +
+         '<span class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #cbd5e1;border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></span>' +
+         '<span style="color:var(--muted);">Loading ' + (label || 'card audit') + '…</span>' +
+         '</div>';
+}
+
 async function loadCardAudit() {
   var period = document.getElementById('ca-period')?.value || new Date().toISOString().slice(0, 7);
   var pcFilter = document.getElementById('ca-pc-filter')?.value || '';
+
+  // 1) Paint LOADING state so user sees we're actively fetching
+  ['ca-unmatched','ca-suggested','ca-matched','ca-excluded'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = _caLoadingSkeleton('transactions');
+  });
+  var kpiEl0 = document.getElementById('ca-kpis');
+  if (kpiEl0) kpiEl0.innerHTML = _caLoadingSkeleton('KPIs');
+  var deptEl0 = document.getElementById('ca-by-dept');
+  if (deptEl0) deptEl0.innerHTML = _caLoadingSkeleton('department breakdown');
+
   try {
     var [summary, txWrap] = await Promise.all([
       api('GET', '/api/card-audit/summary?period=' + period),
@@ -5426,6 +5508,15 @@ async function loadCardAudit() {
     renderCaLists(allTx);
   } catch (err) {
     console.error('Card audit load failed:', err);
+    // Paint visible failure instead of leaving "Loading…" stuck
+    ['ca-unmatched','ca-suggested','ca-matched','ca-excluded'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = '<div class="empty-state" style="color:var(--red);">' +
+        'Failed to load: ' + esc(err && err.message || err) + '</div>';
+    });
+    var kpiEl = document.getElementById('ca-kpis');
+    if (kpiEl) kpiEl.innerHTML = '<div class="empty-state" style="color:var(--red);">Card Audit unavailable — backend error</div>';
+    showToast('Card Audit failed: ' + (err && err.message || err), 'error');
   }
 }
 
@@ -5529,8 +5620,12 @@ function renderCaLists(txs) {
     }
     if (cnt) cnt.textContent = list.length + ' transaction(s)';
   }
-  fill('ca-unmatched', buckets.unmatched, 'No unmatched card transactions — clean period! ✨', 'ca-unmatched-count');
-  fill('ca-suggested', buckets.suggested, 'Nothing to review.', 'ca-suggested-count');
+  fill('ca-unmatched', buckets.unmatched,
+       'No unmatched card transactions for this period. ✨ Either every card-tx has a matching invoice, or no CSV imported yet — try the Reconcile button.',
+       'ca-unmatched-count');
+  fill('ca-suggested', buckets.suggested,
+       'No suggestions to review. Reconcile produces suggestions for card-tx that almost match an invoice (amount ±0.01€, date ±3d, vendor similarity).',
+       'ca-suggested-count');
   fill('ca-matched',   buckets.matched,   'No matched transactions yet.',  'ca-matched-count');
   fill('ca-excluded',  buckets.excluded,  'No excluded transactions.',      'ca-excluded-count');
 }
