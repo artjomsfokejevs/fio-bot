@@ -126,6 +126,29 @@ CREATE TABLE IF NOT EXISTS fio_users (
 );
 CREATE INDEX IF NOT EXISTS ix_fio_users_active ON fio_users(active);
 CREATE INDEX IF NOT EXISTS ix_fio_users_role   ON fio_users(role);
+
+-- 2026-06-08 Top-7 P2.3 — Paying accounts roster. Admin/Bookkeeper
+-- maintains the list of bank accounts the holding uses to wire payments.
+-- The Mark Paid modal pulls this list as a dropdown instead of a free-text
+-- prompt, so account labels stay consistent across docs and audit log.
+CREATE TABLE IF NOT EXISTS paying_accounts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    label           TEXT NOT NULL,         -- short display: "Revolut · Amitours London"
+    bank            TEXT,                  -- "Revolut", "Swedbank", "Wise"
+    iban            TEXT,                  -- optional, full IBAN
+    account_number  TEXT,                  -- for non-IBAN systems (US, etc.)
+    currency        TEXT NOT NULL DEFAULT 'EUR',
+    legal_entity    TEXT,                  -- FK-style ref to legal_entities.json code
+    notes           TEXT,                  -- e.g. "main operating account"
+    active          INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    created_by      TEXT,
+    updated_at      TEXT,
+    updated_by      TEXT,
+    UNIQUE(label)
+);
+CREATE INDEX IF NOT EXISTS ix_paying_active ON paying_accounts(active);
+CREATE INDEX IF NOT EXISTS ix_paying_entity ON paying_accounts(legal_entity);
 """
 
 

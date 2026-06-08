@@ -415,14 +415,16 @@ tbody tr:hover { background: #f8fafc; }
    getting clipped on narrower viewports. */
 .actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .actions .btn { flex: 0 0 auto; }
-/* Actions column reserves enough room for View+Approve+Reject so the rightmost
-   button is never clipped on borderline-narrow viewports.
-   Plus position:sticky pins it to the right edge so the action buttons are
-   always visible even when the user horizontally-scrolls the table (FIO
-   pattern P35 from retro 2026-06-03, applied to Approve here per testers). */
+/* Actions column reserves enough room for View+Approve+Reject so the
+   rightmost button is never clipped on borderline-narrow viewports.
+   2026-06-08 (Top-7 P1.2/P1.3) — the blanket `td:last-child` sticky
+   rule was overreach: it visually detached the trash icon on Upload
+   and boxed the Actions on Approve. Sticky-right is now opt-in via
+   the `.cp-actions` class only (Confirm-for-Payment), where it's
+   genuinely needed because of the 9-column stage-aware width. */
 table .actions, table th.actions { min-width: 130px; }
-table thead th:last-child,
-table tbody td:last-child {
+table .cp-actions,
+table thead th.cp-actions {
   position: sticky;
   right: 0;
   z-index: 2;
@@ -431,7 +433,7 @@ table tbody td:last-child {
   box-shadow: -4px 0 6px -4px rgba(0,0,0,0.08);
   padding-right: 20px;
 }
-table thead th:last-child { background: #f8fafc; z-index: 3; }
+table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 /* hidden for Y so rounded corners still clip the table; auto for X so
    wide tables get a horizontal scrollbar instead of squashing cells. */
 .table-wrapper { overflow: hidden; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -3799,14 +3801,29 @@ function renderCPRows(docs) {
     var ledgerCell = '<span style="font-family:monospace;font-size:11px;">' + esc(d.ledger_code || '—') + '</span>';
     var purposeCell = '<span style="font-size:11px;">' + esc(((d.cost_reason || d.original_name || '') + '').substring(0, 60)) + '</span>';
 
-    // Workflow timestamp cells (per stage)
+    // Workflow timestamp cells (per stage).
+    // 2026-06-08 (Top-7 P2.1) — cascade prior-stage notes into the next stage
+    // so CEO sees bookkeeper's reasoning, and bookkeeper sees CEO's
+    // approval note. The note is rendered as a 💬 callout under the by/when.
+    var bkNote = (d.budget_validated_note || '').trim();
     var budgetCell = d.budget_validated_at
       ? '<div style="font-size:11px;color:#0ea5e9;">' + esc(fmtDate(d.budget_validated_at)) + '</div>' +
-        '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.budget_validated_by || '—') + '</div>'
+        '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.budget_validated_by || '—') + '</div>' +
+        (bkNote
+          ? '<div style="margin-top:4px;padding:4px 6px;background:#eff6ff;border-left:2px solid #0ea5e9;border-radius:3px;font-size:11px;color:#1e3a8a;line-height:1.35;max-width:240px;white-space:pre-wrap;" title="' + esc(bkNote) + '">💬 ' + esc(bkNote.length > 120 ? bkNote.substring(0, 120) + '…' : bkNote) + '</div>'
+          : '')
       : '—';
+    var ceoNote = (d.confirmed_to_pay_note || '').trim();
     var ceoCell = d.confirmed_to_pay_at
       ? '<div style="font-size:11px;font-weight:600;color:#f59e0b;">' + esc(fmtDate(d.confirmed_to_pay_at)) + '</div>' +
-        '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.confirmed_to_pay_by || '—') + '</div>'
+        '<div style="font-size:10px;color:var(--muted);">by ' + esc(d.confirmed_to_pay_by || '—') + '</div>' +
+        (ceoNote
+          ? '<div style="margin-top:4px;padding:4px 6px;background:#fffbeb;border-left:2px solid #f59e0b;border-radius:3px;font-size:11px;color:#78350f;line-height:1.35;max-width:240px;white-space:pre-wrap;" title="' + esc(ceoNote) + '">💬 ' + esc(ceoNote.length > 120 ? ceoNote.substring(0, 120) + '…' : ceoNote) + '</div>'
+          : '') +
+        // Also show the bookkeeper's note inline (cascade from Budget Check)
+        (bkNote
+          ? '<div style="margin-top:4px;padding:4px 6px;background:#eff6ff;border-left:2px solid #0ea5e9;border-radius:3px;font-size:11px;color:#1e3a8a;line-height:1.35;max-width:240px;white-space:pre-wrap;" title="From Bookkeeper: ' + esc(bkNote) + '">📝 ' + esc(bkNote.length > 100 ? bkNote.substring(0, 100) + '…' : bkNote) + '</div>'
+          : '')
       : '—';
     var paidCell = d.payment_executed_at
       ? '<div style="font-size:11px;font-weight:600;color:#10b981;">' + esc(fmtDate(d.payment_executed_at)) + '</div>' +
@@ -3970,15 +3987,38 @@ function saveLegalEntity(docId, code) {
 // ("wrong bank details", "not enough funds", "on hold", etc.)
 // ───────────────────────────────────────────────────────────────────────
 function _cpPaymentCommentCell(d, canEdit) {
+  // 2026-06-08 (Top-7 P2.2) — comment cell was 160px / 2 rows / 11px font,
+  // not readable. Widen to 260px, 3 rows, 12px font, expand-on-focus to
+  // 4 rows, title attribute for hover-tooltip on the full text. Plus
+  // show CEO + bookkeeper notes inline above so context is one glance.
   var current = d.payment_comment || '';
-  if (!canEdit) {
-    return current
-      ? '<span style="font-size:11px;white-space:pre-wrap;">' + esc(current) + '</span>'
-      : '<span style="color:var(--muted);font-size:11px;font-style:italic;">—</span>';
+  var bkNote = (d.budget_validated_note || '').trim();
+  var ceoNote = (d.confirmed_to_pay_note || '').trim();
+
+  var contextNotes = '';
+  if (bkNote) {
+    contextNotes += '<div style="margin-bottom:4px;padding:4px 6px;background:#eff6ff;border-left:2px solid #0ea5e9;border-radius:3px;font-size:11px;color:#1e3a8a;line-height:1.35;white-space:pre-wrap;" title="From Bookkeeper: ' + esc(bkNote) + '">📝 <b>BK:</b> ' + esc(bkNote.length > 80 ? bkNote.substring(0, 80) + '…' : bkNote) + '</div>';
   }
-  var ph = 'e.g. wrong bank details, on hold, not enough funds';
-  return '<textarea onblur="savePaymentComment(\'' + d.id + '\', this.value)" placeholder="' + ph + '" rows="2" style="width:160px;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;resize:vertical;">' +
-    esc(current) + '</textarea>';
+  if (ceoNote) {
+    contextNotes += '<div style="margin-bottom:4px;padding:4px 6px;background:#fffbeb;border-left:2px solid #f59e0b;border-radius:3px;font-size:11px;color:#78350f;line-height:1.35;white-space:pre-wrap;" title="From CEO: ' + esc(ceoNote) + '">✓ <b>CEO:</b> ' + esc(ceoNote.length > 80 ? ceoNote.substring(0, 80) + '…' : ceoNote) + '</div>';
+  }
+
+  if (!canEdit) {
+    var readView = current
+      ? '<div style="font-size:12px;line-height:1.4;white-space:pre-wrap;padding:4px 6px;background:#fef3c7;border-left:2px solid #f59e0b;border-radius:3px;" title="' + esc(current) + '"><b>Payment:</b> ' + esc(current) + '</div>'
+      : '<span style="color:var(--muted);font-size:11px;font-style:italic;">no comment yet</span>';
+    return '<div style="min-width:220px;">' + contextNotes + readView + '</div>';
+  }
+  var ph = 'Add a note: wrong bank details, on hold, not enough funds…';
+  var editView = '<textarea ' +
+        'onblur="savePaymentComment(\'' + d.id + '\', this.value)" ' +
+        'onfocus="this.rows=4" ' +
+        'placeholder="' + ph + '" ' +
+        'rows="3" ' +
+        'title="' + esc(current) + '" ' +
+        'style="width:260px;font-size:12px;line-height:1.4;padding:6px 8px;border:1px solid var(--border);border-radius:4px;resize:vertical;font-family:inherit;transition:rows 120ms;">' +
+      esc(current) + '</textarea>';
+  return '<div style="min-width:260px;">' + contextNotes + editView + '</div>';
 }
 
 function savePaymentComment(docId, comment) {
