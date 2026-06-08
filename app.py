@@ -3140,6 +3140,63 @@ def fio_users_delete(user_id: int):
     return jsonify({"status": "deactivated"})
 
 
+# ───────────────────────────────────────────────────────────────────────
+# 2026-06-08 Top-7 P2.3 — Paying accounts CRUD (Admin tab)
+# ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/paying-accounts", methods=["GET"])
+def paying_accounts_list():
+    """List paying accounts for the Mark Paid dropdown + Admin table."""
+    from services import paying_accounts as pa
+    active_only = (request.args.get("active") or "").lower() in ("true", "1", "yes")
+    legal_entity = request.args.get("legal_entity") or None
+    return jsonify({"accounts": pa.list_accounts(
+        active_only=active_only, legal_entity=legal_entity)})
+
+
+@app.route("/api/paying-accounts", methods=["POST"])
+def paying_accounts_create():
+    from services import paying_accounts as pa
+    body = request.get_json(silent=True) or {}
+    actor = request.headers.get("X-FIO-User") or "admin"
+    try:
+        a = pa.create_account(body, created_by=actor)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("create paying_account failed")
+        return jsonify({"error": str(exc)}), 500
+    db.insert_audit_log("paying_account:" + str(a["id"]),
+                        "paying_account_create",
+                        {"label": a["label"]}, performed_by=actor)
+    return jsonify(a), 201
+
+
+@app.route("/api/paying-accounts/<int:acc_id>", methods=["PATCH"])
+def paying_accounts_update(acc_id: int):
+    from services import paying_accounts as pa
+    body = request.get_json(silent=True) or {}
+    actor = request.headers.get("X-FIO-User") or "admin"
+    a = pa.update_account(acc_id, body, updated_by=actor)
+    if not a:
+        return jsonify({"error": "Not found"}), 404
+    db.insert_audit_log("paying_account:" + str(acc_id),
+                        "paying_account_update",
+                        {"fields": list(body.keys())}, performed_by=actor)
+    return jsonify(a)
+
+
+@app.route("/api/paying-accounts/<int:acc_id>", methods=["DELETE"])
+def paying_accounts_delete(acc_id: int):
+    from services import paying_accounts as pa
+    actor = request.headers.get("X-FIO-User") or "admin"
+    pa.delete_account(acc_id)
+    db.insert_audit_log("paying_account:" + str(acc_id),
+                        "paying_account_deactivate",
+                        {}, performed_by=actor)
+    return jsonify({"status": "deactivated"})
+
+
 @app.route("/api/legal-entities", methods=["GET"])
 def legal_entities():
     """Return the 9 holding legal entities for the Awaiting CEO / Awaiting

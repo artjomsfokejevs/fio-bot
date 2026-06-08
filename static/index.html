@@ -2003,6 +2003,70 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         </div>
       </div>
 
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <!-- 2026-06-08 Top-7 P2.3 — Paying accounts roster              -->
+      <!-- Drives the Mark Paid dropdown. Admin/Bookkeeper-managed.    -->
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">🏦 Paying accounts</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
+          The bank accounts the holding uses to wire invoices. These appear as a dropdown in the <b>Mark Paid</b> modal so labels stay consistent across docs and audit log. Soft-deactivate to hide an account without losing history.
+        </p>
+
+        <form id="paying-account-form" onsubmit="event.preventDefault(); createPayingAccount();"
+              style="display:grid;grid-template-columns:1.8fr 1fr 1.5fr 1fr 1.5fr auto;gap:8px;align-items:end;margin-bottom:14px;padding:12px;background:var(--brand-light);border-radius:8px;border:1px solid #c7d9f0;">
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Label *</label>
+            <input id="pa-label" required placeholder="Revolut · Amitours London" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Bank</label>
+            <input id="pa-bank" placeholder="Revolut" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">IBAN / Acct nr</label>
+            <input id="pa-iban" placeholder="GB00 REVO 0000…" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Currency</label>
+            <select id="pa-currency" class="fio-select" style="width:100%;">
+              <option value="EUR" selected>EUR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+              <option value="CHF">CHF</option>
+              <option value="HUF">HUF</option>
+              <option value="PLN">PLN</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Legal Entity</label>
+            <select id="pa-legal-entity" class="fio-select" style="width:100%;">
+              <option value="">— any —</option>
+            </select>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-success" style="white-space:nowrap;">+ Add account</button>
+          </div>
+        </form>
+
+        <div class="table-wrapper">
+          <table style="font-size:13px;">
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Bank</th>
+                <th>IBAN / Acct</th>
+                <th>Currency</th>
+                <th>Legal Entity</th>
+                <th>Active</th>
+                <th class="actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="paying-accounts-rows"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -2057,6 +2121,101 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
           <h3 style="margin:0 0 8px 0;font-size:16px;">What is FIO?</h3>
           <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text);">FIO (Financial Intake &amp; Orchestrator) is the central inbox for every invoice, receipt, and bank statement at Amitours Holding. The AI parses each document, validates the VAT number in the official EU registry, classifies it into our chart of accounts, and posts it to the correct Profit Center's P&amp;L.</p>
+        </div>
+
+        <!-- ──────────────────────────────────────────────────────── -->
+        <!-- 2026-06-08 Top-7 P3.1 — Per-role responsibility cards    -->
+        <!-- Each role gets: what you see · what you do · when        -->
+        <!-- ──────────────────────────────────────────────────────── -->
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 4px 0;font-size:16px;">👥 Roles &amp; responsibilities</h3>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 14px 0;">Quick reference for what each user level does in FIO. Roles are set in the <b>Admin</b> tab.</p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+
+            <!-- Uploader / Viewer -->
+            <div style="padding:12px 14px;border:1px solid #94a3b8;border-left:4px solid #94a3b8;border-radius:6px;background:#f8fafc;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;color:#475569;">👤 Uploader / Viewer</div>
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">default</div>
+              </div>
+              <div style="font-size:12px;color:var(--text);line-height:1.55;">
+                <div style="margin-bottom:4px;"><b>Sees:</b> Upload · Approve (read-only) · FIO Legend</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Drops invoices in Upload tab. Picks own name in <i>Who's uploading?</i></div>
+                <div><b>When:</b> Every time a receipt arrives — within 24h ideally so month-close is clean.</div>
+              </div>
+            </div>
+
+            <!-- Stream Owner -->
+            <div style="padding:12px 14px;border:1px solid #10b981;border-left:4px solid #10b981;border-radius:6px;background:#f0fdf4;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;color:#065f46;">🎯 Stream Owner</div>
+                <div style="font-size:10px;color:#10b981;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">stream_owner</div>
+              </div>
+              <div style="font-size:12px;color:var(--text);line-height:1.55;">
+                <div style="margin-bottom:4px;"><b>Sees:</b> Their own stream on Approve · Accounting · Card Audit · Analytics</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Approves / rejects their stream's docs. Posts to P&amp;L. Reviews Card Audit unmatched.</div>
+                <div><b>When:</b> Daily for approvals; weekly for Card Audit review; monthly for stream P&amp;L close.</div>
+              </div>
+            </div>
+
+            <!-- Bookkeeper -->
+            <div style="padding:12px 14px;border:1px solid #0ea5e9;border-left:4px solid #0ea5e9;border-radius:6px;background:#eff6ff;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;color:#1e3a8a;">📚 Bookkeeper</div>
+                <div style="font-size:10px;color:#0ea5e9;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">bookkeeper</div>
+              </div>
+              <div style="font-size:12px;color:var(--text);line-height:1.55;">
+                <div style="margin-bottom:4px;"><b>Sees:</b> Everything across all streams. Confirm-for-Payment all 4 stages.</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Budget-validates docs (stage 1) · sets Legal Entity + desired payment date · marks invoices as <i>already paid by card</i> if no wire needed · executes wires + marks paid · manages Paying Accounts roster.</div>
+                <div><b>When:</b> Daily triage; weekly batch payment after CEO approves.</div>
+              </div>
+            </div>
+
+            <!-- Holding CEO -->
+            <div style="padding:12px 14px;border:1px solid #f59e0b;border-left:4px solid #f59e0b;border-radius:6px;background:#fffbeb;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;color:#78350f;">👑 Holding CEO</div>
+                <div style="font-size:10px;color:#f59e0b;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">holding_ceo</div>
+              </div>
+              <div style="font-size:12px;color:var(--text);line-height:1.55;">
+                <div style="margin-bottom:4px;"><b>Sees:</b> Confirm-for-Payment (Awaiting CEO stage) · Approve · Accounting · Analytics · Legend.</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Approves the weekly payment batch. Reads bookkeeper's 💬 note before clicking ✓ Approve to pay.</div>
+                <div><b>When:</b> Weekly — usually Friday before bookkeeper executes wires.</div>
+              </div>
+            </div>
+
+            <!-- HR -->
+            <div style="padding:12px 14px;border:1px solid #ec4899;border-left:4px solid #ec4899;border-radius:6px;background:#fdf2f8;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;color:#831843;">🧑‍💼 HR</div>
+                <div style="font-size:10px;color:#ec4899;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">hr</div>
+              </div>
+              <div style="font-size:12px;color:var(--text);line-height:1.55;">
+                <div style="margin-bottom:4px;"><b>Sees:</b> Upload · Approve · Admin (FIO-managed users section).</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Imports new hires from Asana into the FIO roster. Deactivates departing employees (soft-delete keeps audit history).</div>
+                <div><b>When:</b> On hiring · on offboarding · monthly Asana sync.</div>
+              </div>
+            </div>
+
+            <!-- Admin -->
+            <div style="padding:12px 14px;border:1px solid #dc2626;border-left:4px solid #dc2626;border-radius:6px;background:#fef2f2;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;color:#991b1b;">🔐 Admin</div>
+                <div style="font-size:10px;color:#dc2626;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">admin</div>
+              </div>
+              <div style="font-size:12px;color:var(--text);line-height:1.55;">
+                <div style="margin-bottom:4px;"><b>Sees:</b> Everything, every tab, every stream.</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Assigns roles. Manages Paying Accounts roster. Adds Legal Entities. Configures Asana sync. Reviews audit log.</div>
+                <div><b>When:</b> One-off on setup; on role changes; on incidents.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--text);line-height:1.55;">
+            <b>🔄 Approval flow:</b> Uploader drops invoice → Stream owner / Bookkeeper approves to P&amp;L → Bookkeeper budget-checks → Holding CEO approves the week → Bookkeeper wires &amp; marks paid. Invoices paid by card skip CEO + Payment stages entirely.
+          </div>
         </div>
 
         <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
@@ -2337,7 +2496,8 @@ function switchTab(tabName) {
     loadConfirmPaymentPanel();
   } else if (tabName === 'admin') {
     loadAdminPanel();
-    loadFioUsers();  // 2026-06-07 P1.2 — FIO-managed users roster
+    loadFioUsers();        // 2026-06-07 P1.2 — FIO-managed users roster
+    loadPayingAccounts();  // 2026-06-08 Top-7 P2.3 — paying accounts roster
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();
   }
@@ -3451,6 +3611,97 @@ function createFioUser() {
   });
 }
 
+// ===========================================================================
+// Admin → Paying accounts roster (2026-06-08 Top-7 P2.3)
+// Drives the dropdown in Mark Paid modal. Admin / Bookkeeper-managed.
+// ===========================================================================
+var PAYING_ACCOUNTS_CACHE = [];
+
+function loadPayingAccounts() {
+  // Populate the Legal Entity select in the add form once
+  var leSel = document.getElementById('pa-legal-entity');
+  if (leSel && leSel.options.length <= 1) {
+    ensureLegalEntities().then(function(entities) {
+      var opts = ['<option value="">— any —</option>'];
+      (entities || []).forEach(function(e) {
+        opts.push('<option value="' + esc(e.code) + '">' + esc(e.name) + '</option>');
+      });
+      leSel.innerHTML = opts.join('');
+    });
+  }
+  api('GET', '/api/paying-accounts').then(function(d) {
+    PAYING_ACCOUNTS_CACHE = (d && d.accounts) || [];
+    renderPayingAccounts();
+  }).catch(function(err) {
+    var tb = document.getElementById('paying-accounts-rows');
+    if (tb) tb.innerHTML = '<tr><td colspan="7" class="empty-state" style="color:var(--red);">Failed to load: ' + esc(err && err.message || err) + '</td></tr>';
+  });
+}
+
+function renderPayingAccounts() {
+  var tb = document.getElementById('paying-accounts-rows');
+  if (!tb) return;
+  if (!PAYING_ACCOUNTS_CACHE.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty-state">No paying accounts yet. Add the first one above — it will appear in the <b>Mark Paid</b> dropdown so labels stay consistent.</td></tr>';
+    return;
+  }
+  tb.innerHTML = PAYING_ACCOUNTS_CACHE.map(function(a) {
+    var entityName = a.legal_entity || '';
+    if (a.legal_entity && LEGAL_ENTITIES_CACHE) {
+      var match = LEGAL_ENTITIES_CACHE.find(function(e) { return e.code === a.legal_entity; });
+      if (match) entityName = match.name;
+    }
+    var activeChip = a.active
+      ? '<span class="pill" style="background:#dcfce7;color:#166534;">active</span>'
+      : '<span class="pill" style="background:#fee2e2;color:#991b1b;">inactive</span>';
+    var actionBtn = a.active
+      ? '<button class="btn btn-danger" style="font-size:11px;padding:4px 10px;" onclick="deactivatePayingAccount(' + a.id + ', \'' + esc(a.label).replace(/\x27/g, "\\\x27") + '\')">Deactivate</button>'
+      : '<button class="btn btn-success" style="font-size:11px;padding:4px 10px;" onclick="reactivatePayingAccount(' + a.id + ')">Reactivate</button>';
+    return '<tr>' +
+      '<td><strong>' + esc(a.label) + '</strong>' + (a.notes ? '<div style="font-size:11px;color:var(--muted);">' + esc(a.notes) + '</div>' : '') + '</td>' +
+      '<td>' + esc(a.bank || '—') + '</td>' +
+      '<td style="font-family:ui-monospace,monospace;font-size:11px;">' + esc(a.iban || a.account_number || '—') + '</td>' +
+      '<td>' + esc(a.currency) + '</td>' +
+      '<td style="font-size:12px;">' + esc(entityName || '—') + '</td>' +
+      '<td>' + activeChip + '</td>' +
+      '<td class="actions">' + actionBtn + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function createPayingAccount() {
+  var body = {
+    label:          document.getElementById('pa-label').value.trim(),
+    bank:           document.getElementById('pa-bank').value.trim(),
+    iban:           document.getElementById('pa-iban').value.trim(),
+    currency:       document.getElementById('pa-currency').value,
+    legal_entity:   document.getElementById('pa-legal-entity').value,
+  };
+  if (!body.label) { showToast('Label is required', 'error'); return; }
+  api('POST', '/api/paying-accounts', body).then(function() {
+    showToast('Account added: ' + body.label, 'success');
+    document.getElementById('paying-account-form').reset();
+    loadPayingAccounts();
+  }).catch(function(err) {
+    showToast('Add failed: ' + (err && err.message || err), 'error');
+  });
+}
+
+function deactivatePayingAccount(id, label) {
+  if (!confirm('Deactivate "' + label + '"? It will be hidden from the Mark Paid dropdown but past payments keep referencing it.')) return;
+  api('DELETE', '/api/paying-accounts/' + id).then(function() {
+    showToast('Deactivated', 'success');
+    loadPayingAccounts();
+  }).catch(function(err) { showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function reactivatePayingAccount(id) {
+  api('PATCH', '/api/paying-accounts/' + id, { active: true }).then(function() {
+    showToast('Reactivated', 'success');
+    loadPayingAccounts();
+  }).catch(function(err) { showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
 function deactivateFioUser(id, name) {
   if (!confirm('Deactivate ' + name + '? They will be hidden from the Upload dropdown but their history stays.')) return;
   api('DELETE', '/api/fio-users/' + id).then(function() {
@@ -4137,30 +4388,108 @@ function confirmPayment(docId) {
 }
 
 function markDocPaid(docId) {
-  // P2.5 (2026-06-07) — bookkeeper can wire in EUR OR original currency.
-  // Find the doc in the cached payment queue to read its native currency.
+  // 2026-06-08 Top-7 P2.3 — replaced 3 sequential prompt() boxes with
+  // a single modal: currency choice (P2.5) + paying-account dropdown
+  // (from /api/paying-accounts, fed by Admin tab) + reference field.
+  // Filters accounts by the doc's Legal Entity if set, otherwise shows all.
   var doc = (CP_QUEUE_CACHE || []).find(function(x) { return x.id === docId; }) || {};
   var origCcy = (doc.currency_orig || doc.currency || 'EUR').toUpperCase();
   var origAmt = Number(doc.amount_orig || doc.amount || 0);
   var eurAmt  = Number(doc.amount_eur || doc.amount || 0);
   var fx      = Number(doc.fx_rate || 1);
-
+  var docLegalEntity = doc.legal_entity || '';
   var canChooseOrig = (origCcy && origCcy !== 'EUR' && origAmt);
-  var prompt1 = 'How was the wire sent?\n\n' +
-    '1 — EUR (€' + eurAmt.toFixed(2) + ')';
-  if (canChooseOrig) {
-    prompt1 += '\n2 — ' + origCcy + ' (' + origAmt.toFixed(2) + ' ' + origCcy + ', FX ' + fx.toFixed(4) + ')';
+
+  // Pull active paying accounts; filter to entity if applicable
+  api('GET', '/api/paying-accounts?active=true').then(function(d) {
+    var all = (d && d.accounts) || [];
+    var filtered = docLegalEntity
+      ? all.filter(function(a) { return !a.legal_entity || a.legal_entity === docLegalEntity; })
+      : all;
+    openMarkPaidModal(docId, doc, filtered, all, {
+      origCcy: origCcy, origAmt: origAmt, eurAmt: eurAmt, fx: fx,
+      canChooseOrig: canChooseOrig, docLegalEntity: docLegalEntity,
+    });
+  }).catch(function(err) {
+    showToast('Failed to load paying accounts: ' + (err && err.message || err), 'error');
+  });
+}
+
+function openMarkPaidModal(docId, doc, accounts, allAccounts, meta) {
+  var overlay = document.getElementById('mark-paid-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'mark-paid-overlay';
+    overlay.className = 'modal-overlay';
+    document.body.appendChild(overlay);
   }
-  prompt1 += '\n\nEnter 1' + (canChooseOrig ? ' or 2' : '') + ':';
+  var ccyChoices = '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:6px;">' +
+      '<input type="radio" name="mp-ccy" value="EUR" checked>' +
+      '<span><b>EUR €' + meta.eurAmt.toFixed(2) + '</b> <span style="color:var(--muted);font-size:11px;">— accounting truth, default</span></span>' +
+    '</label>';
+  if (meta.canChooseOrig) {
+    ccyChoices += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">' +
+      '<input type="radio" name="mp-ccy" value="' + esc(meta.origCcy) + '">' +
+      '<span><b>' + esc(meta.origCcy) + ' ' + meta.origAmt.toFixed(2) + '</b> <span style="color:var(--muted);font-size:11px;">— wire in original (FX ' + meta.fx.toFixed(4) + ', records € equivalent)</span></span>' +
+    '</label>';
+  }
 
-  var choice = prompt(prompt1, canChooseOrig ? '1' : '1');
-  if (choice === null) return;
-  var payCcy = (choice.trim() === '2' && canChooseOrig) ? origCcy : 'EUR';
+  var emptyMsg = !accounts.length
+    ? '<div style="padding:10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;margin-bottom:6px;">' +
+      'No active paying accounts' + (meta.docLegalEntity ? ' for <b>' + esc(meta.docLegalEntity) + '</b>' : '') + '. Add one in the <b>Admin</b> tab → 🏦 Paying accounts.' +
+      (allAccounts.length && meta.docLegalEntity ? ' (' + allAccounts.length + ' exist across all entities)' : '') +
+      '</div>'
+    : '';
+  var accountOpts = ['<option value="">— pick account —</option>']
+    .concat(accounts.map(function(a) {
+      return '<option value="' + esc(a.label) + '">' + esc(a.label) +
+             (a.currency ? ' (' + esc(a.currency) + ')' : '') + '</option>';
+    })).join('');
 
-  var account = prompt('Paying account / bank (e.g. "Revolut · Amitours London")');
-  if (account === null) return;
-  var reference = prompt('Payment reference (transaction ID, batch, optional)');
-  if (reference === null) return;
+  overlay.innerHTML =
+    '<div class="modal" style="max-width:540px;">' +
+      '<div class="modal-header" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
+        '<h3 style="margin:0;font-size:16px;font-weight:600;">💸 Mark paid</h3>' +
+        '<button class="modal-close" onclick="closeMarkPaidModal()">&times;</button>' +
+      '</div>' +
+      '<div class="modal-body" style="padding:18px;">' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">VENDOR</div>' +
+        '<div style="font-size:14px;font-weight:600;margin-bottom:14px;">' + esc(doc.vendor || '—') + ' · ' + esc(doc.profit_center || '—') + '</div>' +
+
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">CURRENCY OF THE WIRE</div>' +
+        ccyChoices +
+
+        '<div style="font-size:11px;color:var(--muted);margin:14px 0 4px;">PAYING ACCOUNT *</div>' +
+        emptyMsg +
+        '<select id="mp-account" class="fio-select" style="width:100%;font-size:13px;padding:8px 10px;margin-bottom:14px;">' +
+          accountOpts +
+        '</select>' +
+
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">PAYMENT REFERENCE <span style="font-weight:400;">(optional — transaction ID, batch ref)</span></div>' +
+        '<input id="mp-reference" type="text" placeholder="e.g. SWIFT TR-2026-06-08-001" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:18px;">' +
+
+      '</div>' +
+      '<div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">' +
+        '<button class="btn btn-ghost" onclick="closeMarkPaidModal()">Cancel</button>' +
+        '<button class="btn btn-success" onclick="submitMarkPaid(\'' + docId + '\')">💸 Mark paid</button>' +
+      '</div>' +
+    '</div>';
+  overlay.classList.add('active');
+  // Cache the meta for submit
+  window._MARK_PAID_META = meta;
+}
+
+function closeMarkPaidModal() {
+  var ov = document.getElementById('mark-paid-overlay');
+  if (ov) ov.classList.remove('active');
+}
+
+function submitMarkPaid(docId) {
+  var meta = window._MARK_PAID_META || {};
+  var account = document.getElementById('mp-account').value;
+  if (!account) { showToast('Pick a paying account', 'error'); return; }
+  var reference = document.getElementById('mp-reference').value.trim();
+  var payCcy = document.querySelector('input[name="mp-ccy"]:checked').value;
 
   var body = {
     paid_by: ME.signed_in_as,
@@ -4169,19 +4498,22 @@ function markDocPaid(docId) {
     payment_currency: payCcy,
   };
   if (payCcy !== 'EUR') {
-    body.payment_amount_orig = origAmt;
-    body.payment_fx_rate = fx;
+    body.payment_amount_orig = meta.origAmt;
+    body.payment_fx_rate = meta.fx;
   }
 
   api('POST', '/api/documents/' + docId + '/mark-paid', body).then(function(d) {
     if (d.status === 'paid') {
       var msg = 'Marked paid in ' + payCcy;
-      if (payCcy !== 'EUR') msg += ' (€' + eurAmt.toFixed(2) + ' for accounting)';
+      if (payCcy !== 'EUR') msg += ' (€' + meta.eurAmt.toFixed(2) + ' for accounting)';
       showToast(msg, 'success');
+      closeMarkPaidModal();
       loadConfirmPaymentPanel();
     } else {
       showToast('Failed: ' + (d.error || 'unknown'), 'error');
     }
+  }).catch(function(err) {
+    showToast('Failed: ' + (err && err.message || err), 'error');
   });
 }
 
