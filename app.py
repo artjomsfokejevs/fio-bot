@@ -2938,10 +2938,12 @@ def users_with_roles():
 def import_candidates():
     """Return BT4YOU people NOT yet imported into user_roles.json.
 
-    Used by the 'Upload Accounts from Asana' picker so the bookkeeper can
-    add one person at a time. Admin only.
+    Used by the 'Upload Accounts from Asana' picker so anyone in the
+    admin/HR/bookkeeper triangle can add people. 2026-06-08 widened
+    from admin-only after Rita's feedback: 'Accounting or HR should be
+    able to import anyone registered in Asana.'
     """
-    err = _require_role(roles_svc.ROLE_ADMIN)
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
     if err:
         return err
     roles_data = roles_svc.load_roles()
@@ -2959,10 +2961,10 @@ def import_user_from_asana():
     """Import a single BT4YOU person into user_roles.json with default 'viewer'.
 
     Body: {"name": "Anastasia Lizanets", "role": "viewer" (optional)}
-    Admin only. One person per call -- enforces 'each person responsible
-    for their own actions' (per spec).
+    Widened 2026-06-08: admin OR bookkeeper. One person per call —
+    enforces 'each person responsible for their own actions' (per spec).
     """
-    err = _require_role(roles_svc.ROLE_ADMIN)
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
     if err:
         return err
     body = request.get_json(silent=True) or {}
