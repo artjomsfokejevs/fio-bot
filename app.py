@@ -331,10 +331,72 @@ def upload():
     uploaded_by = request.form.get("uploaded_by", "User")
     results = []
 
+    # 2026-06-09 Top-10 P3.1 — auto-route bank statements to Card Audit.
+    # If the uploaded file is CSV/XLSX and its first row matches a known
+    # bank-statement signature (Revolut/Mercury/Stripe/Airwallex), we
+    # hand it off to card_audit.import_statement instead of running it
+    # through Claude vision. Saves $$ and avoids "AI tries to parse a
+    # bank statement as an invoice" mis-classifications.
+    from services import card_audit as _ca
+
+    def _looks_like_bank_statement(file_storage) -> bool:
+        name = (file_storage.filename or "").lower()
+        if not (name.endswith(".csv") or name.endswith(".xlsx")):
+            return False
+        try:
+            file_storage.stream.seek(0)
+            head = file_storage.stream.read(2048)
+            file_storage.stream.seek(0)
+        except Exception:
+            return False
+        try:
+            text = head.decode("utf-8", errors="ignore")
+        except Exception:
+            return False
+        # Pull the first header-line; check against signature sets
+        first_line = text.split("\n", 1)[0].lower()
+        if not first_line:
+            return False
+        headers = [h.strip().strip('"') for h in first_line.split(",")]
+        spec = _ca.detect_format(headers)
+        # detect_format always returns SOMETHING (generic fallback).
+        # Only route if a NAMED format matched (not 'generic').
+        return spec.get("id") not in (None, "generic")
+
     for f in files:
         if not f.filename or not _allowed_file(f.filename):
             results.append({"filename": f.filename, "error": "Invalid file type"})
             continue
+
+        if _looks_like_bank_statement(f):
+            try:
+                raw = f.read()
+                ca_result = _ca.import_statement(
+                    raw, f.filename, imported_by=uploaded_by)
+                # Reconcile any period(s) touched by this batch
+                try:
+                    conn = db.get_connection()
+                    periods = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT period FROM card_transactions WHERE batch_id = ?",
+                        (ca_result["batch_id"],)).fetchall()]
+                    conn.close()
+                    for p in periods:
+                        _ca.reconcile_period(p)
+                except Exception:
+                    pass
+                results.append({
+                    "filename": f.filename,
+                    "routed_to": "card_audit",
+                    "batch_id": ca_result["batch_id"],
+                    "rows": ca_result.get("total_rows", 0),
+                    "inserted": ca_result.get("inserted", 0),
+                })
+                continue
+            except Exception as exc:
+                logger.exception("auto-route to card_audit failed for %s", f.filename)
+                results.append({"filename": f.filename,
+                                "error": "card-audit import failed: " + str(exc)})
+                continue
 
         doc_id = str(uuid.uuid4())[:12]
         ext = f.filename.rsplit(".", 1)[1].lower()

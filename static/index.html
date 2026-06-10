@@ -1351,7 +1351,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     <div class="upload-zone" id="upload-zone">
       <div class="icon">&#128196;</div>
       <p>Drop invoices, receipts, or bank statements here</p>
-      <div class="formats">PDF, JPG, PNG, CSV, XLSX &mdash; up to 20 MB</div>
+      <div class="formats">PDF, JPG, PNG, CSV, XLSX &mdash; up to 20 MB · <span style="color:var(--accent);">bank CSVs auto-route to Card Audit</span></div>
       <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx">
       <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
     </div>
@@ -4583,9 +4583,19 @@ function uploadFiles(files) {
       fill.style.width = '100%';
       setTimeout(function() { bar.style.display = 'none'; fill.style.width = '0%'; }, 1000);
       var uploaded = (data && data.uploaded) || [];
+      // 2026-06-09 (Top-10 P3.1) — server may auto-route bank-statement
+      // CSV/XLSX files to Card Audit instead of the Approve queue. Show
+      // a separate toast + skip the already-paid post-processing for them.
+      var routedToCa = uploaded.filter(function(u) { return u.routed_to === 'card_audit'; });
+      var invoices = uploaded.filter(function(u) { return u.routed_to !== 'card_audit'; });
+      if (routedToCa.length) {
+        var totalRows = routedToCa.reduce(function(s, x) { return s + (x.inserted || 0); }, 0);
+        showToast('📊 ' + routedToCa.length + ' bank statement(s) routed to Card Audit (' + totalRows + ' rows). Open Card Audit tab to review.', 'success');
+      }
       // 2026-06-09 (Top-10 P2.2) — if "already paid" was checked, mark
-      // every uploaded doc as already-paid (skips Approve, CEO, Payment
-      // stages). Run in parallel; reset the checkbox on success.
+      // every uploaded INVOICE (not bank-stmt) as already-paid (skips
+      // Approve, CEO, Payment stages). Run in parallel; reset checkbox.
+      uploaded = invoices;  // only invoices flow through the rest
       if (markAlreadyPaid && uploaded.length) {
         var paidPromises = uploaded.map(function(u) {
           return api('POST', '/api/documents/' + u.id + '/mark-already-paid-by-card',
