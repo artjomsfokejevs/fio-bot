@@ -1339,6 +1339,14 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </select>
     </div>
 
+    <!-- 2026-06-09 (Top-10 P2.2) — pre-upload "already paid" checkbox -->
+    <div style="max-width:560px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+      <label for="upload-already-paid" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="upload-already-paid" style="width:16px;height:16px;cursor:pointer;">
+        <span><b>📋 Already paid</b> — skip approval flow (uploaded as historical receipt)</span>
+      </label>
+    </div>
+
     <!-- Upload -->
     <div class="upload-zone" id="upload-zone">
       <div class="icon">&#128196;</div>
@@ -4297,14 +4305,16 @@ function savePaymentComment(docId, comment) {
 // P2.2 — Desired payment date + payment-state pill (cell renderer)
 // ───────────────────────────────────────────────────────────────────────
 function _cpDesiredDateCell(d, canEdit) {
-  var state = d.payment_state || 'needs_to_pay';
+  // 2026-06-09 (Top-10 P2.3) — dropped "needs_to_pay" from user-facing
+  // enum. Legacy values normalised to "in_progress" on display.
+  var rawState = d.payment_state || 'in_progress';
+  var state = (rawState === 'needs_to_pay') ? 'in_progress' : rawState;
   var STATE_COLOR = {
-    'needs_to_pay': { bg: '#fef3c7', fg: '#92400e' },
-    'in_progress':  { bg: '#dbeafe', fg: '#1e40af' },
-    'paid':         { bg: '#dcfce7', fg: '#166534' },
-    'on_hold':      { bg: '#fee2e2', fg: '#991b1b' },
+    'in_progress': { bg: '#dbeafe', fg: '#1e40af' },
+    'paid':        { bg: '#dcfce7', fg: '#166534' },
+    'on_hold':     { bg: '#fee2e2', fg: '#991b1b' },
   };
-  var sc = STATE_COLOR[state] || STATE_COLOR['needs_to_pay'];
+  var sc = STATE_COLOR[state] || STATE_COLOR['in_progress'];
   var statePill = '<span class="pill" style="background:' + sc.bg + ';color:' + sc.fg + ';">' +
                   esc(state.replace(/_/g, ' ')) + '</span>';
 
@@ -4317,7 +4327,8 @@ function _cpDesiredDateCell(d, canEdit) {
 
   var stateSel = canEdit
     ? '<select onchange="savePaymentState(\'' + d.id + '\', this.value)" class="fio-select" style="font-size:11px;padding:2px 4px;margin-top:3px;width:120px;">' +
-        ['needs_to_pay','in_progress','paid','on_hold'].map(function(s) {
+        // P2.3 (2026-06-09): 3 states only — in_progress / on_hold / paid
+        ['in_progress','on_hold','paid'].map(function(s) {
           var sel = (s === state) ? ' selected' : '';
           return '<option value="' + s + '"' + sel + '>' + s.replace(/_/g, ' ') + '</option>';
         }).join('') +
@@ -4447,17 +4458,32 @@ function openMarkPaidModal(docId, doc, accounts, allAccounts, meta) {
     '</label>';
   }
 
-  var emptyMsg = !accounts.length
-    ? '<div style="padding:10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;margin-bottom:6px;">' +
-      'No active paying accounts' + (meta.docLegalEntity ? ' for <b>' + esc(meta.docLegalEntity) + '</b>' : '') + '. Add one in the <b>Admin</b> tab → 🏦 Paying accounts.' +
-      (allAccounts.length && meta.docLegalEntity ? ' (' + allAccounts.length + ' exist across all entities)' : '') +
-      '</div>'
-    : '';
-  var accountOpts = ['<option value="">— pick account —</option>']
-    .concat(accounts.map(function(a) {
-      return '<option value="' + esc(a.label) + '">' + esc(a.label) +
-             (a.currency ? ' (' + esc(a.currency) + ')' : '') + '</option>';
-    })).join('');
+  // 2026-06-09 (Top-10 P1.4) — when zero accounts, show explicit CTA
+  // instead of a dropdown with a single "— pick account —" placeholder
+  // that tester thought was broken. Direct "open Admin tab" jump.
+  var emptyMsg = '';
+  var accountPicker;
+  if (!accounts.length) {
+    emptyMsg = '<div style="padding:14px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;font-size:13px;margin-bottom:10px;line-height:1.5;">' +
+      '<div style="font-weight:600;margin-bottom:6px;">⚠ No paying accounts configured' + (meta.docLegalEntity ? ' for <b>' + esc(meta.docLegalEntity) + '</b>' : '') + '.</div>' +
+      '<div style="margin-bottom:10px;color:var(--text);">Before you can mark this invoice paid, add the bank account you wired from.' +
+        (allAccounts.length && meta.docLegalEntity ? ' (' + allAccounts.length + ' exist for other entities — none filtered to this one)' : '') +
+      '</div>' +
+      '<button class="btn btn-success" style="font-size:13px;padding:8px 14px;" onclick="closeMarkPaidModal(); switchTab(\'admin\'); setTimeout(function(){ var el=document.getElementById(\'pa-label\'); if(el){ el.scrollIntoView({behavior:\'smooth\',block:\'center\'}); el.focus(); } }, 200);">+ Add my first paying account</button>' +
+      '</div>';
+    // Skip the dropdown entirely
+    accountPicker = '<input type="hidden" id="mp-account" value="">';
+  } else {
+    var accountOpts = ['<option value="">— pick account —</option>']
+      .concat(accounts.map(function(a) {
+        return '<option value="' + esc(a.label) + '">' + esc(a.label) +
+               (a.currency ? ' (' + esc(a.currency) + ')' : '') + '</option>';
+      })).join('');
+    accountPicker =
+      '<select id="mp-account" class="fio-select" style="width:100%;font-size:13px;padding:8px 10px;margin-bottom:14px;">' +
+        accountOpts +
+      '</select>';
+  }
 
   overlay.innerHTML =
     '<div class="modal" style="max-width:540px;">' +
@@ -4474,9 +4500,7 @@ function openMarkPaidModal(docId, doc, accounts, allAccounts, meta) {
 
         '<div style="font-size:11px;color:var(--muted);margin:14px 0 4px;">PAYING ACCOUNT *</div>' +
         emptyMsg +
-        '<select id="mp-account" class="fio-select" style="width:100%;font-size:13px;padding:8px 10px;margin-bottom:14px;">' +
-          accountOpts +
-        '</select>' +
+        accountPicker +
 
         '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">PAYMENT REFERENCE <span style="font-weight:400;">(optional — transaction ID, batch ref)</span></div>' +
         '<input id="mp-reference" type="text" placeholder="e.g. SWIFT TR-2026-06-08-001" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:18px;">' +
@@ -4539,6 +4563,11 @@ function uploadFiles(files) {
     fd.append('uploaded_by', userInput.value.trim());
     localStorage.setItem('fio_uploaded_by', userInput.value.trim());
   }
+  // 2026-06-09 (Top-10 P2.2) — capture "already paid" checkbox state
+  // BEFORE the async fetch (user may navigate away during upload).
+  var alreadyPaidCb = document.getElementById('upload-already-paid');
+  var markAlreadyPaid = alreadyPaidCb && alreadyPaidCb.checked;
+  var paidHolder = (userInput && userInput.value.trim()) || 'user';
 
   var bar = document.getElementById('progress-bar');
   var fill = document.getElementById('progress-fill');
@@ -4553,9 +4582,29 @@ function uploadFiles(files) {
     .then(function(data) {
       fill.style.width = '100%';
       setTimeout(function() { bar.style.display = 'none'; fill.style.width = '0%'; }, 1000);
-      showToast('Uploaded ' + (data.uploaded ? data.uploaded.length : 0) + ' file(s)', 'success');
-      loadStats();
-      loadUploadTable();
+      var uploaded = (data && data.uploaded) || [];
+      // 2026-06-09 (Top-10 P2.2) — if "already paid" was checked, mark
+      // every uploaded doc as already-paid (skips Approve, CEO, Payment
+      // stages). Run in parallel; reset the checkbox on success.
+      if (markAlreadyPaid && uploaded.length) {
+        var paidPromises = uploaded.map(function(u) {
+          return api('POST', '/api/documents/' + u.id + '/mark-already-paid-by-card',
+                     { card_holder: paidHolder, paid_at: new Date().toISOString() })
+                 .catch(function(err) {
+                   console.warn('mark-already-paid failed for', u.id, err);
+                 });
+        });
+        Promise.all(paidPromises).then(function() {
+          showToast('Uploaded + marked as paid: ' + uploaded.length + ' file(s)', 'success');
+          if (alreadyPaidCb) alreadyPaidCb.checked = false;
+          loadStats();
+          loadUploadTable();
+        });
+      } else {
+        showToast('Uploaded ' + uploaded.length + ' file(s)', 'success');
+        loadStats();
+        loadUploadTable();
+      }
       document.getElementById('file-input').value = '';
     })
     .catch(function(err) {

@@ -1590,7 +1590,7 @@ def undo_already_paid_by_card(doc_id: str):
         return jsonify({"error": "Not in already-paid state"}), 400
     db.update_document(doc_id, {
         "status": "approved",
-        "payment_state": "needs_to_pay",
+        "payment_state": "in_progress",  # P2.3 (2026-06-09)
         "already_paid_by_card": 0,
         "paid_card_holder": None,
         "payment_executed_at": None,
@@ -1630,7 +1630,13 @@ def set_payment_state(doc_id: str):
         return jsonify({"error": "Not found"}), 404
     body = request.get_json(silent=True) or {}
     state = (body.get("state") or "").strip()
-    VALID = {"needs_to_pay", "in_progress", "paid", "on_hold"}
+    # 2026-06-09 Top-10 P2.3 — dropped "needs_to_pay" from the user-facing
+    # enum (tester feedback: "if it's in the system, it needs paying by
+    # definition"). Mapped to in_progress on read. Backend still accepts
+    # the legacy string for backward-compat but normalises it.
+    if state == "needs_to_pay":
+        state = "in_progress"
+    VALID = {"in_progress", "paid", "on_hold"}
     if state and state not in VALID:
         return jsonify({"error": "state must be one of %s" % sorted(VALID)}), 400
 
