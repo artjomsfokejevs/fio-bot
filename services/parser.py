@@ -523,11 +523,24 @@ def _extraction_prompt() -> str:
         '    "payment_method": "card" | "bank" | "cash" | "unknown",\n'
         '    "is_terminal_receipt": false,\n'
         '    "linked_vendor": null,\n'
-        '    "our_entity": null,\n'
+        '    "our_entity": "ALPS2ALPS_OU" | "AMITOURS_LONDON" | "LORA_TRANS" | "DMS" | "AMITOURS_GROUP_SA" | "ALEXCURSION" | "SINKOPA" | "AMITOURS_HOLDING" | "AMITOURS_CORP" | null,\n'
         '    "ledger_codes": [],\n'
         '    "warnings": []\n'
         "  }\n"
         "]\n\n"
+        "═══ OUR ENTITY (Top-10 P2.1, Rita 2026-06-09) ═══\n"
+        "- Look at the BILL TO / BUYER section of the invoice to identify which Amitours entity is being billed.\n"
+        "- Map the recipient name → one of the codes above. Heuristics:\n"
+        "  · 'Alps2Alps OÜ' / 'Alps2Alps OU' / 'A2A OÜ' → ALPS2ALPS_OU\n"
+        "  · 'Amitours London' / 'Amitours London Ltd' → AMITOURS_LONDON\n"
+        "  · 'Lora Trans' / 'Lora Trans Kft' → LORA_TRANS\n"
+        "  · 'DMS' / 'DMS SIA' → DMS\n"
+        "  · 'Amitours Group SA' → AMITOURS_GROUP_SA\n"
+        "  · 'Alexcursion' → ALEXCURSION\n"
+        "  · 'Sinkopa' → SINKOPA\n"
+        "  · 'Amitours Holding' / 'Amitours Holding OÜ' → AMITOURS_HOLDING\n"
+        "  · 'Amitours Corp' / 'Amitours Inc' → AMITOURS_CORP\n"
+        "- If the bill-to section is missing or doesn't match any of these → null. Do NOT guess.\n\n"
         "IMPORTANT RULES:\n\n"
         "═══ MONEY BREAKDOWN (Phase 2.5 — Denis Bazoom case) ═══\n"
         "- subtotal = sum of line items BEFORE tax, BEFORE discounts/credits\n"

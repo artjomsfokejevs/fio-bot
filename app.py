@@ -283,6 +283,15 @@ def _build_doc_update(parsed: Dict[str, Any], classification: Dict[str, Any]) ->
         "credits": money.get("credits"),
     }
 
+    # 2026-06-09 Top-10 P2.1 — Legal Entity auto-extract from parser.
+    # parser.our_entity returns one of the legal_entities.json codes (or null).
+    # Bookkeeper can still override but won't have to start from "— pick payer —".
+    # We accept any non-empty string; downstream UI shows it as-is if it
+    # doesn't match a known entity (a warning will surface in the modal).
+    our_entity = parsed.get("our_entity")
+    if isinstance(our_entity, str) and our_entity.strip():
+        fields["legal_entity"] = our_entity.strip()
+
     # Period from document date (fallback now)
     doc_date = (parsed.get("dates") or {}).get("document_date")
     fields["period"] = (doc_date[:7] if doc_date else datetime.utcnow().strftime("%Y-%m"))
