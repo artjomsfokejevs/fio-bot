@@ -6857,6 +6857,59 @@ async function reconcileCardAudit() {
   loadCardAudit();
 }
 
+// 2026-06-09 (Top-10 P1.3) — Past statement imports archive
+function loadCaBatches() {
+  var box = document.getElementById('ca-batches');
+  if (!box) return;
+  box.innerHTML = '<div class="ca-emptystate">Loading archive…</div>';
+  api('GET', '/api/card-audit/batches').then(function(d) {
+    var batches = (d && d.batches) || [];
+    var countEl = document.getElementById('ca-batches-count');
+    if (countEl) countEl.textContent = batches.length + ' batch(es)';
+    if (!batches.length) {
+      box.innerHTML = '<div class="ca-emptystate">No past imports yet. Upload a CSV / XLSX / PDF bank statement above to start the archive.</div>';
+      return;
+    }
+    box.innerHTML = '<table style="width:100%;font-size:12px;border-collapse:collapse;">' +
+      '<thead><tr style="text-align:left;background:#f8fafc;">' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;">Imported</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;">Format</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;">Period</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;text-align:right;">Rows</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;text-align:right;">EUR total</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;">Match summary</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;text-align:right;">By</th>' +
+        '<th style="padding:7px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;text-align:right;">Download</th>' +
+      '</tr></thead><tbody>' +
+      batches.map(function(b) {
+        var imp = (b.imported_at || '').slice(0, 16).replace('T', ' ');
+        var periodLabel = b.first_period === b.last_period ? b.first_period : (b.first_period + ' → ' + b.last_period);
+        var matchHtml =
+          (b.auto_count      ? '<span class="pill" style="background:#dcfce7;color:#166534;">auto ' + b.auto_count + '</span> ' : '') +
+          (b.manual_count    ? '<span class="pill" style="background:#dbeafe;color:#1e40af;">manual ' + b.manual_count + '</span> ' : '') +
+          (b.suggested_count ? '<span class="pill" style="background:#fef3c7;color:#92400e;">suggested ' + b.suggested_count + '</span> ' : '') +
+          (b.unmatched_count ? '<span class="pill" style="background:#fee2e2;color:#991b1b;">unmatched ' + b.unmatched_count + '</span> ' : '') +
+          (b.excluded_count  ? '<span class="pill" style="background:#f1f5f9;color:#475569;">excluded ' + b.excluded_count + '</span>' : '');
+        return '<tr style="border-bottom:1px solid var(--border);">' +
+          '<td style="padding:7px 12px;font-variant-numeric:tabular-nums;">' + esc(imp) + '</td>' +
+          '<td style="padding:7px 12px;"><b>' + esc(b.source || '—') + '</b></td>' +
+          '<td style="padding:7px 12px;font-family:monospace;color:var(--muted);">' + esc(periodLabel || '—') + '</td>' +
+          '<td style="padding:7px 12px;text-align:right;font-weight:600;">' + b.row_count + '</td>' +
+          '<td style="padding:7px 12px;text-align:right;font-variant-numeric:tabular-nums;">€' + Number(b.total_eur || 0).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+          '<td style="padding:7px 12px;">' + (matchHtml || '<span style="color:var(--muted);">—</span>') + '</td>' +
+          '<td style="padding:7px 12px;text-align:right;color:var(--muted);">' + esc(b.imported_by || '—') + '</td>' +
+          '<td style="padding:7px 12px;text-align:right;"><button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 10px;" onclick="downloadCaBatch(\'' + esc(b.batch_id).replace(/\x27/g,"\\\x27") + '\')">📥 CSV</button></td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+  }).catch(function(err) {
+    box.innerHTML = '<div class="ca-emptystate" style="color:var(--red);">Failed to load: ' + esc(err && err.message || err) + '</div>';
+  });
+}
+
+function downloadCaBatch(batchId) {
+  window.location.href = '/api/card-audit/batches/' + encodeURIComponent(batchId) + '/export';
+}
+
 function exportCardAudit() {
   var period = document.getElementById('ca-period').value;
   window.location.href = '/api/card-audit/export?period=' + period;
