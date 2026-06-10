@@ -1640,6 +1640,19 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </div>
       <div id="ca-excluded" class="hidden"></div>
     </div>
+
+    <!-- ──────────────────────────────────────────────────────────── -->
+    <!-- 2026-06-09 Top-10 P1.3 — Past statement imports archive    -->
+    <!-- Lists every CSV/XLSX/PDF batch ever imported. Per-batch    -->
+    <!-- download with full match results.                          -->
+    <!-- ──────────────────────────────────────────────────────────── -->
+    <div class="section-card" style="margin-bottom:14px;border-left:4px solid #0ea5e9;">
+      <div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="document.getElementById('ca-batches').classList.toggle('hidden'); if(!window._CA_BATCHES_LOADED){loadCaBatches();window._CA_BATCHES_LOADED=true;}">
+        <span>📦 Past statement imports (archive)</span>
+        <span id="ca-batches-count" style="font-size:12px;color:var(--muted);font-weight:400;">click to expand ▾</span>
+      </div>
+      <div id="ca-batches" class="hidden" style="padding:8px 0;"></div>
+    </div>
   </div>
 
   <!-- Card-audit per-row action modal -->
@@ -6803,7 +6816,17 @@ function renderCaLists(txs) {
         (ccyOrig !== 'EUR' ? '<span class="ccy">(' + Math.abs(t.amount).toFixed(2) + ' ' + esc(ccyOrig) + ')</span>' : '') +
       '</div>' +
       '<div style="font-size:11px;color:var(--muted);">' + esc(t.source || '') + '</div>' +
-      '<div class="actions"><button onclick="openCaModal(\'' + esc(t.id) + '\')">Open</button></div>' +
+      // 2026-06-09 (Top-10 P1.2) — for matched / suggested, the Open
+      // button goes DIRECTLY to the invoice document modal (testers were
+      // confused: "transaction not found"). For unmatched, button renames
+      // to "Assign" — the ca-modal lets them pick a card holder / link
+      // an invoice manually.
+      '<div class="actions">' +
+        (t.matched_invoice_id
+          ? '<button onclick="openModalFromCa(\'' + esc(t.matched_invoice_id).replace(/\x27/g,"\\\x27") + '\')" title="Open the matched invoice document">📄 Invoice →</button>' +
+            '<button onclick="openCaModal(\'' + esc(t.id) + '\')" title="Edit this transaction (unmatch, exclude, reassign)" style="font-size:10px;">⋯</button>'
+          : '<button onclick="openCaModal(\'' + esc(t.id) + '\')" title="Assign card holder or link an invoice">Assign</button>') +
+      '</div>' +
       '</div>';
   }
   function fill(elId, list, emptyMsg, countId) {
@@ -6849,6 +6872,27 @@ function printNonMatching() {
 }
 
 // ─── Modal (open card-tx for assign/match/exclude/delete) ───
+// 2026-06-09 (Top-10 P1.2) — wrapper that hops from Card Audit to the
+// source invoice modal. If the doc has been deleted in the meantime,
+// show a clear toast instead of the previous silent "transaction not
+// found" UX. Stays inside Card Audit tab — modal overlay handles itself.
+function openModalFromCa(invoiceId) {
+  if (!invoiceId) {
+    showToast('No linked invoice for this transaction', 'error');
+    return;
+  }
+  // Verify the invoice still exists before opening — graceful fallback
+  api('GET', '/api/documents/' + encodeURIComponent(invoiceId)).then(function(doc) {
+    if (!doc || doc.error) {
+      showToast('Linked invoice no longer exists (id=' + invoiceId.slice(0, 8) + '…). Try Reconcile.', 'error');
+      return;
+    }
+    openModal(invoiceId);
+  }).catch(function(err) {
+    showToast('Could not open invoice: ' + (err && err.message || err), 'error');
+  });
+}
+
 async function openCaModal(txId) {
   var tx = await api('GET', '/api/card-audit/transactions?limit=1').then(r => (r.transactions || []).find(t => t.id === txId));
   if (!tx) {

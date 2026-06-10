@@ -189,6 +189,74 @@ def card_audit_reconcile() -> Any:
     return jsonify({"period": period, **counts})
 
 
+# ───────────────────────────────────────────────────────────────────────
+# 2026-06-09 Top-10 P1.3 — Past statement imports archive
+# Lists every CSV/XLSX/PDF batch ever imported, with match counts +
+# the filename so Rita can find a specific upload from weeks ago.
+# ───────────────────────────────────────────────────────────────────────
+
+@card_audit_bp.route("/batches", methods=["GET"])
+def card_audit_batches() -> Any:
+    """List past import batches with per-batch counts + match summary."""
+    conn = db.get_connection()
+    try:
+        rows = conn.execute("""
+            SELECT batch_id,
+                   source,
+                   MIN(imported_at)        AS imported_at,
+                   MIN(imported_by)        AS imported_by,
+                   COUNT(*)                AS row_count,
+                   SUM(CASE WHEN match_status = 'auto'      THEN 1 ELSE 0 END) AS auto_count,
+                   SUM(CASE WHEN match_status = 'manual'    THEN 1 ELSE 0 END) AS manual_count,
+                   SUM(CASE WHEN match_status = 'suggested' THEN 1 ELSE 0 END) AS suggested_count,
+                   SUM(CASE WHEN match_status = 'unmatched' THEN 1 ELSE 0 END) AS unmatched_count,
+                   SUM(CASE WHEN match_status = 'excluded'  THEN 1 ELSE 0 END) AS excluded_count,
+                   MIN(period)             AS first_period,
+                   MAX(period)             AS last_period,
+                   SUM(COALESCE(amount_eur, amount, 0))                       AS total_eur
+            FROM card_transactions
+            GROUP BY batch_id, source
+            ORDER BY MIN(imported_at) DESC
+            LIMIT 200
+        """).fetchall()
+        batches = [dict(r) for r in rows]
+    finally:
+        conn.close()
+    return jsonify({"batches": batches, "count": len(batches)})
+
+
+@card_audit_bp.route("/batches/<batch_id>/export", methods=["GET"])
+def card_audit_batch_export(batch_id: str) -> Any:
+    """Download one batch as CSV with match results column for handover."""
+    period = request.args.get("period") or None
+    conn = db.get_connection()
+    try:
+        sql = ("SELECT * FROM card_transactions WHERE batch_id = ? "
+               "ORDER BY posted_at DESC, id")
+        rows = conn.execute(sql, (batch_id,)).fetchall()
+        txs = [db._row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+    buf = _io.StringIO()
+    buf.write("# Amitours Holding — FIO Card Audit batch export\n")
+    buf.write(f"# Batch ID: {batch_id}\n")
+    buf.write(f"# Generated at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n")
+    buf.write(f"# Row count: {len(txs)}\n\n")
+    fields = ["id", "source", "posted_at", "period", "amount", "currency",
+              "amount_eur", "description", "counterparty", "reference",
+              "card_holder", "department", "profit_center",
+              "match_status", "match_confidence", "matched_invoice_id",
+              "match_reason", "notes"]
+    w = _csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    w.writeheader()
+    for t in txs:
+        w.writerow(t)
+    fname = f"fio_card_audit_batch_{batch_id[:12]}.csv"
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @card_audit_bp.route("/export", methods=["GET"])
 def card_audit_export() -> Any:
     """Export card-tx as CSV — same corporate header as accounting export."""

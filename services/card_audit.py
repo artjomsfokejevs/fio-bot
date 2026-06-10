@@ -70,15 +70,22 @@ _FORMAT_SPECS: List[Dict[str, Any]] = [
     {
         "id": "revolut",
         "label": "Revolut Business",
-        "signature": {"type", "amount", "currency"},
-        "extra_signature_any": {"started date", "completed date", "state"},
+        # 2026-06-09 — fixed signature to match the ACTUAL Revolut Business
+        # CSV export. The earlier spec looked for "started date" / "completed
+        # date" but the file uses "Date started (UTC)" / "Date completed
+        # (UTC)" and "Payment currency" instead of bare "currency", so the
+        # detector fell through to generic and rows didn't parse.
+        "signature": {"type", "state", "amount"},
+        "extra_signature_any": {"date started (utc)", "date completed (utc)",
+                                "payer", "exchange rate", "beneficiary iban"},
         "fields": {
-            "date":        ["completed date", "started date", "date"],
-            "description": ["description", "reference", "merchant"],
-            "amount":      ["amount"],
-            "currency":    ["currency"],
-            "counterparty":["description"],
-            "reference":   ["reference"],
+            "date":        ["date completed (utc)", "date started (utc)",
+                            "completed date", "started date", "date"],
+            "description": ["description", "reference", "payer", "merchant"],
+            "amount":      ["amount", "total amount"],
+            "currency":    ["payment currency", "currency", "orig currency"],
+            "counterparty":["payer", "description"],
+            "reference":   ["reference", "id"],
         },
         "default_currency": "EUR",
         "amount_sign": "natural",
