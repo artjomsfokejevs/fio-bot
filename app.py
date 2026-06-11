@@ -382,7 +382,7 @@ def upload():
                     conn.close()
                     for p in periods:
                         _ca.reconcile_period(p)
-                except Exception:
+                except Exception:  # noqa: BLE001 — defensive: post-import reconcile is best-effort, never aborts the upload response
                     pass
                 results.append({
                     "filename": f.filename,
@@ -392,7 +392,7 @@ def upload():
                     "inserted": ca_result.get("inserted", 0),
                 })
                 continue
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — batch boundary: one bad bank CSV must not abort the rest of the upload batch
                 logger.exception("auto-route to card_audit failed for %s", f.filename)
                 results.append({"filename": f.filename,
                                 "error": "card-audit import failed: " + str(exc)})
