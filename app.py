@@ -1600,53 +1600,134 @@ def mark_paid(doc_id: str):
 # 2026-06-07 P2.1 — Already-paid-by-card flag (skip Rita workflow)
 # ════════════════════════════════════════════════════════════════
 
-@app.route("/api/documents/<doc_id>/mark-already-paid-by-card", methods=["POST"])
-def mark_already_paid_by_card(doc_id: str):
-    """Mark a document as already paid via corporate card.
+def _mark_as_paid_skip(doc_id: str, payload: Dict[str, Any]) -> Any:
+    """Shared core for the already-paid endpoints (card / generic).
 
-    Skips the Awaiting CEO → Awaiting Payment stages entirely. The doc
-    transitions straight to status='paid' with payment_state='paid'
-    and a note explaining who paid. This is for invoices like LinkedIn,
-    Fireflies, Hetzner etc. paid by corporate card before the invoice
-    even reached Rita.
+    Skips Awaiting CEO + Awaiting Payment stages. Doc → status=paid,
+    payment_state=paid. Records `payment_method` (card | bank | cash |
+    other), the payer's name (`paid_by`), optional `paid_at`, and an
+    optional reference (e.g. wire UTR, card auth code).
 
-    Body:
-      card_holder    — required, who paid (free text or name from roster)
-      paid_at        — optional ISO date; defaults to "today"
+    payload keys:
+      payment_method  (default 'other') — card / bank / cash / other
+      paid_by         (default actor)   — who paid (free text)
+      paid_at         (default now)     — ISO date
+      payment_reference (default auto)  — free text; if absent we
+                          synthesise "<method> payment (no wire)" so
+                          the audit trail isn't blank
     """
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
-                        roles_svc.ROLE_STREAM_OWNER)
-    if err:
-        return err
-
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
     if doc.get("status") in ("paid", "rejected"):
         return jsonify({"error": "Document is already %s" % doc.get("status")}), 400
 
-    body = request.get_json(silent=True) or {}
-    card_holder = (body.get("card_holder") or "").strip()
-    if not card_holder:
-        return jsonify({"error": "card_holder is required"}), 400
+    method = (payload.get("payment_method") or "other").strip().lower()
+    if method not in ("card", "bank", "cash", "other"):
+        return jsonify({"error": "payment_method must be card|bank|cash|other"}), 400
+
+    actor = _current_user_name() or "user"
+    # paid_by is whoever actually wired the money. If caller didn't
+    # supply it AND it's a card payment, fall back to actor; otherwise
+    # leave blank rather than lie.
+    paid_by = (payload.get("paid_by") or "").strip()
+    if not paid_by:
+        # For a card payment we usually know the cardholder from the
+        # invoice itself. For bank/cash/other we DON'T — refuse to
+        # invent a name.
+        if method == "card":
+            paid_by = actor
+        else:
+            paid_by = ""  # explicit blank, no lie
 
     now = datetime.utcnow().isoformat()
-    paid_at = body.get("paid_at") or now
-    actor = _current_user_name() or "user"
+    paid_at = payload.get("paid_at") or now
+    reference = (payload.get("payment_reference") or "").strip()
+    if not reference:
+        if method == "card":
+            reference = "card payment (no wire)"
+        elif method == "bank":
+            reference = "marked as already paid (bank transfer, no FIO record)"
+        elif method == "cash":
+            reference = "marked as already paid (cash)"
+        else:
+            reference = "marked as already paid (no FIO payment record)"
 
-    db.update_document(doc_id, {
+    update = {
         "status": "paid",
         "payment_state": "paid",
-        "already_paid_by_card": 1,
-        "paid_card_holder": card_holder,
+        "payment_method": method,
         "payment_executed_at": paid_at,
-        "payment_executed_by": card_holder,
-        "payment_reference": "card payment (no wire)",
-    })
-    db.insert_audit_log(doc_id, "marked_already_paid_by_card", {
-        "card_holder": card_holder, "paid_at": paid_at, "by": actor,
+        "payment_executed_by": paid_by or None,  # NULL, not lie
+        "payment_reference": reference,
+    }
+    # already_paid_by_card flag stays ONLY for card payments — that's
+    # its semantic. paid_card_holder is the cardholder field; leave it
+    # NULL for non-card payments.
+    if method == "card":
+        update["already_paid_by_card"] = 1
+        update["paid_card_holder"] = paid_by or None
+    else:
+        update["already_paid_by_card"] = 0
+        update["paid_card_holder"] = None
+
+    db.update_document(doc_id, update)
+    db.insert_audit_log(doc_id, "marked_already_paid", {
+        "method": method, "paid_by": paid_by or None,
+        "paid_at": paid_at, "reference": reference, "by": actor,
     })
     return jsonify({"status": "paid", "document": db.get_document(doc_id)})
+
+
+# ── Backward-compat alias (Top-10 P2.2 caller used this) ──────────────
+@app.route("/api/documents/<doc_id>/mark-already-paid-by-card", methods=["POST"])
+def mark_already_paid_by_card(doc_id: str):
+    """Card-specific entry point (kept for backward compat).
+
+    Forces payment_method='card'. Use the generic /mark-as-already-paid
+    endpoint instead for new callers.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                        roles_svc.ROLE_STREAM_OWNER)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    card_holder = (body.get("card_holder") or "").strip()
+    # Legacy contract required card_holder; keep it required here so
+    # old callers fail loudly when they forget it.
+    if not card_holder:
+        return jsonify({"error": "card_holder is required"}), 400
+    return _mark_as_paid_skip(doc_id, {
+        "payment_method": "card",
+        "paid_by": card_holder,
+        "paid_at": body.get("paid_at"),
+        "payment_reference": body.get("payment_reference"),
+    })
+
+
+# ── 2026-06-11 (Top-10 P2.2 fix) — generic already-paid endpoint ──
+@app.route("/api/documents/<doc_id>/mark-as-already-paid", methods=["POST"])
+def mark_as_already_paid(doc_id: str):
+    """Mark a document as already paid via card / bank / cash / other.
+
+    Replaces the older /mark-already-paid-by-card for non-card cases —
+    Top-10 self-review caught that "Already paid" checkbox in Upload
+    was stamping every invoice with payment_method='card' even when the
+    uploader didn't know HOW it was paid, and was writing the
+    uploader's name to paid_card_holder (lie). New flow:
+
+    Body:
+      payment_method     (default 'other') — card / bank / cash / other
+      paid_by            (default actor for card, blank otherwise)
+      paid_at            (default now)
+      payment_reference  (optional; auto-synthesised by method if blank)
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                        roles_svc.ROLE_STREAM_OWNER)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    return _mark_as_paid_skip(doc_id, body)
 
 
 @app.route("/api/documents/<doc_id>/undo-already-paid-by-card", methods=["POST"])

@@ -1339,12 +1339,29 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </select>
     </div>
 
-    <!-- 2026-06-09 (Top-10 P2.2) — pre-upload "already paid" checkbox -->
-    <div style="max-width:560px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:13px;">
-      <label for="upload-already-paid" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="upload-already-paid" style="width:16px;height:16px;cursor:pointer;">
+    <!-- 2026-06-09 (Top-10 P2.2) — pre-upload "already paid" checkbox.
+         2026-06-11 (Top-10 self-review P2.2 fix) — added payment method
+         radio so we don't lie about card payments / cardholder. -->
+    <div style="max-width:560px;margin:0 auto 8px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+      <label for="upload-already-paid" style="display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="upload-already-paid" style="width:16px;height:16px;cursor:pointer;" onchange="document.getElementById('upload-paid-method').style.display = this.checked ? 'flex' : 'none';">
         <span><b>📋 Already paid</b> — skip approval flow (uploaded as historical receipt)</span>
       </label>
+      <div id="upload-paid-method" style="display:none;justify-content:center;gap:14px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);">
+        <span style="font-weight:600;">paid via:</span>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="upload-paid-via" value="card" checked> card
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="upload-paid-via" value="bank"> bank transfer
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="upload-paid-via" value="cash"> cash
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="upload-paid-via" value="other"> other
+        </label>
+      </div>
     </div>
 
     <!-- Upload -->
@@ -4565,9 +4582,16 @@ function uploadFiles(files) {
   }
   // 2026-06-09 (Top-10 P2.2) — capture "already paid" checkbox state
   // BEFORE the async fetch (user may navigate away during upload).
+  // 2026-06-11 (Top-10 self-review fix) — also capture payment_method
+  // radio so we hit the generic endpoint without lying about cardholder.
   var alreadyPaidCb = document.getElementById('upload-already-paid');
   var markAlreadyPaid = alreadyPaidCb && alreadyPaidCb.checked;
-  var paidHolder = (userInput && userInput.value.trim()) || 'user';
+  var paidMethodRadio = document.querySelector('input[name="upload-paid-via"]:checked');
+  var paidMethod = (paidMethodRadio && paidMethodRadio.value) || 'other';
+  // Only set "paid_by" when uploader picked their own real name — never
+  // pass generic "user" / "User" / empty as if they paid the invoice.
+  var uploaderName = (userInput && userInput.value.trim()) || '';
+  var paidByForApi = uploaderName && uploaderName !== 'User' ? uploaderName : '';
 
   var bar = document.getElementById('progress-bar');
   var fill = document.getElementById('progress-fill');
@@ -4595,18 +4619,32 @@ function uploadFiles(files) {
       // 2026-06-09 (Top-10 P2.2) — if "already paid" was checked, mark
       // every uploaded INVOICE (not bank-stmt) as already-paid (skips
       // Approve, CEO, Payment stages). Run in parallel; reset checkbox.
+      // 2026-06-11 (Top-10 self-review) — use the generic endpoint
+      // with explicit payment_method so we don't auto-stamp 'card'.
       uploaded = invoices;  // only invoices flow through the rest
       if (markAlreadyPaid && uploaded.length) {
+        var body = {
+          payment_method: paidMethod,
+          paid_at: new Date().toISOString(),
+        };
+        // Only include paid_by when we know who it was. For card paid
+        // by the uploader themselves, this is fine. For bank/cash/other,
+        // the uploader is the FORWARDER not the payer — leave blank.
+        if (paidByForApi && paidMethod === 'card') {
+          body.paid_by = paidByForApi;
+        }
         var paidPromises = uploaded.map(function(u) {
-          return api('POST', '/api/documents/' + u.id + '/mark-already-paid-by-card',
-                     { card_holder: paidHolder, paid_at: new Date().toISOString() })
+          return api('POST', '/api/documents/' + u.id + '/mark-as-already-paid', body)
                  .catch(function(err) {
-                   console.warn('mark-already-paid failed for', u.id, err);
+                   console.warn('mark-as-already-paid failed for', u.id, err);
                  });
         });
         Promise.all(paidPromises).then(function() {
-          showToast('Uploaded + marked as paid: ' + uploaded.length + ' file(s)', 'success');
-          if (alreadyPaidCb) alreadyPaidCb.checked = false;
+          showToast('Uploaded + marked as paid (' + paidMethod + '): ' + uploaded.length + ' file(s)', 'success');
+          if (alreadyPaidCb) {
+            alreadyPaidCb.checked = false;
+            document.getElementById('upload-paid-method').style.display = 'none';
+          }
           loadStats();
           loadUploadTable();
         });
