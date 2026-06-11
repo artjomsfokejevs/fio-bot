@@ -37,6 +37,10 @@ tests/
 # Linters (lint_ru.py / lint_lv.py) and one-off scripts read docs/ at
 # runtime on the developer machine / CI, not in the Flask app.
 scripts/
+# 2026-06-11 (Top-10 self-review) — but the backfill IS run on prod
+# via `flyctl ssh console -C "python3 /app/scripts/backfill_legal_entity.py"`
+# so it must ship in the image. Whitelist this one file.
+!scripts/backfill_legal_entity.py
 data/audit.jsonl
 data/fx_rates_cache.json
 data/registry_cache/
