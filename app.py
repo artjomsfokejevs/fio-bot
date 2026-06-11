@@ -945,6 +945,88 @@ def get_document(doc_id: str):
     return jsonify(doc)
 
 
+# ════════════════════════════════════════════════════════════════
+# 2026-06-11 (Top-10 self-review follow-up) — explicit reparse endpoint
+# Bookkeeper-facing alias for /parse with two extras:
+#   1. Refuses to re-parse rejected docs (nothing to gain)
+#   2. Diffs old → new legal_entity / our_entity and returns the delta
+#      so the UI can toast "AI now suggests AMITOURS_HOLDING" without the
+#      bookkeeper having to compare fields manually.
+# ════════════════════════════════════════════════════════════════
+
+@app.route("/api/documents/<doc_id>/reparse", methods=["POST"])
+def reparse_doc(doc_id: str):
+    """Re-run the parser on an existing document.
+
+    Used after the prompt was updated (P2.1: legal_entity auto-extract)
+    to retroactively fill missing fields without manual re-upload.
+    Returns a `delta` payload listing fields that changed so the frontend
+    can highlight them.
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                        roles_svc.ROLE_STREAM_OWNER)
+    if err:
+        return err
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    if doc.get("status") == "rejected":
+        return jsonify({"error": "Rejected docs cannot be re-parsed"}), 400
+
+    file_path = os.path.join(config.UPLOAD_FOLDER, doc["filename"])
+    if not os.path.exists(file_path):
+        return jsonify({"error": "Source file not found on disk",
+                        "filename": doc["filename"]}), 404
+
+    # Snapshot prior values for the delta payload
+    before = {
+        "legal_entity": doc.get("legal_entity"),
+        "vendor": doc.get("vendor"),
+        "amount": doc.get("amount"),
+        "ledger_code": doc.get("ledger_code"),
+        "profit_center": doc.get("profit_center"),
+    }
+
+    try:
+        parsed = parse_document(file_path, doc["file_type"])
+    except Exception as exc:
+        logger.exception("reparse failed for %s", doc_id)
+        return jsonify({"error": "parser raised", "detail": str(exc)[:300]}), 500
+
+    if isinstance(parsed, list):
+        if not parsed:
+            return jsonify({"error": "Parser returned empty result"}), 502
+        # Reparse intentionally collapses multi-receipt back to the first;
+        # if the bookkeeper wants the additional receipts, they can
+        # re-upload.
+        parsed_single = parsed[0]
+    else:
+        parsed_single = parsed
+
+    classification = classify_document(parsed_single)
+    classification = _apply_governance_suggestions(
+        parsed_single, classification, doc.get("uploaded_by"))
+    update_fields = _build_doc_update(parsed_single, classification)
+    db.update_document(doc_id, update_fields)
+    db.insert_audit_log(doc_id, "reparsed", {
+        "by": _current_user_name() or "user",
+        "prior_legal_entity": before["legal_entity"],
+        "new_legal_entity": update_fields.get("legal_entity"),
+    })
+
+    new_doc = db.get_document(doc_id)
+    delta = {k: {"before": before[k], "after": new_doc.get(k)}
+             for k in before
+             if before[k] != new_doc.get(k)}
+    return jsonify({
+        "status": "reparsed",
+        "document": new_doc,
+        "delta": delta,
+        "changed_fields": list(delta.keys()),
+    })
+
+
 @app.route("/api/documents/<doc_id>/parse", methods=["POST"])
 def parse_doc(doc_id: str):
     """Trigger (re-)parsing for a document."""

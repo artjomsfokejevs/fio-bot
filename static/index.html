@@ -4279,8 +4279,34 @@ function _cpLegalEntityCell(d, canEdit) {
     var sel = (e.code === current) ? ' selected' : '';
     opts.push('<option value="' + esc(e.code) + '"' + sel + '>' + esc(e.name) + '</option>');
   });
+  // 2026-06-11 (Top-10 self-review follow-up) — reparse button for empty
+  // legal_entity. Lets the bookkeeper ask AI to re-evaluate the doc
+  // against the new prompt without re-uploading.
+  var reparseBtn = '';
+  if (!current) {
+    reparseBtn = '<button onclick="reparseDoc(\'' + d.id + '\')" title="Re-run AI parser to extract Legal Entity from the invoice" style="font-size:10px;padding:2px 6px;margin-top:3px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;display:block;">🤖 Ask AI</button>';
+  }
   return '<select onchange="saveLegalEntity(\'' + d.id + '\', this.value)" class="fio-select" style="font-size:12px;padding:4px 6px;min-width:140px;">' +
-    opts.join('') + '</select>' + sourceBadge;
+    opts.join('') + '</select>' + reparseBtn + sourceBadge;
+}
+
+function reparseDoc(docId) {
+  showToast('Asking AI to re-evaluate…', 'info');
+  api('POST', '/api/documents/' + docId + '/reparse', {}).then(function(r) {
+    if (r && r.changed_fields && r.changed_fields.length) {
+      var changes = r.changed_fields.map(function(f) {
+        var b = (r.delta[f] || {}).before;
+        var a = (r.delta[f] || {}).after;
+        return f + ': ' + (b || '∅') + ' → ' + (a || '∅');
+      }).join(' · ');
+      showToast('AI updated: ' + changes, 'success');
+    } else {
+      showToast('AI re-ran — no changes (existing values match)', 'info');
+    }
+    loadConfirmPaymentPanel();
+  }).catch(function(err) {
+    showToast('Reparse failed: ' + (err && err.message || err), 'error');
+  });
 }
 
 function saveLegalEntity(docId, code) {
