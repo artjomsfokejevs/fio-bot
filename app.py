@@ -129,7 +129,8 @@ def _seed_data_volume() -> None:
         return
     target_dir = os.path.dirname(config.LEDGER_FILE)
     os.makedirs(target_dir, exist_ok=True)
-    for name in ("ledger_schema.json", "accounting_rules.json", "legal_entities.json"):
+    for name in ("ledger_schema.json", "accounting_rules.json",
+                 "legal_entities.json", "whats_new.json"):
         seed = os.path.join(seed_dir, name)
         target = os.path.join(target_dir, name)
         if os.path.exists(seed) and not os.path.exists(target):
@@ -3489,6 +3490,29 @@ def settings_set(key: str):
     return jsonify({"status": "saved",
                     "key": key,
                     "value": settings_svc.get(key)})
+
+
+# ───────────────────────────────────────────────────────────────────────
+# 2026-06-11 Top-2 P2 — What's New modal on login
+# Returns release notes from data/whats_new.json. Frontend tracks
+# last-seen version per-user in localStorage.
+# ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/whats-new", methods=["GET"])
+def whats_new():
+    """Return the release-notes feed."""
+    import json as _json
+    path = os.path.join(os.path.dirname(__file__), "data", "whats_new.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        entries = data.get("entries", [])
+        return jsonify({
+            "entries": entries,
+            "latest_version": entries[0].get("version") if entries else None,
+        })
+    except (FileNotFoundError, _json.JSONDecodeError) as exc:
+        return jsonify({"entries": [], "error": str(exc)}), 200
 
 
 @app.route("/api/legal-entities", methods=["GET"])

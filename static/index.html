@@ -2115,6 +2115,42 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         </div>
       </div>
 
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <!-- 2026-06-11 Top-2 P1 — Editable chase-task template          -->
+      <!-- Bookkeeper customises the text that goes into Asana tasks   -->
+      <!-- when chasing missing invoices.                              -->
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">📝 Chase task template</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
+          When the bookkeeper hits <b>🚀 Generate chase tasks</b> at month-close, FIO renders a per-tx task using these templates. Edit the title and body below, then paste into Asana / email / Slack. Reset to default by clearing the field.
+        </p>
+        <p style="color:var(--muted);font-size:11px;margin:0 0 10px;">
+          Placeholders you can use:
+          <code>{amount}</code> <code>{vendor}</code> <code>{date}</code>
+          <code>{description}</code> <code>{counterparty}</code>
+          <code>{reference}</code> <code>{source}</code> <code>{pc}</code> <code>{reason}</code>
+        </p>
+
+        <div style="display:grid;grid-template-columns:1fr;gap:14px;">
+          <div>
+            <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Title template</label>
+            <input id="setting-chase-title" type="text" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,monospace;" placeholder="Loading…">
+            <div id="setting-chase-title-meta" style="font-size:11px;color:var(--muted);margin-top:3px;"></div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Body template (multi-line)</label>
+            <textarea id="setting-chase-body" rows="10" style="width:100%;padding:8px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,monospace;resize:vertical;" placeholder="Loading…"></textarea>
+            <div id="setting-chase-body-meta" style="font-size:11px;color:var(--muted);margin-top:3px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-success" onclick="saveChaseTemplate()">💾 Save template</button>
+            <button class="btn btn-ghost btn-sm" onclick="resetChaseTemplate()">↩ Reset to defaults</button>
+            <span id="setting-chase-status" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -2136,6 +2172,27 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   </div>
 
   <!-- Asana import picker modal -->
+  <!-- ──────────────────────────────────────────────────────────── -->
+  <!-- 2026-06-11 Top-2 P2 — "What's New" modal                    -->
+  <!-- Shown on login when latest_version in /api/whats-new is      -->
+  <!-- newer than localStorage 'fio_whats_new_seen'.                -->
+  <!-- ──────────────────────────────────────────────────────────── -->
+  <div id="whats-new-overlay" class="modal-overlay">
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:18px;font-weight:700;">🎉 What's new in FIO</h3>
+        <button class="modal-close" onclick="closeWhatsNew()">&times;</button>
+      </div>
+      <div class="modal-body" id="whats-new-body" style="padding:18px 22px;max-height:70vh;overflow-y:auto;">
+        <div class="empty-state">Loading…</div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#f8fafc;">
+        <span style="font-size:11px;color:var(--muted);">Bookkeeper / Admin: edit <code>data/whats_new.json</code> to publish new entries.</span>
+        <button class="btn btn-success" onclick="closeWhatsNew(true)">✓ Got it — don't show again</button>
+      </div>
+    </div>
+  </div>
+
   <div id="asana-import-overlay" class="modal-overlay">
     <div class="modal" style="max-width:560px;">
       <div class="modal-header">
@@ -2545,8 +2602,9 @@ function switchTab(tabName) {
     loadConfirmPaymentPanel();
   } else if (tabName === 'admin') {
     loadAdminPanel();
-    loadFioUsers();        // 2026-06-07 P1.2 — FIO-managed users roster
-    loadPayingAccounts();  // 2026-06-08 Top-7 P2.3 — paying accounts roster
+    loadFioUsers();          // 2026-06-07 P1.2 — FIO-managed users roster
+    loadPayingAccounts();    // 2026-06-08 Top-7 P2.3 — paying accounts roster
+    loadChaseTemplate();     // 2026-06-11 Top-2 P1 — chase template editor
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();
   }
@@ -3454,7 +3512,59 @@ function refreshIdentity() {
     roleEl.textContent = name ? ('· ' + role) : '';
     roleEl.style.color = roleColors[role] || 'var(--muted)';
     applyTabVisibility(ME.allowed_tabs || []);
+    // 2026-06-11 Top-2 P2 — show "What's New" modal if a newer version
+    // has been published since this user last dismissed.
+    maybeShowWhatsNew();
   }).catch(function(){});
+}
+
+// 2026-06-11 Top-2 P2 — What's New modal
+function maybeShowWhatsNew() {
+  api('GET', '/api/whats-new').then(function(d) {
+    var entries = (d && d.entries) || [];
+    var latest = d && d.latest_version;
+    if (!latest || !entries.length) return;
+    var seen = localStorage.getItem('fio_whats_new_seen') || '';
+    if (seen === latest) return;
+    renderWhatsNew(entries, latest);
+    document.getElementById('whats-new-overlay').classList.add('active');
+  }).catch(function() {});
+}
+
+function renderWhatsNew(entries, latest) {
+  var body = document.getElementById('whats-new-body');
+  if (!body) return;
+  // Show newest 5 entries
+  var html = entries.slice(0, 5).map(function(e, idx) {
+    var isLatest = (e.version === latest);
+    var highlights = (e.highlights || []).map(function(h) {
+      return '<li style="margin-bottom:4px;line-height:1.5;">' + esc(h) + '</li>';
+    }).join('');
+    var header =
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:6px;">' +
+        '<h4 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">' +
+          (isLatest ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-right:6px;">new</span>' : '') +
+          esc(e.title || e.version) +
+        '</h4>' +
+        '<span style="font-size:11px;color:var(--muted);">' + esc(e.date || '') + '</span>' +
+      '</div>';
+    return '<div style="padding:14px 16px;background:' + (isLatest ? '#fffbeb' : '#fff') + ';border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">' +
+      header +
+      (e.summary ? '<p style="margin:0 0 8px;font-size:13px;color:var(--text);line-height:1.5;">' + esc(e.summary) + '</p>' : '') +
+      (highlights ? '<ul style="margin:6px 0 0;padding-left:22px;font-size:12px;color:var(--text);">' + highlights + '</ul>' : '') +
+    '</div>';
+  }).join('');
+  body.innerHTML = html;
+  // Cache latest version so closeWhatsNew(true) can stamp localStorage
+  window._FIO_WN_LATEST = latest;
+}
+
+function closeWhatsNew(markSeen) {
+  var ov = document.getElementById('whats-new-overlay');
+  if (ov) ov.classList.remove('active');
+  if (markSeen && window._FIO_WN_LATEST) {
+    localStorage.setItem('fio_whats_new_seen', window._FIO_WN_LATEST);
+  }
 }
 
 function applyTabVisibility(allowed) {
@@ -3742,6 +3852,62 @@ function deactivatePayingAccount(id, label) {
     showToast('Deactivated', 'success');
     loadPayingAccounts();
   }).catch(function(err) { showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+// 2026-06-11 Top-2 P1 — chase template editor.
+function loadChaseTemplate() {
+  api('GET', '/api/settings').then(function(d) {
+    var eff = d.effective || {};
+    var meta = d.meta || {};
+    var titleEl = document.getElementById('setting-chase-title');
+    var bodyEl  = document.getElementById('setting-chase-body');
+    if (titleEl) titleEl.value = eff.chase_task_title || '';
+    if (bodyEl)  bodyEl.value  = eff.chase_task_body  || '';
+    function fmtMeta(key) {
+      if (meta[key]) {
+        var when = (meta[key].updated_at || '').slice(0, 16).replace('T', ' ');
+        return '✓ customised · last edit ' + when + ' by ' + (meta[key].updated_by || '—');
+      }
+      return '— using default (no edits saved yet)';
+    }
+    var t = document.getElementById('setting-chase-title-meta');
+    var b = document.getElementById('setting-chase-body-meta');
+    if (t) t.textContent = fmtMeta('chase_task_title');
+    if (b) b.textContent = fmtMeta('chase_task_body');
+  }).catch(function(err) {
+    var s = document.getElementById('setting-chase-status');
+    if (s) s.textContent = 'Failed to load: ' + (err && err.message || err);
+  });
+}
+
+function saveChaseTemplate() {
+  var title = document.getElementById('setting-chase-title').value;
+  var body  = document.getElementById('setting-chase-body').value;
+  var status = document.getElementById('setting-chase-status');
+  if (status) { status.textContent = 'Saving…'; status.style.color = 'var(--muted)'; }
+  Promise.all([
+    api('POST', '/api/settings/chase_task_title', { value: title }),
+    api('POST', '/api/settings/chase_task_body',  { value: body }),
+  ]).then(function() {
+    if (status) { status.textContent = '✓ Saved · will be used on the next chase run'; status.style.color = 'var(--green)'; }
+    loadChaseTemplate();
+  }).catch(function(err) {
+    if (status) { status.textContent = 'Save failed: ' + (err && err.message || err); status.style.color = 'var(--red)'; }
+  });
+}
+
+function resetChaseTemplate() {
+  if (!confirm('Reset both templates to defaults? This deletes your customisations.')) return;
+  var status = document.getElementById('setting-chase-status');
+  Promise.all([
+    api('POST', '/api/settings/chase_task_title', { value: '' }),
+    api('POST', '/api/settings/chase_task_body',  { value: '' }),
+  ]).then(function() {
+    if (status) { status.textContent = '↩ Reset to defaults'; status.style.color = 'var(--muted)'; }
+    loadChaseTemplate();
+  }).catch(function(err) {
+    if (status) { status.textContent = 'Reset failed: ' + (err && err.message || err); status.style.color = 'var(--red)'; }
+  });
 }
 
 function reactivatePayingAccount(id) {

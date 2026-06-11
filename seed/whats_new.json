@@ -1,0 +1,70 @@
+{
+  "_comment": "Release notes shown to users via the 'What's New' modal on login. Newest first. The frontend tracks the 'version' field per-user in localStorage; if the latest version is newer than what they've seen, the modal appears. Bookkeeper / Admin can edit this file in-place when shipping new features.",
+  "_seed_date": "2026-06-11",
+  "entries": [
+    {
+      "version": "2026-06-11-top2",
+      "date": "2026-06-11",
+      "title": "✏️ Editable chase template + 🎉 What's New on login",
+      "summary": "Bookkeeper can now customise the Asana/email task text used when chasing missing invoices, and new users see a release-notes popup the first time they log in after a change.",
+      "highlights": [
+        "Admin tab → 📝 Chase task template — edit title + body with placeholders ({amount}, {vendor}, {date}, {pc}, ...)",
+        "Reset to defaults with one click; meta-line shows who last edited and when",
+        "🎉 What's New modal on login — current and recent releases at a glance"
+      ]
+    },
+    {
+      "version": "2026-06-11-top9",
+      "date": "2026-06-11",
+      "title": "📊 Bank Statement Audit — month-close workflow",
+      "summary": "Card Audit renamed and expanded into a mandatory bookkeeper workflow for end-of-month reconciliation, including AI chase tasks for missing invoices.",
+      "highlights": [
+        "Tab renamed Card Audit → Bank Statement Audit",
+        "🔐 Month-close checklist — 3 traffic-light checks (statements imported · all reconciled · every unmatched has owner)",
+        "🚀 Generate chase tasks — AI groups unmatched transactions by suggested business stream, produces per-tx Asana / email template, Open Asana / Copy buttons",
+        "📊 Monthly dashboard — tx count, money in/out/net, per-stream split, cases under investigation",
+        "Confidence % pill now shows scoring formula on hover (amount + date + vendor + payment method)",
+        "✓ Confirm button on suggested matches — promote suggested → manual in one click",
+        "⋯ Edit and Assign buttons now actually work (silent-bug fix from /transactions?limit=1)"
+      ]
+    },
+    {
+      "version": "2026-06-11-top10-selfreview",
+      "date": "2026-06-11",
+      "title": "🤖 AI follow-ups + bank reconciliation fixes",
+      "summary": "Self-review pass after the Top-10 shipped — gaps closed: AI badges, payment method radio, reparse endpoint, cross-period notices.",
+      "highlights": [
+        "Upload → 📋 Already paid checkbox now has card / bank / cash / other radio (no more lying about cardholder)",
+        "Legal Entity dropdown shows 🤖 AI suggested / ⚙️ manual / ⚠ heuristic badge",
+        "🤖 Ask AI button next to empty Legal Entity dropdowns — re-runs parser to extract recipient",
+        "Card Audit Open buttons hop directly to the source invoice modal (no more 'transaction not found')",
+        "Cross-period notice when an invoice opens from a different month than your active filter"
+      ]
+    },
+    {
+      "version": "2026-06-09-top10",
+      "date": "2026-06-09",
+      "title": "💳 Revolut import + Card Audit drill-down",
+      "summary": "Card Audit was broken on real Revolut Business CSV exports — now fixed. Plus the long-awaited 'where are my matched invoices' archive.",
+      "highlights": [
+        "Revolut Business CSV import works end-to-end (was silently falling through to generic)",
+        "Card Audit archive of past imports + per-batch CSV download with match results",
+        "Mark Paid empty-state has a teleport CTA — '+ Add my first paying account' jumps to Admin tab",
+        "Server-side bank CSV auto-route — drop a Revolut CSV in Upload and it goes to Card Audit automatically",
+        "Dropped 'needs_to_pay' redundant state — payment state is now in_progress / on_hold / paid"
+      ]
+    },
+    {
+      "version": "2026-06-08-top7",
+      "date": "2026-06-08",
+      "title": "🏦 Paying accounts + comment cascade",
+      "summary": "Bookkeeper roster of bank accounts, comment cascade between stages, FIO Legend with per-role responsibility cards.",
+      "highlights": [
+        "Admin tab → 🏦 Paying accounts roster, Mark Paid now uses a real dropdown",
+        "Bookkeeper / CEO comments cascade forward through Confirm-for-Payment stages",
+        "Wider comment column in Awaiting Payment with expand-on-focus",
+        "FIO Legend — per-role cards (Uploader / Stream owner / Bookkeeper / Holding CEO / HR / Admin)"
+      ]
+    }
+  ]
+}
