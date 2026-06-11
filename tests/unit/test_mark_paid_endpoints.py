@@ -13,12 +13,21 @@ from services import db
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     import app as flask_app
+    from services import roles as roles_svc
     flask_app.app.testing = True
     flask_app.db.init_db()
+    # Test client doesn't carry session / role auth — pretend the caller
+    # is an admin so we focus tests on endpoint contract, not auth.
+    monkeypatch.setattr(roles_svc, "get_role",
+                        lambda name: roles_svc.ROLE_ADMIN)
     with flask_app.app.test_client() as c:
         yield c
+
+
+# X-FIO-User header so _current_user_name() picks up a real value
+_HDR = {"X-FIO-User": "pytest"}
 
 
 def _seed_doc(status="approved"):
@@ -43,6 +52,7 @@ def test_mark_as_already_paid_bank_no_card_holder_lie(client):
     doc_id = _seed_doc()
     r = client.post(
         f"/api/documents/{doc_id}/mark-as-already-paid",
+        headers=_HDR,
         json={"payment_method": "bank"},
     )
     assert r.status_code == 200, r.get_json()
@@ -64,6 +74,7 @@ def test_mark_as_already_paid_card_keeps_legacy_semantics(client):
     doc_id = _seed_doc()
     r = client.post(
         f"/api/documents/{doc_id}/mark-as-already-paid",
+        headers=_HDR,
         json={"payment_method": "card", "paid_by": "Artjoms Fokejevs"},
     )
     assert r.status_code == 200, r.get_json()
@@ -78,6 +89,7 @@ def test_legacy_endpoint_still_requires_card_holder(client):
     doc_id = _seed_doc()
     r = client.post(
         f"/api/documents/{doc_id}/mark-already-paid-by-card",
+        headers=_HDR,
         json={},  # no card_holder
     )
     assert r.status_code == 400
@@ -89,6 +101,7 @@ def test_mark_as_already_paid_rejects_unknown_method(client):
     doc_id = _seed_doc()
     r = client.post(
         f"/api/documents/{doc_id}/mark-as-already-paid",
+        headers=_HDR,
         json={"payment_method": "crypto"},
     )
     assert r.status_code == 400
