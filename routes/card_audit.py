@@ -202,6 +202,215 @@ def card_audit_reconcile() -> Any:
 
 
 # ───────────────────────────────────────────────────────────────────────
+# 2026-06-11 Top-9 P2.6 + P2.7 — Month-close mandatory workflow
+# Rita's request: bookkeeper runs ALL bank statements at month-close to
+# confirm "we received every document". Unmatched → AI determines which
+# business stream the transaction belongs to + bookkeeper triggers a
+# chase task (Asana or email template).
+# ───────────────────────────────────────────────────────────────────────
+
+@card_audit_bp.route("/month-close-status", methods=["GET"])
+def card_audit_month_close_status() -> Any:
+    """Checklist payload for the Month-Close section in Bank Statement Audit.
+
+    Returns 3 booleans + counts so the UI can render a traffic-light
+    progress bar:
+        statements_imported     — at least 1 batch in this period
+        all_reconciled           — every imported tx has match_status ≠ unmatched
+        unmatched_have_owner     — every unmatched has card_holder OR
+                                   profit_center filled (so a stakeholder
+                                   exists to chase)
+    Plus the count of tx still requiring action.
+    """
+    from services import card_audit as ca_svc
+    period = (request.args.get("period")
+              or datetime.utcnow().strftime("%Y-%m"))
+    summary = ca_svc.audit_summary(period)
+    by_status = summary.get("by_status", {})
+    total = summary.get("total_transactions", 0)
+    unmatched = by_status.get("unmatched", 0)
+    suggested = by_status.get("suggested", 0)
+    matched = (by_status.get("auto", 0) + by_status.get("manual", 0))
+
+    statements_imported = total > 0
+    # "all reconciled" means: no row left with status 'unmatched' OR
+    # 'suggested'. Bookkeeper must explicitly Confirm / Assign each one.
+    all_reconciled = statements_imported and (unmatched + suggested == 0)
+
+    # Pull unmatched txs to verify they have at least an owner
+    unmatched_rows = ca_svc.list_card_tx(period=period, match_status="unmatched")
+    unmatched_without_owner = sum(
+        1 for t in unmatched_rows
+        if not (t.get("card_holder") or t.get("profit_center"))
+    )
+    unmatched_have_owner = statements_imported and unmatched_without_owner == 0
+
+    can_close = all_reconciled and unmatched_have_owner
+
+    return jsonify({
+        "period": period,
+        "total_transactions": total,
+        "matched_count": matched,
+        "suggested_count": suggested,
+        "unmatched_count": unmatched,
+        "unmatched_without_owner": unmatched_without_owner,
+        "checks": {
+            "statements_imported": statements_imported,
+            "all_reconciled": all_reconciled,
+            "unmatched_have_owner": unmatched_have_owner,
+        },
+        "can_close": can_close,
+    })
+
+
+@card_audit_bp.route("/transactions/<tx_id>/suggest-owner", methods=["POST"])
+def card_audit_suggest_owner(tx_id: str) -> Any:
+    """AI guess for who owns an unmatched transaction.
+
+    Uses BT4YOU map + transaction description heuristics. Returns the
+    suggestion without writing it — bookkeeper confirms via the existing
+    Assign flow.
+    """
+    tx = card_audit.get_card_tx(tx_id)
+    if not tx:
+        return jsonify({"error": "Not found"}), 404
+
+    # Three signals, in order of confidence:
+    # 1. If counterparty / description contains a known vendor that
+    #    suggests a stream (Stripe → AA tech, Hetzner → AA infra, etc.)
+    # 2. Card holder already set → resolve via BT4YOU
+    # 3. Fallback: AA (Alps2Alps) — the dominant stream by volume
+    description = ((tx.get("counterparty") or "") + " " +
+                   (tx.get("description") or "")).lower()
+    holder = tx.get("card_holder")
+
+    suggested_pc = None
+    suggested_person = None
+    reason = ""
+
+    if holder:
+        try:
+            people_map = bts.build_people_map()
+            lookup = bts.suggest_pc_for_uploader(holder, people_map)
+            if lookup:
+                suggested_pc = lookup.get("profit_center")
+                suggested_person = holder
+                reason = "cardholder " + holder + " → " + (suggested_pc or "?")
+        except Exception:  # noqa: BLE001 — defensive: BT4YOU map can be stale
+            pass
+
+    if not suggested_pc:
+        try:
+            vendor_match = bts.suggest_pc_for_vendor(description, "")
+            if vendor_match:
+                suggested_pc = vendor_match.get("profit_center")
+                suggested_person = vendor_match.get("primary_contact") or ""
+                reason = "vendor `" + (vendor_match.get("brand") or "") + "` → " + (suggested_pc or "?")
+        except Exception:  # noqa: BLE001 — defensive: BT4YOU map can be stale
+            pass
+
+    if not suggested_pc:
+        suggested_pc = "AA"
+        reason = "no strong signal — fallback to AA (dominant stream)"
+
+    return jsonify({
+        "transaction_id": tx_id,
+        "suggested_profit_center": suggested_pc,
+        "suggested_person": suggested_person,
+        "reason": reason,
+    })
+
+
+@card_audit_bp.route("/chase-missing", methods=["POST"])
+def card_audit_chase_missing() -> Any:
+    """Generate chase tasks for every unmatched tx in the period.
+
+    Body: { period: "YYYY-MM" }
+    Returns: array of chase items — each with suggested_pc, suggested_person,
+    rendered email/asana text. Frontend renders a copy-pasteable list +
+    "Open Asana to create" link per item.
+
+    We DON'T actually call Asana here (token may not be present) — the
+    response is a template the bookkeeper can paste into Asana, Slack,
+    or email. Asana auto-creation can be wired later when ASANA_PAT
+    is configured.
+    """
+    body = request.get_json(silent=True) or {}
+    period = (body.get("period")
+              or request.args.get("period")
+              or datetime.utcnow().strftime("%Y-%m"))
+
+    unmatched_rows = card_audit.list_card_tx(period=period, match_status="unmatched")
+    items = []
+    for t in unmatched_rows:
+        # Suggest owner — reuse the logic above via a direct call to keep
+        # one implementation source.
+        description = ((t.get("counterparty") or "") + " " +
+                       (t.get("description") or "")).lower()
+        suggested_pc = t.get("profit_center")
+        suggested_person = t.get("card_holder") or ""
+        reason = "from existing assignment"
+
+        if not suggested_pc:
+            try:
+                vendor_match = bts.suggest_pc_for_vendor(description, "")
+                if vendor_match:
+                    suggested_pc = vendor_match.get("profit_center")
+                    suggested_person = vendor_match.get("primary_contact") or suggested_person
+                    reason = "vendor `" + (vendor_match.get("brand") or "") + "`"
+            except Exception:  # noqa: BLE001 — defensive
+                pass
+
+        if not suggested_pc:
+            suggested_pc = "AA"
+            reason = "no strong signal — defaulted to AA"
+
+        amount_eur = abs(float(t.get("amount_eur") or t.get("amount") or 0))
+        task_title = (f"📄 Missing invoice — "
+                      f"€{amount_eur:.2f} · {t.get('counterparty') or t.get('description') or '?'} · "
+                      f"{(t.get('posted_at') or '')[:10]}")
+        task_body = (
+            f"FIO Bank Statement Audit flagged a transaction that has no matching invoice.\n\n"
+            f"Transaction details:\n"
+            f"  Date: {t.get('posted_at', '')[:10]}\n"
+            f"  Amount: €{amount_eur:.2f}\n"
+            f"  Description: {t.get('description', '?')}\n"
+            f"  Counterparty: {t.get('counterparty', '?')}\n"
+            f"  Reference: {t.get('reference', '—')}\n"
+            f"  Source: {t.get('source', '?')}\n\n"
+            f"FIO attribution: stream {suggested_pc} ({reason})\n\n"
+            f"Action: please find the invoice for this charge and upload it to FIO "
+            f"(https://fio-amitours.fly.dev/) under Upload → mark as 'already paid'.\n\n"
+            f"— FIO Accounting Bot (auto-generated month-close chase)"
+        )
+
+        items.append({
+            "transaction_id": t.get("id"),
+            "posted_at": t.get("posted_at"),
+            "amount_eur": amount_eur,
+            "description": t.get("description"),
+            "counterparty": t.get("counterparty"),
+            "suggested_profit_center": suggested_pc,
+            "suggested_person": suggested_person,
+            "reason": reason,
+            "task_title": task_title,
+            "task_body": task_body,
+        })
+
+    # Group by suggested_profit_center for easier batch chasing
+    by_stream = {}
+    for it in items:
+        by_stream.setdefault(it["suggested_profit_center"], []).append(it)
+
+    return jsonify({
+        "period": period,
+        "total_unmatched": len(items),
+        "items": items,
+        "by_stream": by_stream,
+    })
+
+
+# ───────────────────────────────────────────────────────────────────────
 # 2026-06-09 Top-10 P1.3 — Past statement imports archive
 # Lists every CSV/XLSX/PDF batch ever imported, with match counts +
 # the filename so Rita can find a specific upload from weeks ago.

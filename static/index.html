@@ -1259,7 +1259,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
       <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
       <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
-      <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Card Audit</button>
+      <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">📊 Bank Statement Audit</button>
       <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
       <button class="tab-btn" onclick="switchTab('confirm-payment')" data-tab="confirm-payment">Confirm for Payment</button>
       <button class="tab-btn" onclick="switchTab('admin')" data-tab="admin">Admin</button>
@@ -1368,7 +1368,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     <div class="upload-zone" id="upload-zone">
       <div class="icon">&#128196;</div>
       <p>Drop invoices, receipts, or bank statements here</p>
-      <div class="formats">PDF, JPG, PNG, CSV, XLSX &mdash; up to 20 MB · <span style="color:var(--accent);">bank CSVs auto-route to Card Audit</span></div>
+      <div class="formats">PDF, JPG, PNG, CSV, XLSX &mdash; up to 20 MB · <span style="color:var(--accent);">bank CSVs auto-route to Bank Statement Audit</span></div>
       <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx">
       <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
     </div>
@@ -1579,7 +1579,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   <div class="panel" id="panel-card-audit">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:14px;flex-wrap:wrap;">
       <div>
-        <h2 style="font-size:20px;font-weight:600;margin:0 0 4px 0;">Card Audit — Period close</h2>
+        <h2 style="font-size:20px;font-weight:600;margin:0 0 4px 0;">Bank Statement Audit — Period close</h2>
         <p style="color:var(--muted);font-size:13px;margin:0;max-width:680px;">
           Upload bank/card CSV statements (Mercury, Revolut, Stripe, Airwallex or generic) to find
           card transactions without a matching invoice. Helps the bookkeeper close the month and flag
@@ -1625,6 +1625,13 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     </div>
 
     <!-- KPI strip -->
+    <!-- ──────────────────────────────────────────────────────────── -->
+    <!-- 2026-06-11 Top-9 P2.6 — Month-Close mandatory workflow      -->
+    <!-- Rita: at end of month, bookkeeper MUST run all bank stmts   -->
+    <!-- through audit. UI shows 3-step checklist + lock state.      -->
+    <!-- ──────────────────────────────────────────────────────────── -->
+    <div id="ca-month-close" style="margin-bottom:18px;"></div>
+
     <div id="ca-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;"></div>
 
     <!-- By-department breakdown -->
@@ -1941,11 +1948,11 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         </div>
         <div style="padding:10px 12px;border:1px solid #0ea5e9;border-radius:8px;background:#fff;">
           <div style="font-size:10px;color:#0ea5e9;text-transform:uppercase;font-weight:700;">bookkeeper</div>
-          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Executes payments</strong> · sees Confirm + Card Audit + all Approve / Accounting / Analytics + Legend</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Executes payments</strong> · sees Confirm + Bank Statement Audit + all Approve / Accounting / Analytics + Legend</div>
         </div>
         <div style="padding:10px 12px;border:1px solid #10b981;border-radius:8px;background:#fff;">
           <div style="font-size:10px;color:#10b981;text-transform:uppercase;font-weight:700;">stream_owner</div>
-          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Owns one stream</strong> · sees their own stream on Approve + Accounting + Card Audit + Analytics + Legend</div>
+          <div style="font-size:12px;margin-top:3px;line-height:1.45;"><strong>Owns one stream</strong> · sees their own stream on Approve + Accounting + Bank Statement Audit + Analytics + Legend</div>
         </div>
         <div style="padding:10px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;">
           <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;font-weight:700;">viewer</div>
@@ -2191,9 +2198,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
                 <div style="font-size:10px;color:#10b981;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">stream_owner</div>
               </div>
               <div style="font-size:12px;color:var(--text);line-height:1.55;">
-                <div style="margin-bottom:4px;"><b>Sees:</b> Their own stream on Approve · Accounting · Card Audit · Analytics</div>
-                <div style="margin-bottom:4px;"><b>Does:</b> Approves / rejects their stream's docs. Posts to P&amp;L. Reviews Card Audit unmatched.</div>
-                <div><b>When:</b> Daily for approvals; weekly for Card Audit review; monthly for stream P&amp;L close.</div>
+                <div style="margin-bottom:4px;"><b>Sees:</b> Their own stream on Approve · Accounting · Bank Statement Audit · Analytics</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Approves / rejects their stream's docs. Posts to P&amp;L. Reviews Bank Statement Audit unmatched.</div>
+                <div><b>When:</b> Daily for approvals; weekly for Bank Statement Audit review; monthly for stream P&amp;L close.</div>
               </div>
             </div>
 
@@ -2264,7 +2271,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
               <tr><td style="padding:6px 8px;"><strong>Upload</strong></td><td style="padding:6px 8px;">Drop the file. AI extracts vendor, VAT, amount, line items.</td><td style="padding:6px 8px;">Everyone (all roles)</td></tr>
               <tr><td style="padding:6px 8px;"><strong>Approve</strong></td><td style="padding:6px 8px;">Review parsed data, pick PC / Department / Reason, post to P&amp;L. Split across PCs if needed.</td><td style="padding:6px 8px;">All roles see; only Bookkeeper / Stream owner / CEO / Admin can Approve &amp; Post</td></tr>
               <tr><td style="padding:6px 8px;"><strong>Accounting</strong></td><td style="padding:6px 8px;">Live P&amp;L per stream. Drill into any code.</td><td style="padding:6px 8px;">Admin · Holding CEO · Bookkeeper see all streams; Stream owner sees own only</td></tr>
-              <tr><td style="padding:6px 8px;"><strong>Card Audit</strong></td><td style="padding:6px 8px;">Upload bank statements (CSV / XLSX / PDF), reconcile against approved documents, list non-matching transactions, print PDF for chase-down.</td><td style="padding:6px 8px;">Admin · Bookkeeper · Stream owner (own stream)</td></tr>
+              <tr><td style="padding:6px 8px;"><strong>Bank Statement Audit</strong></td><td style="padding:6px 8px;">Upload bank statements (CSV / XLSX / PDF), reconcile against approved documents, list non-matching transactions, print PDF for chase-down.</td><td style="padding:6px 8px;">Admin · Bookkeeper · Stream owner (own stream)</td></tr>
               <tr><td style="padding:6px 8px;"><strong>Analytics</strong></td><td style="padding:6px 8px;">Spend trends, projections, optimization opportunities, suspicious findings, operational cashflow.</td><td style="padding:6px 8px;">Admin · Holding CEO · Bookkeeper all; Stream owner own only</td></tr>
               <tr><td style="padding:6px 8px;"><strong>Confirm for Payment</strong></td><td style="padding:6px 8px;">4-stage workflow: Bookkeeper budget-checks → Holding CEO approves week → Bookkeeper pays → flows into operational cashflow.</td><td style="padding:6px 8px;">Admin · Holding CEO · Bookkeeper</td></tr>
               <tr><td style="padding:6px 8px;"><strong>Admin</strong></td><td style="padding:6px 8px;">Import users from Asana, set per-user role, delete users.</td><td style="padding:6px 8px;">Admin only (Artjoms / Rita)</td></tr>
@@ -6846,15 +6853,17 @@ async function loadCardAudit() {
   if (deptEl0) deptEl0.innerHTML = _caLoadingSkeleton('department breakdown');
 
   try {
-    var [summary, txWrap] = await Promise.all([
+    // 2026-06-11 (Top-9 P2.6) — also pull month-close-status in parallel
+    var [summary, txWrap, mcStatus] = await Promise.all([
       api('GET', '/api/card-audit/summary?period=' + period),
       api('GET', '/api/card-audit/transactions?limit=2000&period=' + period),
+      api('GET', '/api/card-audit/month-close-status?period=' + period).catch(function(){ return null; }),
     ]);
     var allTx = txWrap.transactions || [];
-    // Client-side PC filter (server doesn't currently filter by profit_center on list)
     if (pcFilter) {
       allTx = allTx.filter(function(t) { return (t.profit_center || '').toUpperCase() === pcFilter; });
     }
+    renderCaMonthClose(mcStatus, period);
     renderCaKpis(summary);
     renderCaByDept(summary);
     renderCaLists(allTx);
@@ -6870,6 +6879,132 @@ async function loadCardAudit() {
     if (kpiEl) kpiEl.innerHTML = '<div class="empty-state" style="color:var(--red);">Card Audit unavailable — backend error</div>';
     showToast('Card Audit failed: ' + (err && err.message || err), 'error');
   }
+}
+
+// 2026-06-11 (Top-9 P2.6 + P2.7) — Month-close checklist + Chase generator.
+// Three-step traffic light: statements imported → all reconciled →
+// unmatched have owner. Below that, "🚀 Generate chase tasks" button
+// renders a per-stream list of templated Asana / email texts for the
+// missing-invoice transactions.
+function renderCaMonthClose(s, period) {
+  var box = document.getElementById('ca-month-close');
+  if (!box) return;
+  if (!s) { box.innerHTML = ''; return; }
+  var checks = s.checks || {};
+  function row(label, ok, helper) {
+    var icon = ok ? '✅' : '⚠️';
+    var color = ok ? '#10b981' : '#f59e0b';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">' +
+      '<span style="font-size:16px;">' + icon + '</span>' +
+      '<span style="font-weight:600;color:' + color + ';font-size:13px;">' + esc(label) + '</span>' +
+      (helper ? '<span style="font-size:11px;color:var(--muted);margin-left:auto;">' + esc(helper) + '</span>' : '') +
+    '</div>';
+  }
+  var canClose = s.can_close;
+  var bg = canClose ? '#dcfce7' : '#fef3c7';
+  var border = canClose ? '#10b981' : '#f59e0b';
+  var html =
+    '<div style="padding:14px 18px;background:' + bg + ';border-left:4px solid ' + border + ';border-radius:8px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:8px;">' +
+        '<div>' +
+          '<div style="font-size:14px;font-weight:700;color:var(--text);">🔐 Month-close checklist · ' + esc(period) + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' +
+            (canClose
+              ? 'All checks green — ready to close.'
+              : 'Bookkeeper must clear every check before this period can be closed.') +
+          '</div>' +
+        '</div>' +
+        (s.unmatched_count > 0
+          ? '<button class="btn btn-sm" style="background:#dc2626;color:#fff;border-color:#dc2626;" onclick="openCaChase(\'' + esc(period) + '\')">🚀 Generate chase tasks (' + s.unmatched_count + ')</button>'
+          : '') +
+      '</div>' +
+      row('1. Bank statements imported', checks.statements_imported,
+          (s.total_transactions || 0) + ' transactions ingested') +
+      row('2. All transactions reconciled', checks.all_reconciled,
+          s.matched_count + ' matched · ' + s.suggested_count + ' need review · ' + s.unmatched_count + ' unmatched') +
+      row('3. Unmatched have an owner', checks.unmatched_have_owner,
+          s.unmatched_without_owner > 0
+            ? s.unmatched_without_owner + ' without owner — assign cardholder / stream first'
+            : 'every unmatched tx assigned') +
+    '</div>';
+  box.innerHTML = html;
+}
+
+function openCaChase(period) {
+  var overlay = document.getElementById('ca-chase-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ca-chase-overlay';
+    overlay.className = 'modal-overlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML =
+    '<div class="modal" style="max-width:780px;">' +
+      '<div class="modal-header" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
+        '<h3 style="margin:0;font-size:16px;font-weight:600;">🚀 Chase missing invoices · ' + esc(period) + '</h3>' +
+        '<button class="modal-close" onclick="closeCaChase()">&times;</button>' +
+      '</div>' +
+      '<div class="modal-body" id="ca-chase-body" style="padding:18px;max-height:70vh;overflow-y:auto;">' +
+        '<div class="empty-state">Generating chase tasks…</div>' +
+      '</div>' +
+    '</div>';
+  overlay.classList.add('active');
+
+  api('POST', '/api/card-audit/chase-missing', { period: period }).then(function(d) {
+    var body = document.getElementById('ca-chase-body');
+    var streams = d.by_stream || {};
+    var streamKeys = Object.keys(streams).sort();
+    if (!streamKeys.length) {
+      body.innerHTML = '<div class="empty-state">No unmatched transactions — nothing to chase ✨</div>';
+      return;
+    }
+    var html =
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;">' +
+        '<b>' + d.total_unmatched + '</b> unmatched transaction(s) grouped by AI-suggested business stream. ' +
+        'Click the templates to copy, paste into Asana / email / Slack to chase the missing invoice.' +
+      '</div>';
+    streamKeys.forEach(function(pc) {
+      var items = streams[pc];
+      var pcName = (PC_LABELS && PC_LABELS[pc]) || pc;
+      html += '<div style="margin-bottom:18px;padding:12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+          '<div style="font-weight:700;color:var(--text);font-size:14px;">' + esc(pc) + ' · ' + esc(pcName) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + items.length + ' item(s)</div>' +
+        '</div>';
+      items.forEach(function(it) {
+        var asanaUrl = 'https://app.asana.com/0/0?focused_text=' +
+                       encodeURIComponent(it.task_title + '\n\n' + it.task_body);
+        html += '<details style="margin-bottom:6px;border:1px solid var(--border);border-radius:6px;background:#fff;">' +
+          '<summary style="padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">' +
+            '€' + Number(it.amount_eur).toFixed(2) + ' · ' + esc((it.counterparty || it.description || '?').substring(0, 70)) +
+            (it.suggested_person ? ' → ' + esc(it.suggested_person) : '') +
+          '</summary>' +
+          '<div style="padding:10px 12px;border-top:1px solid var(--border);">' +
+            '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Reason: ' + esc(it.reason) + '</div>' +
+            '<textarea readonly style="width:100%;font-size:11px;padding:8px;font-family:ui-monospace,monospace;border:1px solid var(--border);border-radius:4px;resize:vertical;height:120px;" onclick="this.select();">' +
+              esc(it.task_title + '\n\n' + it.task_body) +
+            '</textarea>' +
+            '<div style="display:flex;gap:8px;margin-top:6px;">' +
+              '<button class="btn btn-sm" onclick="navigator.clipboard.writeText(' +
+                JSON.stringify(it.task_title + '\n\n' + it.task_body) +
+              '); showToast(\'Copied\', \'success\');">📋 Copy</button>' +
+              '<a class="btn btn-sm" href="' + asanaUrl + '" target="_blank" style="text-decoration:none;background:#f06a6a;color:#fff;border-color:#f06a6a;">↗ Open Asana</a>' +
+            '</div>' +
+          '</div>' +
+        '</details>';
+      });
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }).catch(function(err) {
+    var body = document.getElementById('ca-chase-body');
+    if (body) body.innerHTML = '<div class="empty-state" style="color:var(--red);">Failed to load: ' + esc(err && err.message || err) + '</div>';
+  });
+}
+
+function closeCaChase() {
+  var ov = document.getElementById('ca-chase-overlay');
+  if (ov) ov.classList.remove('active');
 }
 
 function renderCaKpis(s) {
@@ -6944,8 +7079,28 @@ function renderCaLists(txs) {
     var holderHtml = t.card_holder
       ? '<b>' + esc(t.card_holder) + '</b>' + (t.department ? ' <span style="color:var(--muted);">· ' + esc(t.department) + '</span>' : '')
       : '<span style="color:var(--muted);font-style:italic;">unassigned</span>';
+    // 2026-06-11 (Top-9 P1.3) — confidence pill now has a tooltip
+    // explaining the scoring breakdown. Scoring formula (max 98 → clamped
+    // to 100): amount exact +50 (≈ ±1.5% gets +35); date ±3d +20 (±14d +8);
+    // vendor name similarity ≥85% +20 (≥50% +10); invoice flagged
+    // payment_method=card +8. match_reason field already carries the
+    // per-tx breakdown — surface it on hover.
+    var confTooltip = 'Match confidence scoring (max 100):\n' +
+                      '• Amount: ±€0.01 = 50 pts · ±1.5% = 35 pts\n' +
+                      '• Date: ±3 days = 20 pts · ±14 days = 8 pts\n' +
+                      '• Vendor name similarity ≥85% = 20 pts · ≥50% = 10 pts\n' +
+                      '• Invoice flagged payment_method=card = 8 pts';
+    if (t.match_reason) confTooltip += '\n\nThis match: ' + t.match_reason;
+    var confColor = t.match_confidence >= 70 ? '#dcfce7'
+                  : t.match_confidence >= 40 ? '#fef3c7'
+                  : '#fee2e2';
+    var confFg    = t.match_confidence >= 70 ? '#166534'
+                  : t.match_confidence >= 40 ? '#92400e'
+                  : '#991b1b';
     var confHtml = t.match_confidence
-      ? '<span class="pill">' + t.match_confidence + '%</span>'
+      ? '<span class="pill" title="' + esc(confTooltip) + '" style="background:' + confColor + ';color:' + confFg + ';cursor:help;">' +
+          t.match_confidence + '% ⓘ' +
+        '</span>'
       : '';
     return '<div class="ca-row ' + (isOut ? 'is-out' : 'is-in') + '" data-tx-id="' + esc(t.id) + '">' +
       '<div class="date">' + esc(date) + '</div>' +
@@ -6964,17 +7119,24 @@ function renderCaLists(txs) {
       // confused: "transaction not found"). For unmatched, button renames
       // to "Assign" — the ca-modal lets them pick a card holder / link
       // an invoice manually.
-      '<div class="actions">' +
+      '<div class="actions" style="display:flex;flex-direction:column;gap:3px;">' +
         (t.matched_invoice_id
           ? '<button onclick="openModalFromCa(\'' + esc(t.matched_invoice_id).replace(/\x27/g,"\\\x27") + '\', {matchStatus:\'' + esc(t.match_status || '') + '\'})" title="' +
               (t.match_status === 'suggested'
                 ? 'AI-suggested match — open invoice to verify before confirming'
                 : 'Open the matched invoice document') +
             '">' +
-              (t.match_status === 'suggested' ? '🤖 Review →' : '📄 Invoice →') +
+              (t.match_status === 'suggested' ? '🤖 Review' : '📄 Invoice') +
             '</button>' +
-            '<button onclick="openCaModal(\'' + esc(t.id) + '\')" title="Edit this transaction (unmatch, exclude, reassign)" style="font-size:10px;">⋯</button>'
-          : '<button onclick="openCaModal(\'' + esc(t.id) + '\')" title="Assign card holder or link an invoice">Assign</button>') +
+            // 2026-06-11 (Top-9 P1.4) — explicit ✓ Confirm for suggested
+            // matches so the bookkeeper can promote suggested → manual
+            // in one click without opening the modal. For already-confirmed
+            // (manual/auto) the ⋯ Edit still leads to the full modal.
+            (t.match_status === 'suggested'
+              ? '<button onclick="caConfirmSuggested(\'' + esc(t.id) + '\', \'' + esc(t.matched_invoice_id) + '\')" title="Reviewed and accepted — promote suggested → manual link" style="background:#10b981;color:#fff;border-color:#10b981;font-size:10px;">✓ Confirm</button>'
+              : '') +
+            '<button onclick="openCaModal(\'' + esc(t.id) + '\')" title="Edit (unmatch, exclude, reassign)" style="font-size:10px;">⋯ Edit</button>'
+          : '<button onclick="openCaModal(\'' + esc(t.id) + '\')" title="Assign card holder and business stream — opens picker">Assign</button>') +
       '</div>' +
       '</div>';
   }
@@ -7122,9 +7284,19 @@ function openModalFromCa(invoiceId, opts) {
 }
 
 async function openCaModal(txId) {
-  var tx = await api('GET', '/api/card-audit/transactions?limit=1').then(r => (r.transactions || []).find(t => t.id === txId));
+  // 2026-06-11 (Top-9 P1.1 fix) — was calling /transactions?limit=1 and
+  // .find()-ing the txId in a single-row response, which silently failed.
+  // Now uses dedicated GET /transactions/<id> for a direct fetch.
+  var tx;
+  try {
+    var r = await api('GET', '/api/card-audit/transactions/' + encodeURIComponent(txId));
+    tx = r && r.transaction;
+  } catch (err) {
+    showToast('Could not load transaction: ' + (err && err.message || err), 'error');
+    return;
+  }
   if (!tx) {
-    showToast('Transaction not found', 'error');
+    showToast('Transaction not found (id=' + txId.slice(0, 8) + '…)', 'error');
     return;
   }
   document.getElementById('ca-modal-title').textContent = 'Card-tx · ' + (tx.posted_at || '').slice(0, 10);
@@ -7150,12 +7322,25 @@ async function openCaModal(txId) {
     '</div>' +
   '</div>';
 
-  // Section: assign holder
-  html += '<div style="margin-bottom:14px;">' +
-    '<label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">Card holder</label>' +
-    '<select id="ca-modal-holder" class="fio-select" style="width:100%;margin-top:4px;">' + holderOpts + '</select>' +
-    '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Department + Profit Center will auto-resolve from BT4YOU holding map.</div>' +
-    '<button class="btn btn-sm" style="margin-top:8px;" onclick="caAssignHolder(\'' + esc(tx.id) + '\')">Save holder</button>' +
+  // Section: assign holder + business stream (P1.2 fix 2026-06-11)
+  // User feedback: "Assign button → nothing happens, what should I do?"
+  // Solution: this section opens with two pickers (cardholder + business
+  // stream) plus an explicit "Save assignment" CTA. The cardholder→PC
+  // map handles 80% of cases; manual stream override for the rest.
+  var streamOpts = '<option value="">— auto-resolve via cardholder —</option>';
+  ['AA','BK','SR','MT','AH','PK','CF','AL','AG'].forEach(function(pc) {
+    var label = (PC_LABELS && PC_LABELS[pc]) || pc;
+    var sel = (tx.profit_center === pc) ? ' selected' : '';
+    streamOpts += '<option value="' + pc + '"' + sel + '>' + esc(pc + ' · ' + label) + '</option>';
+  });
+  html += '<div style="margin-bottom:14px;padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;">' +
+    '<div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:8px;">📌 Assign to a person + business stream</div>' +
+    '<label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">Who paid (cardholder)</label>' +
+    '<select id="ca-modal-holder" class="fio-select" style="width:100%;margin-top:4px;margin-bottom:8px;">' + holderOpts + '</select>' +
+    '<label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">Business stream override</label>' +
+    '<select id="ca-modal-stream" class="fio-select" style="width:100%;margin-top:4px;">' + streamOpts + '</select>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Picking a cardholder auto-fills the stream from the BT4YOU holding map. Override above only when the auto-fill is wrong.</div>' +
+    '<button class="btn btn-success" style="margin-top:10px;width:100%;" onclick="caAssignHolder(\'' + esc(tx.id) + '\')">✓ Save assignment</button>' +
     '</div>';
 
   // Section: match status + actions
@@ -7230,11 +7415,40 @@ async function loadCaModalCandidates(tx) {
 
 async function caAssignHolder(txId) {
   var holder = document.getElementById('ca-modal-holder').value;
-  var r = await api('POST', '/api/card-audit/transactions/' + txId, {card_holder: holder || null, changed_by: 'user'});
-  if (r.error) { showToast(r.error, 'error'); return; }
-  showToast('Holder saved · dept/PC auto-resolved', 'success');
-  closeCaModal();
-  loadCardAudit();
+  // 2026-06-11 (Top-9 P1.2 fix) — also pick up the optional business
+  // stream override. Empty value means "auto-resolve via cardholder".
+  var streamOverride = document.getElementById('ca-modal-stream');
+  streamOverride = streamOverride ? streamOverride.value : '';
+  var body = { card_holder: holder || null, changed_by: 'user' };
+  if (streamOverride) body.profit_center = streamOverride;
+  try {
+    var r = await api('POST', '/api/card-audit/transactions/' + txId, body);
+    var msg = streamOverride
+      ? 'Assigned to ' + (holder || 'unassigned') + ' · stream override ' + streamOverride
+      : 'Assigned to ' + (holder || 'unassigned') + ' · stream auto-resolved';
+    showToast(msg, 'success');
+    closeCaModal();
+    loadCardAudit();
+  } catch (err) {
+    showToast('Save failed: ' + (err && err.message || err), 'error');
+  }
+}
+
+// 2026-06-11 (Top-9 P1.4) — promote suggested → manual in one click.
+// match_status becomes 'manual', confidence becomes 100, match_reason
+// notes the bookkeeper's approval.
+async function caConfirmSuggested(txId, invoiceId) {
+  try {
+    var r = await api('POST', '/api/card-audit/transactions/' + txId, {
+      matched_invoice_id: invoiceId,
+      changed_by: 'user',
+    });
+    if (r && r.error) { showToast(r.error, 'error'); return; }
+    showToast('✓ Match confirmed', 'success');
+    loadCardAudit();
+  } catch (err) {
+    showToast('Could not confirm: ' + (err && err.message || err), 'error');
+  }
 }
 
 async function caManualMatch(txId, invoiceId) {
