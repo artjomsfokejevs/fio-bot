@@ -81,8 +81,9 @@ def test_month_close_status_empty_period(client):
 def test_month_close_status_all_matched(client):
     """All tx matched → 2 of 3 checks True (no unmatched-without-owner)."""
     _cleanup_period("2099-02")
-    _seed_tx(period="2099-02", status="manual")
-    _seed_tx(period="2099-02", status="auto")
+    # Different description avoids UNIQUE(source, posted_at, amount, description)
+    _seed_tx(period="2099-02", status="manual", description="tx-A")
+    _seed_tx(period="2099-02", status="auto", description="tx-B")
     try:
         r = client.get("/api/card-audit/month-close-status?period=2099-02",
                        headers=_HDR)

@@ -7156,11 +7156,14 @@ function openCaChase(period) {
             '<textarea readonly style="width:100%;font-size:11px;padding:8px;font-family:ui-monospace,monospace;border:1px solid var(--border);border-radius:4px;resize:vertical;height:120px;" onclick="this.select();">' +
               esc(it.task_title + '\n\n' + it.task_body) +
             '</textarea>' +
-            '<div style="display:flex;gap:8px;margin-top:6px;">' +
+            '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">' +
               '<button class="btn btn-sm" onclick="navigator.clipboard.writeText(' +
                 JSON.stringify(it.task_title + '\n\n' + it.task_body) +
               '); showToast(\'Copied\', \'success\');">📋 Copy</button>' +
               '<a class="btn btn-sm" href="' + asanaUrl + '" target="_blank" style="text-decoration:none;background:#f06a6a;color:#fff;border-color:#f06a6a;">↗ Open Asana</a>' +
+              // 2026-06-11 Top-2 backlog #3 — auto-create via API
+              '<button class="btn btn-sm" style="background:#10b981;color:#fff;border-color:#10b981;" onclick="createAsanaTask(\'' + esc(it.transaction_id) + '\', ' +
+                JSON.stringify(it.task_title) + ', ' + JSON.stringify(it.task_body) + ')">✓ Create in Asana</button>' +
             '</div>' +
           '</div>' +
         '</details>';
@@ -7177,6 +7180,39 @@ function openCaChase(period) {
 function closeCaChase() {
   var ov = document.getElementById('ca-chase-overlay');
   if (ov) ov.classList.remove('active');
+}
+
+// 2026-06-11 (Top-2 backlog #3) — direct create via Asana API.
+// Bookkeeper gets a workspace_id prompt the first time (cached after).
+// Endpoint surfaces 503 with hint when ASANA_PAT isn't set on Fly.
+function createAsanaTask(txId, title, body) {
+  var workspaceId = localStorage.getItem('fio_asana_workspace_id') || '';
+  if (!workspaceId) {
+    workspaceId = (prompt(
+      'Asana Workspace ID (find it in Asana URL: app.asana.com/0/<wsid>/...)\n' +
+      'Saved locally for future tasks. Cancel to abort.'
+    ) || '').trim();
+    if (!workspaceId) { showToast('Cancelled', 'info'); return; }
+    localStorage.setItem('fio_asana_workspace_id', workspaceId);
+  }
+  api('POST', '/api/card-audit/chase-asana/' + encodeURIComponent(txId), {
+    task_title: title, task_body: body,
+    workspace_id: workspaceId,
+  }).then(function(r) {
+    if (r && r.status === 'created') {
+      showToast('✓ Task created in Asana', 'success');
+      if (r.permalink) window.open(r.permalink, '_blank');
+    } else {
+      showToast('Failed: ' + ((r && r.error) || 'unknown'), 'error');
+    }
+  }).catch(function(err) {
+    var p = err && err.payload;
+    if (p && p.status === 'not_configured') {
+      showToast(p.hint || 'ASANA_PAT not configured — copy the text and create manually', 'error');
+    } else {
+      showToast('Asana create failed: ' + (err && err.message || err), 'error');
+    }
+  });
 }
 
 // 2026-06-11 (Top-9 P3.1) — End-of-month KPIs.

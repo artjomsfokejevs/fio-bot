@@ -40,6 +40,63 @@ def asana_users_path() -> str:
     return os.path.join(os.path.dirname(config.DB_PATH), "asana_users.json")
 
 
+def _asana_post(path: str, token: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """POST to Asana with PAT auth. 2026-06-11 — added for chase-task auto-create."""
+    url = _ASANA_BASE + path
+    body = json.dumps({"data": payload}).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body,
+        headers={
+            "Authorization": "Bearer " + token,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "FIO/1.0 (Amitours Holding)",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body_txt = exc.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError("Asana HTTP %d: %s" % (exc.code, body_txt)) from exc
+    return json.loads(raw)
+
+
+def create_task(
+    name: str,
+    notes: str,
+    workspace_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+    assignee_gid: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create a single task in Asana. Returns {gid, permalink_url, ...}.
+
+    Requires either workspace_id (creates a "My Tasks" task) OR project_id.
+    Raises RuntimeError on Asana error so the caller can surface to UI.
+
+    Added 2026-06-11 for the month-close chase-task auto-create flow.
+    """
+    token = (config.ASANA_PAT or "").strip() if hasattr(config, "ASANA_PAT") else ""
+    if not token:
+        token = (os.environ.get("ASANA_PAT") or "").strip()
+    if not token:
+        raise RuntimeError("ASANA_PAT not configured")
+    if not (workspace_id or project_id):
+        raise RuntimeError("either workspace_id or project_id is required")
+
+    payload: Dict[str, Any] = {"name": name, "notes": notes}
+    if workspace_id:
+        payload["workspace"] = workspace_id
+    if project_id:
+        payload["projects"] = [project_id]
+    if assignee_gid:
+        payload["assignee"] = assignee_gid
+
+    resp = _asana_post("/tasks", token, payload)
+    return resp.get("data", {})
+
+
 def _asana_get(path: str, token: str, params: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """One GET request to Asana with the PAT in the Authorization header."""
     url = _ASANA_BASE + path

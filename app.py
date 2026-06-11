@@ -3340,194 +3340,7 @@ def stream_stats():
 # The two coexist: /api/users = role config; /api/fio-users = HR roster.
 # ───────────────────────────────────────────────────────────────────────
 
-@app.route("/api/fio-users", methods=["GET"])
-def fio_users_list():
-    """List FIO users for the Admin tab and Upload "Who is uploading" dropdown.
-
-    Query params:
-      active=true   → only active users (default: all)
-      role=<role>   → filter to a single role
-    """
-    from services import users as users_svc
-    active_only = (request.args.get("active") or "").lower() in ("true", "1", "yes")
-    role = request.args.get("role") or None
-    out = users_svc.list_users(active_only=active_only, role=role)
-    return jsonify({"users": out, "roles": users_svc.ROLES})
-
-
-@app.route("/api/fio-users", methods=["POST"])
-def fio_users_create():
-    """Create a user. Admin/HR/Bookkeeper-gated (UI controls visibility)."""
-    from services import users as users_svc
-    body = request.get_json(silent=True) or {}
-    actor = request.headers.get("X-FIO-User") or "admin"
-    try:
-        u = users_svc.create_user(body, created_by=actor)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        logger.exception("create_user failed")
-        return jsonify({"error": str(exc)}), 500
-    db.insert_audit_log("user:" + str(u["id"]), "fio_user_create",
-                        {"full_name": u["full_name"], "role": u["role"]},
-                        performed_by=actor)
-    return jsonify(u), 201
-
-
-@app.route("/api/fio-users/<int:user_id>", methods=["PATCH"])
-def fio_users_update(user_id: int):
-    from services import users as users_svc
-    body = request.get_json(silent=True) or {}
-    actor = request.headers.get("X-FIO-User") or "admin"
-    try:
-        u = users_svc.update_user(user_id, body, updated_by=actor)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    if not u:
-        return jsonify({"error": "Not found"}), 404
-    db.insert_audit_log("user:" + str(user_id), "fio_user_update",
-                        {"fields": list(body.keys())},
-                        performed_by=actor)
-    return jsonify(u)
-
-
-@app.route("/api/fio-users/<int:user_id>", methods=["DELETE"])
-def fio_users_delete(user_id: int):
-    from services import users as users_svc
-    actor = request.headers.get("X-FIO-User") or "admin"
-    users_svc.delete_user(user_id)
-    db.insert_audit_log("user:" + str(user_id), "fio_user_deactivate",
-                        {}, performed_by=actor)
-    return jsonify({"status": "deactivated"})
-
-
-# ───────────────────────────────────────────────────────────────────────
-# 2026-06-08 Top-7 P2.3 — Paying accounts CRUD (Admin tab)
-# ───────────────────────────────────────────────────────────────────────
-
-@app.route("/api/paying-accounts", methods=["GET"])
-def paying_accounts_list():
-    """List paying accounts for the Mark Paid dropdown + Admin table."""
-    from services import paying_accounts as pa
-    active_only = (request.args.get("active") or "").lower() in ("true", "1", "yes")
-    legal_entity = request.args.get("legal_entity") or None
-    return jsonify({"accounts": pa.list_accounts(
-        active_only=active_only, legal_entity=legal_entity)})
-
-
-@app.route("/api/paying-accounts", methods=["POST"])
-def paying_accounts_create():
-    from services import paying_accounts as pa
-    body = request.get_json(silent=True) or {}
-    actor = request.headers.get("X-FIO-User") or "admin"
-    try:
-        a = pa.create_account(body, created_by=actor)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        logger.exception("create paying_account failed")
-        return jsonify({"error": str(exc)}), 500
-    db.insert_audit_log("paying_account:" + str(a["id"]),
-                        "paying_account_create",
-                        {"label": a["label"]}, performed_by=actor)
-    return jsonify(a), 201
-
-
-@app.route("/api/paying-accounts/<int:acc_id>", methods=["PATCH"])
-def paying_accounts_update(acc_id: int):
-    from services import paying_accounts as pa
-    body = request.get_json(silent=True) or {}
-    actor = request.headers.get("X-FIO-User") or "admin"
-    a = pa.update_account(acc_id, body, updated_by=actor)
-    if not a:
-        return jsonify({"error": "Not found"}), 404
-    db.insert_audit_log("paying_account:" + str(acc_id),
-                        "paying_account_update",
-                        {"fields": list(body.keys())}, performed_by=actor)
-    return jsonify(a)
-
-
-@app.route("/api/paying-accounts/<int:acc_id>", methods=["DELETE"])
-def paying_accounts_delete(acc_id: int):
-    from services import paying_accounts as pa
-    actor = request.headers.get("X-FIO-User") or "admin"
-    pa.delete_account(acc_id)
-    db.insert_audit_log("paying_account:" + str(acc_id),
-                        "paying_account_deactivate",
-                        {}, performed_by=actor)
-    return jsonify({"status": "deactivated"})
-
-
-# ───────────────────────────────────────────────────────────────────────
-# 2026-06-11 Top-2 P1 — Editable app settings (chase template etc.)
-# ───────────────────────────────────────────────────────────────────────
-
-@app.route("/api/settings", methods=["GET"])
-def settings_list():
-    """Return effective settings + defaults so Admin tab can show diffs."""
-    from services import settings as settings_svc
-    return jsonify(settings_svc.list_all())
-
-
-@app.route("/api/settings/<key>", methods=["POST"])
-def settings_set(key: str):
-    """Upsert a setting. Body: { "value": "..." }. Empty resets to default.
-    Admin / Bookkeeper only — this is editable copy seen by other people."""
-    from services import settings as settings_svc
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
-    if err:
-        return err
-    if key not in settings_svc.DEFAULTS:
-        return jsonify({"error": "unknown setting key",
-                        "allowed": sorted(settings_svc.DEFAULTS.keys())}), 400
-    body = request.get_json(silent=True) or {}
-    value = body.get("value", "")
-    actor = _current_user_name() or "admin"
-    settings_svc.set_(key, value or "", by=actor)
-    db.insert_audit_log("settings:" + key, "settings_set",
-                        {"value_preview": (value or "")[:80]},
-                        performed_by=actor)
-    return jsonify({"status": "saved",
-                    "key": key,
-                    "value": settings_svc.get(key)})
-
-
-# ───────────────────────────────────────────────────────────────────────
-# 2026-06-11 Top-2 P2 — What's New modal on login
-# Returns release notes from data/whats_new.json. Frontend tracks
-# last-seen version per-user in localStorage.
-# ───────────────────────────────────────────────────────────────────────
-
-@app.route("/api/whats-new", methods=["GET"])
-def whats_new():
-    """Return the release-notes feed."""
-    import json as _json
-    path = os.path.join(os.path.dirname(__file__), "data", "whats_new.json")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = _json.load(f)
-        entries = data.get("entries", [])
-        return jsonify({
-            "entries": entries,
-            "latest_version": entries[0].get("version") if entries else None,
-        })
-    except (FileNotFoundError, _json.JSONDecodeError) as exc:
-        return jsonify({"entries": [], "error": str(exc)}), 200
-
-
-@app.route("/api/legal-entities", methods=["GET"])
-def legal_entities():
-    """Return the 9 holding legal entities for the Awaiting CEO / Awaiting
-    Payment dropdowns. Stream ≠ Legal Entity — see data/legal_entities.json
-    docstring for the rationale (Rita's 2026-06-07 feedback)."""
-    import json as _json
-    path = os.path.join(os.path.dirname(__file__), "data", "legal_entities.json")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = _json.load(f)
-        return jsonify(data)
-    except (FileNotFoundError, _json.JSONDecodeError) as exc:
-        return jsonify({"entities": [], "error": str(exc)}), 500
+# Admin / reference-data endpoints extracted to routes/admin.py (Phase 7.2)
 
 
 @app.route("/api/accounting/by-legal-entity", methods=["GET"])
@@ -3684,11 +3497,13 @@ def export_by_legal_entity():
 
 
 # ---------------------------------------------------------------------------
-# Blueprint registration (Phase 7.1 refactor — see docs/architecture.md)
+# Blueprint registration (Phase 7 refactor — see docs/architecture.md)
 # ---------------------------------------------------------------------------
 from routes.card_audit import card_audit_bp  # noqa: E402
+from routes.admin import admin_bp            # noqa: E402
 
 app.register_blueprint(card_audit_bp)
+app.register_blueprint(admin_bp)
 
 
 # ---------------------------------------------------------------------------

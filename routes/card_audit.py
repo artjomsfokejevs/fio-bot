@@ -227,10 +227,23 @@ def card_audit_month_close_status() -> Any:
               or datetime.utcnow().strftime("%Y-%m"))
     summary = ca_svc.audit_summary(period)
     by_status = summary.get("by_status", {})
-    total = summary.get("total_transactions", 0)
-    unmatched = by_status.get("unmatched", 0)
-    suggested = by_status.get("suggested", 0)
-    matched = (by_status.get("auto", 0) + by_status.get("manual", 0))
+    # 2026-06-11 (Top-2 Phase A test catch) — audit_summary returns
+    # {"total": {"n", "eur"}}, not a flat "total_transactions" int.
+    total_obj = summary.get("total") or {}
+    total = int(total_obj.get("n", 0) or 0) if isinstance(total_obj, dict) else int(total_obj or 0)
+    # 2026-06-11 (Top-2 phase A test catch) — by_status values are
+    # {n, eur} dicts, not ints. Extract the count.
+    def _n(status_key):
+        v = by_status.get(status_key, {})
+        if isinstance(v, dict):
+            return int(v.get("n", 0) or 0)
+        try:
+            return int(v or 0)
+        except (TypeError, ValueError):
+            return 0
+    unmatched = _n("unmatched")
+    suggested = _n("suggested")
+    matched = _n("auto") + _n("manual")
 
     statements_imported = total > 0
     # "all reconciled" means: no row left with status 'unmatched' OR
@@ -378,6 +391,63 @@ def card_audit_monthly_dashboard() -> Any:
         "by_stream": sorted(by_stream.values(),
                             key=lambda x: -(x["sum_out"] + x["sum_in"])),
     })
+
+
+# 2026-06-11 (Top-2 backlog #3) — Asana create-task integration. When
+# ASANA_PAT is configured, this hits the Asana /tasks API and returns
+# the created task's permalink. Otherwise returns 503 with a clear
+# message + the rendered template so the caller can copy-paste manually.
+@card_audit_bp.route("/chase-asana/<tx_id>", methods=["POST"])
+def card_audit_chase_asana(tx_id: str) -> Any:
+    """Create one Asana task for a specific unmatched transaction.
+
+    Body:
+      workspace_id  — required if no default workspace configured
+      project_id    — optional
+      assignee_gid  — optional
+      task_title    — override the template-rendered title
+      task_body     — override the template-rendered body
+
+    The frontend usually pre-renders title+body via /chase-missing and
+    passes them back here so this endpoint doesn't re-render. That keeps
+    the bookkeeper's last-minute edits intact.
+    """
+    body = request.get_json(silent=True) or {}
+    tx = card_audit.get_card_tx(tx_id)
+    if not tx:
+        return jsonify({"error": "Not found"}), 404
+    title = (body.get("task_title") or "").strip()
+    notes = (body.get("task_body") or "").strip()
+    if not title or not notes:
+        return jsonify({"error": "task_title and task_body are required"}), 400
+    workspace_id = (body.get("workspace_id") or "").strip() or None
+    project_id   = (body.get("project_id") or "").strip() or None
+    assignee_gid = (body.get("assignee_gid") or "").strip() or None
+
+    from services import asana_sync as asana_svc
+    try:
+        task = asana_svc.create_task(
+            name=title, notes=notes,
+            workspace_id=workspace_id, project_id=project_id,
+            assignee_gid=assignee_gid,
+        )
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "ASANA_PAT not configured" in msg:
+            return jsonify({
+                "status": "not_configured",
+                "error": msg,
+                "hint": "Set ASANA_PAT secret on the Fly app to enable auto-create.",
+            }), 503
+        return jsonify({"status": "asana_error", "error": msg}), 502
+
+    db.insert_audit_log("card_tx_" + tx_id, "asana_task_created", {
+        "task_gid": task.get("gid"),
+        "permalink": task.get("permalink_url"),
+    })
+    return jsonify({"status": "created",
+                    "task_gid": task.get("gid"),
+                    "permalink": task.get("permalink_url")})
 
 
 @card_audit_bp.route("/chase-missing", methods=["POST"])
