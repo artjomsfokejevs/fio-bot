@@ -425,23 +425,31 @@ def card_audit_chase_missing() -> Any:
             reason = "no strong signal — defaulted to AA"
 
         amount_eur = abs(float(t.get("amount_eur") or t.get("amount") or 0))
-        task_title = (f"📄 Missing invoice — "
-                      f"€{amount_eur:.2f} · {t.get('counterparty') or t.get('description') or '?'} · "
-                      f"{(t.get('posted_at') or '')[:10]}")
-        task_body = (
-            f"FIO Bank Statement Audit flagged a transaction that has no matching invoice.\n\n"
-            f"Transaction details:\n"
-            f"  Date: {t.get('posted_at', '')[:10]}\n"
-            f"  Amount: €{amount_eur:.2f}\n"
-            f"  Description: {t.get('description', '?')}\n"
-            f"  Counterparty: {t.get('counterparty', '?')}\n"
-            f"  Reference: {t.get('reference', '—')}\n"
-            f"  Source: {t.get('source', '?')}\n\n"
-            f"FIO attribution: stream {suggested_pc} ({reason})\n\n"
-            f"Action: please find the invoice for this charge and upload it to FIO "
-            f"(https://fio-amitours.fly.dev/) under Upload → mark as 'already paid'.\n\n"
-            f"— FIO Accounting Bot (auto-generated month-close chase)"
-        )
+        # 2026-06-11 Top-2 P1 — templates editable via Admin tab.
+        # Placeholders: {amount} {vendor} {date} {description}
+        # {counterparty} {reference} {source} {pc} {reason}
+        from services import settings as _settings
+        title_tmpl = _settings.get("chase_task_title")
+        body_tmpl  = _settings.get("chase_task_body")
+        fmt_args = {
+            "amount":       f"{amount_eur:.2f}",
+            "vendor":       t.get("counterparty") or t.get("description") or "?",
+            "date":         (t.get("posted_at") or "")[:10],
+            "description":  t.get("description", "?"),
+            "counterparty": t.get("counterparty", "?"),
+            "reference":    t.get("reference", "—"),
+            "source":       t.get("source", "?"),
+            "pc":           suggested_pc,
+            "reason":       reason,
+        }
+        try:
+            task_title = title_tmpl.format(**fmt_args)
+            task_body  = body_tmpl.format(**fmt_args)
+        except (KeyError, IndexError) as exc:
+            # Template references an unknown placeholder — fall back to defaults
+            logger.warning("chase template format error: %s", exc)
+            task_title = _settings.DEFAULTS["chase_task_title"].format(**fmt_args)
+            task_body  = _settings.DEFAULTS["chase_task_body"].format(**fmt_args)
 
         items.append({
             "transaction_id": t.get("id"),

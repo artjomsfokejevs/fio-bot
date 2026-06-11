@@ -3457,6 +3457,40 @@ def paying_accounts_delete(acc_id: int):
     return jsonify({"status": "deactivated"})
 
 
+# ───────────────────────────────────────────────────────────────────────
+# 2026-06-11 Top-2 P1 — Editable app settings (chase template etc.)
+# ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/settings", methods=["GET"])
+def settings_list():
+    """Return effective settings + defaults so Admin tab can show diffs."""
+    from services import settings as settings_svc
+    return jsonify(settings_svc.list_all())
+
+
+@app.route("/api/settings/<key>", methods=["POST"])
+def settings_set(key: str):
+    """Upsert a setting. Body: { "value": "..." }. Empty resets to default.
+    Admin / Bookkeeper only — this is editable copy seen by other people."""
+    from services import settings as settings_svc
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
+    if key not in settings_svc.DEFAULTS:
+        return jsonify({"error": "unknown setting key",
+                        "allowed": sorted(settings_svc.DEFAULTS.keys())}), 400
+    body = request.get_json(silent=True) or {}
+    value = body.get("value", "")
+    actor = _current_user_name() or "admin"
+    settings_svc.set_(key, value or "", by=actor)
+    db.insert_audit_log("settings:" + key, "settings_set",
+                        {"value_preview": (value or "")[:80]},
+                        performed_by=actor)
+    return jsonify({"status": "saved",
+                    "key": key,
+                    "value": settings_svc.get(key)})
+
+
 @app.route("/api/legal-entities", methods=["GET"])
 def legal_entities():
     """Return the 9 holding legal entities for the Awaiting CEO / Awaiting

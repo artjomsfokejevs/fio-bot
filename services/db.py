@@ -149,6 +149,17 @@ CREATE TABLE IF NOT EXISTS paying_accounts (
 );
 CREATE INDEX IF NOT EXISTS ix_paying_active ON paying_accounts(active);
 CREATE INDEX IF NOT EXISTS ix_paying_entity ON paying_accounts(legal_entity);
+
+-- 2026-06-11 Top-2 P1 — App-level settings (key/value).
+-- First consumer: chase_task_title + chase_task_body for the Bank
+-- Statement Audit month-close "🚀 Generate chase tasks" flow.
+-- Bookkeeper edits via Admin tab → values override the built-in defaults.
+CREATE TABLE IF NOT EXISTS fio_settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    updated_by  TEXT
+);
 """
 
 
