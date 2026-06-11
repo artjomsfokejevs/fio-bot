@@ -33,6 +33,10 @@ nohup.out
 fio-bot-demo/
 docs/
 tests/
+# Dev tooling — never invoked from inside the production container.
+# Linters (lint_ru.py / lint_lv.py) and one-off scripts read docs/ at
+# runtime on the developer machine / CI, not in the Flask app.
+scripts/
 data/audit.jsonl
 data/fx_rates_cache.json
 data/registry_cache/

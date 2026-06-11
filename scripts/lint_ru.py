@@ -62,6 +62,10 @@ def scan_text(path: Path, text: str) -> List[str]:
         # source.
         if stripped.startswith("|"):
             continue
+        # Skip negative example bullets that quote the banned term
+        # (lines starting with ❌ or "- ❌").
+        if stripped.startswith("❌") or stripped.startswith("- ❌"):
+            continue
         for rgx, suggestion in COMPILED:
             m = rgx.search(line)
             if m:
