@@ -1632,6 +1632,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     <!-- ──────────────────────────────────────────────────────────── -->
     <div id="ca-month-close" style="margin-bottom:18px;"></div>
 
+    <!-- 2026-06-11 Top-9 P3.1 — Monthly dashboard (KPIs + by-stream) -->
+    <div id="ca-monthly-dashboard" style="margin-bottom:18px;"></div>
+
     <div id="ca-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;"></div>
 
     <!-- By-department breakdown -->
@@ -2211,9 +2214,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
                 <div style="font-size:10px;color:#0ea5e9;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">bookkeeper</div>
               </div>
               <div style="font-size:12px;color:var(--text);line-height:1.55;">
-                <div style="margin-bottom:4px;"><b>Sees:</b> Everything across all streams. Confirm-for-Payment all 4 stages.</div>
-                <div style="margin-bottom:4px;"><b>Does:</b> Budget-validates docs (stage 1) · sets Legal Entity + desired payment date · marks invoices as <i>already paid by card</i> if no wire needed · executes wires + marks paid · manages Paying Accounts roster.</div>
-                <div><b>When:</b> Daily triage; weekly batch payment after CEO approves.</div>
+                <div style="margin-bottom:4px;"><b>Sees:</b> Everything across all streams. Confirm-for-Payment all 4 stages. Bank Statement Audit + Month-Close.</div>
+                <div style="margin-bottom:4px;"><b>Does:</b> Budget-validates docs (stage 1) · sets Legal Entity + desired payment date · marks invoices as <i>already paid</i> with method (card/bank/cash/other) · executes wires + marks paid · manages Paying Accounts roster · <b>at month-close: uploads ALL bank statements to Bank Statement Audit, reconciles every transaction, generates 🚀 chase tasks for any missing invoices (AI suggests business stream + responsible person)</b>.</div>
+                <div><b>When:</b> Daily triage; weekly batch payment after CEO approves; <b>end-of-month: mandatory Bank Statement Audit run before closing</b>.</div>
               </div>
             </div>
 
@@ -2259,7 +2262,8 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           </div>
 
           <div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--text);line-height:1.55;">
-            <b>🔄 Approval flow:</b> Uploader drops invoice → Stream owner / Bookkeeper approves to P&amp;L → Bookkeeper budget-checks → Holding CEO approves the week → Bookkeeper wires &amp; marks paid. Invoices paid by card skip CEO + Payment stages entirely.
+            <b>🔄 Approval flow:</b> Uploader drops invoice → Stream owner / Bookkeeper approves to P&amp;L → Bookkeeper budget-checks → Holding CEO approves the week → Bookkeeper wires &amp; marks paid. Invoices marked <i>already paid</i> (card/bank/cash) skip CEO + Payment stages entirely.<br><br>
+            <b>📊 Month-close flow:</b> Bookkeeper uploads every bank/card statement to <b>Bank Statement Audit</b> tab → reconciler matches transactions against approved invoices → bookkeeper reviews suggested matches (✓ Confirm) and assigns unmatched transactions to a person + stream → for any tx without a matching invoice, <b>🚀 Generate chase tasks</b> produces per-stakeholder Asana/email templates the bookkeeper sends out. Period closes only when all 3 checks (statements imported, all reconciled, every unmatched has owner) are green.
           </div>
         </div>
 
@@ -6853,17 +6857,19 @@ async function loadCardAudit() {
   if (deptEl0) deptEl0.innerHTML = _caLoadingSkeleton('department breakdown');
 
   try {
-    // 2026-06-11 (Top-9 P2.6) — also pull month-close-status in parallel
-    var [summary, txWrap, mcStatus] = await Promise.all([
+    // 2026-06-11 (Top-9 P2.6 + P3.1) — month-close + monthly dashboard
+    var [summary, txWrap, mcStatus, dashboard] = await Promise.all([
       api('GET', '/api/card-audit/summary?period=' + period),
       api('GET', '/api/card-audit/transactions?limit=2000&period=' + period),
       api('GET', '/api/card-audit/month-close-status?period=' + period).catch(function(){ return null; }),
+      api('GET', '/api/card-audit/monthly-dashboard?period=' + period).catch(function(){ return null; }),
     ]);
     var allTx = txWrap.transactions || [];
     if (pcFilter) {
       allTx = allTx.filter(function(t) { return (t.profit_center || '').toUpperCase() === pcFilter; });
     }
     renderCaMonthClose(mcStatus, period);
+    renderCaMonthlyDashboard(dashboard);
     renderCaKpis(summary);
     renderCaByDept(summary);
     renderCaLists(allTx);
@@ -7005,6 +7011,63 @@ function openCaChase(period) {
 function closeCaChase() {
   var ov = document.getElementById('ca-chase-overlay');
   if (ov) ov.classList.remove('active');
+}
+
+// 2026-06-11 (Top-9 P3.1) — End-of-month KPIs.
+function renderCaMonthlyDashboard(d) {
+  var box = document.getElementById('ca-monthly-dashboard');
+  if (!box || !d) { if (box) box.innerHTML = ''; return; }
+  if (!d.tx_count) { box.innerHTML = ''; return; }
+  var fmtEur = function(n) {
+    return '€' + Number(n).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+  };
+  var streams = (d.by_stream || []).slice(0, 7);
+  var html =
+    '<div style="padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:10px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:12px;margin-bottom:12px;">' +
+        '<div style="font-size:14px;font-weight:700;">📊 Monthly dashboard · ' + esc(d.period) + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">' + d.tx_count + ' transactions · ' +
+          d.matched_count + ' matched · ' + d.pending_count + ' under investigation' +
+          (d.excluded_count ? ' · ' + d.excluded_count + ' excluded' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;">' +
+        '<div style="padding:10px 12px;background:#dcfce7;border-radius:6px;">' +
+          '<div style="font-size:10px;color:#166534;text-transform:uppercase;font-weight:600;">Money in</div>' +
+          '<div style="font-size:18px;font-weight:700;color:#166534;">' + fmtEur(d.sum_in) + '</div>' +
+        '</div>' +
+        '<div style="padding:10px 12px;background:#fee2e2;border-radius:6px;">' +
+          '<div style="font-size:10px;color:#991b1b;text-transform:uppercase;font-weight:600;">Money out</div>' +
+          '<div style="font-size:18px;font-weight:700;color:#991b1b;">' + fmtEur(d.sum_out) + '</div>' +
+        '</div>' +
+        '<div style="padding:10px 12px;background:#dbeafe;border-radius:6px;">' +
+          '<div style="font-size:10px;color:#1e40af;text-transform:uppercase;font-weight:600;">Net</div>' +
+          '<div style="font-size:18px;font-weight:700;color:' + (d.net >= 0 ? '#166534' : '#991b1b') + ';">' + (d.net >= 0 ? '+' : '') + fmtEur(d.net) + '</div>' +
+        '</div>' +
+        '<div style="padding:10px 12px;background:#fef3c7;border-radius:6px;">' +
+          '<div style="font-size:10px;color:#92400e;text-transform:uppercase;font-weight:600;">Cases under investigation</div>' +
+          '<div style="font-size:18px;font-weight:700;color:#92400e;">' + d.pending_count + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:6px;">By business stream</div>' +
+      '<div style="font-size:12px;">' +
+        streams.map(function(s) {
+          var label = (PC_LABELS && PC_LABELS[s.profit_center]) || s.profit_center;
+          var statusColor = s.pending > 0 ? '#f59e0b' : '#10b981';
+          var statusLabel = s.pending > 0
+            ? s.pending + ' under investigation'
+            : 'all confirmed ✓';
+          return '<div style="display:grid;grid-template-columns:60px 1fr 100px 100px 200px;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">' +
+            '<div style="font-weight:700;font-family:monospace;">' + esc(s.profit_center) + '</div>' +
+            '<div>' + esc(label) + '</div>' +
+            '<div style="text-align:right;color:#166534;font-variant-numeric:tabular-nums;">+' + fmtEur(s.sum_in) + '</div>' +
+            '<div style="text-align:right;color:#991b1b;font-variant-numeric:tabular-nums;">−' + fmtEur(s.sum_out) + '</div>' +
+            '<div style="text-align:right;color:' + statusColor + ';font-size:11px;">' + esc(statusLabel) + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+  box.innerHTML = html;
 }
 
 function renderCaKpis(s) {

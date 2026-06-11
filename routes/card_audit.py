@@ -321,6 +321,65 @@ def card_audit_suggest_owner(tx_id: str) -> Any:
     })
 
 
+@card_audit_bp.route("/monthly-dashboard", methods=["GET"])
+def card_audit_monthly_dashboard() -> Any:
+    """End-of-month KPIs for the bookkeeper handover.
+
+    Returns: tx_count, sum_in, sum_out, by_stream (with in/out + status),
+    cases_investigation_count (= unmatched + suggested that haven't been
+    resolved).
+    """
+    period = (request.args.get("period")
+              or datetime.utcnow().strftime("%Y-%m"))
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM card_transactions WHERE period = ?",
+            (period,)
+        ).fetchall()
+        txs = [db._row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+    sum_in = sum(float(t.get("amount_eur") or t.get("amount") or 0)
+                 for t in txs if (t.get("amount_eur") or 0) > 0)
+    sum_out = sum(abs(float(t.get("amount_eur") or t.get("amount") or 0))
+                  for t in txs if (t.get("amount_eur") or 0) < 0)
+    matched = sum(1 for t in txs
+                  if t.get("match_status") in ("auto", "manual"))
+    pending = sum(1 for t in txs
+                  if t.get("match_status") in ("unmatched", "suggested"))
+    excluded = sum(1 for t in txs if t.get("match_status") == "excluded")
+
+    by_stream: Dict[str, Dict[str, Any]] = {}
+    for t in txs:
+        pc = (t.get("profit_center") or "—").upper()
+        amt = float(t.get("amount_eur") or t.get("amount") or 0)
+        s = by_stream.setdefault(pc, {
+            "profit_center": pc,
+            "tx_count": 0, "sum_in": 0.0, "sum_out": 0.0,
+            "matched": 0, "pending": 0,
+        })
+        s["tx_count"] += 1
+        if amt > 0: s["sum_in"] += amt
+        else:       s["sum_out"] += abs(amt)
+        if t.get("match_status") in ("auto", "manual"): s["matched"] += 1
+        elif t.get("match_status") in ("unmatched", "suggested"): s["pending"] += 1
+
+    return jsonify({
+        "period": period,
+        "tx_count": len(txs),
+        "sum_in": round(sum_in, 2),
+        "sum_out": round(sum_out, 2),
+        "net": round(sum_in - sum_out, 2),
+        "matched_count": matched,
+        "pending_count": pending,
+        "excluded_count": excluded,
+        "by_stream": sorted(by_stream.values(),
+                            key=lambda x: -(x["sum_out"] + x["sum_in"])),
+    })
+
+
 @card_audit_bp.route("/chase-missing", methods=["POST"])
 def card_audit_chase_missing() -> Any:
     """Generate chase tasks for every unmatched tx in the period.
