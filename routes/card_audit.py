@@ -108,6 +108,18 @@ def card_audit_summary() -> Any:
     return jsonify(card_audit.audit_summary(period))
 
 
+# 2026-06-11 (Top-9 self-review P1.1 fix) — single-tx fetch endpoint.
+# The modal previously called .list(limit=1) + .find() which silently
+# failed when the target tx wasn't the first row. Now there's a direct
+# GET for the row.
+@card_audit_bp.route("/transactions/<tx_id>", methods=["GET"])
+def card_audit_get_one(tx_id: str) -> Any:
+    tx = card_audit.get_card_tx(tx_id)
+    if not tx:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"transaction": tx})
+
+
 @card_audit_bp.route("/transactions/<tx_id>", methods=["POST"])
 def card_audit_update(tx_id: str) -> Any:
     """Update card-tx fields: assign card_holder + auto-resolve department/PC,
