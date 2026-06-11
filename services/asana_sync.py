@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -59,6 +60,47 @@ def _asana_get(path: str, token: str, params: Optional[Dict[str, str]] = None) -
         body = exc.read().decode("utf-8", errors="replace")[:500]
         raise RuntimeError("Asana HTTP %d: %s" % (exc.code, body)) from exc
     return json.loads(raw)
+
+
+# 2026-06-11 — G55 / I62 compliance. Asana's /users endpoint normally
+# returns one record per gid (individual humans), so the group-entry
+# anti-pattern that bit BT4YOU snapshots (e.g. "Rita Petukhova, Olga Guk,
+# Dmitriy" packed in one name string) is unlikely to occur here. But we
+# add the unpack-not-filter helper defensively — if a tenant ever stores
+# shared-mailbox or distribution-list users in Asana with a packed name,
+# we surface every human instead of dropping the row.
+_GROUP_SEPARATORS = re.compile(r"\s*(?:,|;|/|…|&|\sand\s)\s*")
+
+
+def _is_group_entry(name: str) -> bool:
+    """True if `name` looks like several humans crammed in one cell.
+
+    Heuristics: ≥ 2 commas/semicolons/'&'/' and ', OR the word "Team"
+    near the end, OR an ellipsis. False on single-comma names like
+    "Smith, John" (treat as one human).
+    """
+    if not name:
+        return False
+    lname = name.lower()
+    if "team" in lname.split()[-2:] if lname.split() else []:
+        return True
+    if "…" in name:
+        return True
+    seps = len(_GROUP_SEPARATORS.findall(name))
+    return seps >= 2
+
+
+def _split_group_entry(name: str) -> List[str]:
+    """Unpack 'A, B, C' / 'A; B; C' / 'A & B' into individual names.
+
+    Always returns a list with at least one element. Strips whitespace
+    and drops empty fragments. If `name` doesn't look like a group,
+    returns `[name]` unchanged.
+    """
+    if not _is_group_entry(name):
+        return [name] if name else []
+    parts = [p.strip() for p in _GROUP_SEPARATORS.split(name)]
+    return [p for p in parts if p]
 
 
 def fetch_users_from_asana(
