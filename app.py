@@ -288,9 +288,16 @@ def _build_doc_update(parsed: Dict[str, Any], classification: Dict[str, Any]) ->
     # Bookkeeper can still override but won't have to start from "— pick payer —".
     # We accept any non-empty string; downstream UI shows it as-is if it
     # doesn't match a known entity (a warning will surface in the modal).
+    # 2026-06-11 (Top-10 self-review fix P2.1-B) — stamp the SOURCE on
+    # classification_json so the CP table can render a 🤖 AI badge for
+    # auto-extracted values vs ⚙️ manual entries.
     our_entity = parsed.get("our_entity")
     if isinstance(our_entity, str) and our_entity.strip():
         fields["legal_entity"] = our_entity.strip()
+        classification["legal_entity_source"] = "parser"
+        # Re-serialise classification_json since we mutated it after the
+        # initial json.dumps above.
+        fields["classification_json"] = json.dumps(classification, default=str)
 
     # Period from document date (fallback now)
     doc_date = (parsed.get("dates") or {}).get("document_date")
@@ -1122,6 +1129,19 @@ def save_doc(doc_id: str):
             idx_to_existing[li] = base
         existing["per_line"] = list(idx_to_existing.values())
         update_fields["classification_json"] = json.dumps(existing, default=str)
+
+    # 2026-06-11 (Top-10 self-review P2.1-B) — when a human manually sets
+    # legal_entity, flip classification_json.legal_entity_source from
+    # "parser" → "manual" so the CP table swaps the 🤖 AI badge for a
+    # ⚙️ Manual badge.
+    if "legal_entity" in update_fields and "classification_json" not in update_fields:
+        try:
+            existing_cls = json.loads(doc.get("classification_json") or "{}")
+            if isinstance(existing_cls, dict):
+                existing_cls["legal_entity_source"] = "manual"
+                update_fields["classification_json"] = json.dumps(existing_cls, default=str)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     if not update_fields:
         return jsonify({"status": "no_changes"})
