@@ -66,9 +66,10 @@ ALL_ROLES = [
 ]
 
 # Tab IDs match the data-tab attributes in static/index.html
+# 2026-06-16 — added "policies" (Phase 1 P1.2 Internal Policies & Limits tab).
 ALL_TABS = [
     "upload", "approve", "accounting", "card-audit",
-    "analytics", "confirm-payment", "admin", "legend",
+    "analytics", "confirm-payment", "admin", "legend", "policies",
 ]
 
 # Role -> list of tab IDs that role can see.
@@ -80,12 +81,14 @@ ALL_TABS = [
 #   - stream_owner     : sees their own stream only on approve/accounting/card-audit/analytics + Legend
 #                         (frontend constrains by signed-in user's profit_center)
 #   - viewer (default) : Upload + Approve + Legend
+# 2026-06-16 — "policies" tab added to admin/holding_ceo/bookkeeper
+# (CEO can change limits; bookkeeper sees + flags violations).
 TAB_ACCESS: Dict[str, List[str]] = {
     ROLE_ADMIN:        ALL_TABS,  # everything
     ROLE_HOLDING_CEO:  ["upload", "approve", "accounting", "analytics",
-                        "confirm-payment", "legend"],
+                        "confirm-payment", "legend", "policies"],
     ROLE_BOOKKEEPER:   ["upload", "approve", "accounting", "card-audit",
-                        "analytics", "confirm-payment", "legend"],
+                        "analytics", "confirm-payment", "legend", "policies"],
     ROLE_STREAM_OWNER: ["upload", "approve", "accounting", "card-audit",
                         "analytics", "legend"],
     ROLE_VIEWER:       ["upload", "approve", "legend"],

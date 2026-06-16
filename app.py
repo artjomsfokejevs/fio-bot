@@ -129,13 +129,23 @@ def _seed_data_volume() -> None:
         return
     target_dir = os.path.dirname(config.LEDGER_FILE)
     os.makedirs(target_dir, exist_ok=True)
+    # Files seeded only on FIRST boot (preserve user-edited content thereafter).
     for name in ("ledger_schema.json", "accounting_rules.json",
-                 "legal_entities.json", "whats_new.json"):
+                 "legal_entities.json"):
         seed = os.path.join(seed_dir, name)
         target = os.path.join(target_dir, name)
         if os.path.exists(seed) and not os.path.exists(target):
             shutil.copy2(seed, target)
             logger.info("Seeded %s into data/", name)
+    # 2026-06-16 — whats_new.json is release-notes (not user-editable):
+    # always overwrite from seed so new versions ship to users without
+    # a manual file copy on Fly volume. Caught by user feedback that
+    # post-deploy WhatsNew modal didn't show new entries.
+    wn_seed = os.path.join(seed_dir, "whats_new.json")
+    wn_target = os.path.join(target_dir, "whats_new.json")
+    if os.path.exists(wn_seed):
+        shutil.copy2(wn_seed, wn_target)
+        logger.info("Refreshed whats_new.json from seed/")
 
 
 _seed_data_volume()

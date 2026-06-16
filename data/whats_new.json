@@ -3,6 +3,58 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-16-phase3",
+      "date": "2026-06-16",
+      "title": "💰 Stream Budgets + 🚨 X-alarm wiring (CEO-agreed monthly caps with auto-overrun email)",
+      "summary": "Phase 3 ships the full Stream Budgets system per the architecture sketch. Admin loads CEO-agreed monthly caps per stream; when a confirmed payment pushes a stream over budget, FIO auto-fires X-alarm: email to CEO+Artjoms+Rita+stream-owner, in-app urgent bell, optional Asana auto-task. 24h dedup window prevents alert spam. Stream banner on Confirm for Payment shows live traffic-light status.",
+      "highlights": [
+        "💰 Stream Budgets (Admin tab) — set per-stream / per-month caps with CEO approval timestamp + notes + full change-log history. Live actuals computed from committed-status invoices.",
+        "🚨 X-alarm auto-fires on CEO confirm-payment when (pc, period) actuals exceed budget. 24h dedup so subsequent triggers update the same log row.",
+        "📧 Recipients auto-resolved: XALARM_CEO_EMAIL + XALARM_OPS_EMAIL (defaults to Artjoms) + first active bookkeeper from fio_users + stream owner from fio_users WHERE profit_center=PC AND role in (stream_owner,admin).",
+        "🔔 In-app urgent bell fires alongside email — gracefully degrades when SMTP/Asana not configured (Phase 2 SMTP wrapper). All paths log to xalarm_log with email_status for diagnostics.",
+        "📊 Stream banner on Confirm for Payment — per-stream traffic-light pills (green = in budget, yellow = <20% remaining, red = OVER) based on live actuals call.",
+        "🤖 Asana auto-task on overrun (when ASANA_PAT set) — task created on stream owner via existing services.asana_sync.create_task. URL stored in xalarm_log.asana_task_url."
+      ]
+    },
+    {
+      "version": "2026-06-16-phase2",
+      "date": "2026-06-16",
+      "title": "🔔 In-app bell + 💬 Slack CEO alerts + 🏦 Bank archives + 💼 Salaries + SMTP foundation",
+      "summary": "Phase 2 ships: notification bell with auto-fire when CEO approves invoices; Slack integration for CEO urgent-payment alerts (graceful 503 until SLACK_CEO_WEBHOOK set); bank statement archive with re-check; salary doc tagging + payment-date filter in Confirm for Payment; SMTP foundation for Phase 3 X-alarm emails.",
+      "highlights": [
+        "🔔 Notification bell (top-right header) — badge shows unread count, modal lists all. Auto-fires for Rita when CEO approves an invoice. 60s polling.",
+        "🚨 Send to CEO (Slack) — admin/bookkeeper button in Awaiting Payment row → posts to Slack channel + in-app bell. Graceful fallback when SLACK_CEO_WEBHOOK secret not set (in-app only). Setup guide: docs/slack-setup-for-ceo.md.",
+        "🏦 Bank Statement Archives (Admin tab) — list past CSV imports, ↻ Re-check unmatched/suggested rows to pick up newly-uploaded invoices.",
+        "💼 Salary doc tag — toggle in detail modal. New filters in Confirm for Payment: 💼 Salaries only / Non-salary only / 🏢 Internal only + payment-date range filter (Bookkeeper request #2 from the feedback doc).",
+        "📧 SMTP wrapper (services/email_send.py) — foundation for Phase 3 X-alarm emails. Graceful when SMTP_USER/PASS not set."
+      ]
+    },
+    {
+      "version": "2026-06-16-phase1b",
+      "date": "2026-06-16",
+      "title": "🔍 Search/Sort/Date filters + 💰 Partial payments + 🛬 M&G stub endpoints",
+      "summary": "Bookkeeper backlog: search/sort/date-range in Approve queue, partial-payments tracking on internal invoices with auto-transition to paid when full amount reached. Plus Phase-3 prep: M&G stub endpoints live (graceful 503 until external dev side ships).",
+      "highlights": [
+        "🔍 Documents for Approval — new filter bar: search by vendor/file/amount (debounced 300ms), 6 sort options (date/amount/vendor/legal entity), date-from / date-to range, ✕ Clear button.",
+        "💰 Partial payments on internal invoices — toggle 'Internal invoice' in the detail modal. Add instalments (amount + paid_at + method + reference). Running progress bar. Auto-transition to status=paid when sum reaches invoice total.",
+        "🛬 Meet & Greet integration — three endpoints live as P85 graceful stubs at /api/mng/webhook, /api/mng/pull, /api/mng/status — returning 503 with hint until external dev team ships their side. Full contract in docs/meet-and-greet-dev-handoff.md.",
+        "📐 Stream Budgets architecture sketch — docs/stream-budgets-architecture.md describes the Phase-3 schema + X-alarm flow. Implementation ready to start in next session."
+      ]
+    },
+    {
+      "version": "2026-06-16-phase1",
+      "date": "2026-06-16",
+      "title": "📋 Policies & Limits + ✓ Approved by Accounting + 🛬 Meet & Greet handoff",
+      "summary": "Internal corporate spending limits are now editable through a new Policies & Limits tab; Accounting can mark policy violations as reviewed (full audit log); Alveda/K2Y-style violations on already-approved invoices are hidden by default; and a self-contained dev-handoff doc for the Meet & Greet API bridge ships in /docs.",
+      "highlights": [
+        "📋 New tab — Policies & Limits (after FIO Legend): see every active spending rule (RED/YELLOW thresholds), edit limits inline (Admin/CEO), full change-log of who edited what when.",
+        "✓ Approved by Accounting checkbox on every Policy Violations row — click to record reason; toggle '[ ] Show resolved' to review history.",
+        "🤖 Policy violations on invoices already at confirmed_to_pay / paid / archived are now hidden by default — solves the K2Y/Alveda 'why is RED still showing after I approved it' confusion.",
+        "🔬 Classifier now reads thresholds from the DB (with graceful fallback to hardcoded defaults if table empty), so a CEO can change a corporate limit without a code deploy.",
+        "📨 Meet & Greet ↔ FIO API-bridge spec — bilingual (EN+RU) self-contained handoff doc for external developers in /docs/meet-and-greet-dev-handoff.md (webhook contract, pull API, auth, security checklist, 8-week timeline)."
+      ]
+    },
+    {
       "version": "2026-06-11-top2",
       "date": "2026-06-11",
       "title": "✏️ Editable chase template + 🎉 What's New on login",
