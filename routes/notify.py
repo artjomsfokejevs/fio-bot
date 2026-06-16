@@ -157,7 +157,10 @@ def slack_test() -> Any:
 
 @notify_bp.route("/slack/status", methods=["GET"])
 def slack_status() -> Any:
-    return jsonify({"configured": slack_svc.is_configured()})
+    return jsonify({
+        "configured": slack_svc.is_configured(),
+        "transport": slack_svc.transport(),
+    })
 
 
 # ─────────────────────────────────────────────────────────────

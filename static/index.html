@@ -2202,9 +2202,12 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <!-- 2026-06-16 Phase 2 — Slack integration                       -->
       <!-- ──────────────────────────────────────────────────────────── -->
       <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
-        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">💬 Slack integration (CEO urgent payment alerts)</h3>
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">💬 Slack integration (CEO urgent payment + X-alarm alerts)</h3>
         <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
-          When a bookkeeper hits <b>🚨 Send to CEO</b> on an Awaiting-Payment row, FIO posts the invoice details to a Slack channel for CEO eyes + creates an in-app notification. Set <code>SLACK_CEO_WEBHOOK</code> Fly secret to a Slack Incoming Webhook URL. Until set, posts go to the in-app bell only.
+          FIO posts urgent-payment + X-alarm-overrun alerts to Slack. Two transports supported (pick one — see <code>docs/slack-setup-for-ceo.md</code>):<br>
+          &nbsp;• <b>Bot token</b> (reuse existing Slack App like <em>BT4YOU Executive Bot</em>): set <code>SLACK_BOT_TOKEN</code> + <code>SLACK_CEO_CHANNEL</code>.<br>
+          &nbsp;• <b>Incoming Webhook</b> (single-channel): set <code>SLACK_CEO_WEBHOOK</code>.<br>
+          Until configured, posts go to the in-app bell only.
         </p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="testSlack()">📤 Send test ping</button>
@@ -2789,11 +2792,21 @@ function switchTab(tabName) {
     loadChaseTemplate();     // 2026-06-11 Top-2 P1 — chase template editor
     loadBankStatementArchives(); // 2026-06-16 Phase 2 — past imports
     loadStreamBudgets();         // 2026-06-16 Phase 3 — stream budgets + X-alarm
-    // 2026-06-16 Phase 2 — Slack config status pill
+    // 2026-06-16 Phase 2 — Slack config status pill (transport-aware)
     api('GET', '/api/slack/status').then(function(r){
       var p = document.getElementById('slack-status-pill');
-      if (p) p.textContent = r && r.configured ? '✓ webhook configured' : '⚠ webhook not set — alerts go to in-app bell only';
-      if (p) p.style.color = r && r.configured ? '#16a34a' : '#ca8a04';
+      if (!p) return;
+      var t = r && r.transport;
+      if (t === 'bot') {
+        p.textContent = '✓ bot-token mode (reusing Slack App)';
+        p.style.color = '#16a34a';
+      } else if (t === 'webhook') {
+        p.textContent = '✓ webhook mode';
+        p.style.color = '#16a34a';
+      } else {
+        p.textContent = '⚠ no transport set — alerts go to in-app bell only';
+        p.style.color = '#ca8a04';
+      }
     }).catch(function(){});
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();

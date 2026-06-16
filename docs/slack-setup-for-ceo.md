@@ -1,18 +1,66 @@
 # Connecting Slack to FIO — guide for Artjoms (admin) + CEO
 
-> ~7 minutes. Creates a Slack channel for CEO urgent-payment alerts, generates a webhook URL, deploys it as a Fly secret.
+> ~3–7 minutes depending on which transport you use. FIO supports TWO mutually-non-exclusive Slack transports — pick ONE.
 
 ## What this unlocks
 
-When you (or Rita) click **🚨 Send to CEO** on an invoice in the Awaiting Payment stage, FIO will:
+When you (or Rita) click **🚨 Send to CEO** on an invoice in the Awaiting Payment stage — OR when an X-alarm fires (stream over budget) — FIO will:
 1. Post a formatted alert to the configured Slack channel (CEO sees it immediately)
 2. Create an in-app notification (bell icon top-right) — so even without Slack, the bell still works
 
-Until SLACK_CEO_WEBHOOK is set, only the bell fires (graceful degradation).
+Until Slack is configured, only the bell fires (graceful degradation).
 
 ---
 
-## Step 1 — Create a Slack channel (1 min)
+## Transport A — Reuse existing Slack App (Recommended if you have one)
+
+**Best if** you already have an internal Slack App like **BT4YOU Executive Bot**. Single bot, multiple channels, edit/delete messages, richer permissions.
+
+### Step A1 — Get the Bot Token from your existing App
+
+1. Open https://api.slack.com/apps → pick your existing App (e.g. `BT4YOU Executive Bot`)
+2. Left menu → **Features → OAuth & Permissions**
+3. Under **Bot Token Scopes**, ensure at least `chat:write` is present. If not, click **Add an OAuth Scope** → `chat:write` → reinstall the App when prompted.
+4. Scroll up to **OAuth Tokens for Your Workspace** → copy **Bot User OAuth Token** (starts with `xoxb-...`)
+
+### Step A2 — Get the channel ID
+
+In Slack, open the channel you want CEO alerts to go to → click channel name at top → bottom of the modal shows **Channel ID** like `C0123ABC45D`. Copy it.
+
+(You can also pass a channel like `#fio-ceo-alerts` if the bot was already invited.)
+
+### Step A3 — Invite the bot to the channel
+
+In the target channel, type:
+```
+/invite @<bot-username>
+```
+(e.g. `/invite @BT4YOU Executive Bot`)
+
+### Step A4 — Deploy as Fly secrets
+
+```bash
+flyctl secrets set \
+  SLACK_BOT_TOKEN="xoxb-..." \
+  SLACK_CEO_CHANNEL="C0123ABC45D" \
+  -a fio-amitours
+```
+
+Fly auto-redeploys (~30s).
+
+### Step A5 — Test
+
+FIO → **Admin** → **💬 Slack integration** → **📤 Send test ping** → should see `🟢 FIO Slack integration is live` in the channel.
+
+---
+
+## Transport B — Create a new Incoming Webhook (no existing App)
+
+**Best if** you want a single-channel, no-permissions-required setup. Simpler but locked to one channel and no edit/delete.
+
+---
+
+### Step B1 — Create a Slack channel (1 min)
 
 In Slack, **+ Add channels → Create a new channel**:
 - Name: `fio-ceo-alerts` (private recommended)
