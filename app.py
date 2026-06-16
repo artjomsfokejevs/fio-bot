@@ -150,6 +150,14 @@ try:
 except Exception as exc:
     logger.warning("Roles seed failed: %s", exc)
 
+# 2026-06-16 Phase 1 P1.2 — seed policy_rules table from seed/policy_rules.json
+# (idempotent — only inserts when table is empty).
+try:
+    from services import policy_rules as _policy_rules_svc
+    _policy_rules_svc.seed_if_missing()
+except Exception as exc:  # noqa: BLE001
+    logger.warning("policy_rules seed failed: %s", exc)
+
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "csv", "xlsx"}
 
 
@@ -2307,11 +2315,44 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
     doc["is_terminal_receipt"] = parsed.get("is_terminal_receipt", False)
     doc["linked_vendor"] = parsed.get("linked_vendor") or None
 
-    # Expense policy check
+    # Expense policy check + 2026-06-16 P1.3 enrichment:
+    # attach violation_key (stable hash) and any existing accounting approval
+    # to each warning, so the Policy Violations panel can render the
+    # "Approved by Accounting" checkbox + audit metadata.
     try:
-        doc["policy_warnings"] = check_expense_policy(parsed, classification)
+        warnings_list = check_expense_policy(parsed, classification) or []
     except Exception:
-        doc["policy_warnings"] = []
+        warnings_list = []
+    try:
+        from services import policy_approvals as _pva
+        doc_status = doc.get("status") or ""
+        # P1.1 bug-fix piece: also surface doc status so frontend can hide
+        # violations on docs already past the approval gate (confirmed_to_pay,
+        # paid, archived) — the violation is informational at that point.
+        for w in warnings_list:
+            if not isinstance(w, dict):
+                continue
+            if w.get("level") not in ("red", "yellow"):
+                continue  # green = no surface action
+            pname = w.get("policy") or ""
+            level = w.get("level") or ""
+            msg = w.get("message") or ""
+            key = _pva.violation_key(doc.get("id"), pname, level, msg)
+            w["violation_key"] = key
+            w["doc_id"] = doc.get("id")
+            w["doc_status"] = doc_status
+            approval = _pva.get_approval(key)
+            if approval:
+                w["approved"] = True
+                w["approved_by"] = approval.get("approved_by")
+                w["approved_at"] = approval.get("approved_at")
+                w["approved_role"] = approval.get("role")
+                w["approved_reason"] = approval.get("reason")
+            else:
+                w["approved"] = False
+    except Exception:  # noqa: BLE001 — must never break the document API
+        logger.exception("policy_warnings enrichment failed for %s", doc.get("id"))
+    doc["policy_warnings"] = warnings_list
 
 
 # ---------------------------------------------------------------------------
@@ -3501,9 +3542,11 @@ def export_by_legal_entity():
 # ---------------------------------------------------------------------------
 from routes.card_audit import card_audit_bp  # noqa: E402
 from routes.admin import admin_bp            # noqa: E402
+from routes.policy import policy_bp          # noqa: E402
 
 app.register_blueprint(card_audit_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(policy_bp)
 
 
 # ---------------------------------------------------------------------------

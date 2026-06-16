@@ -362,6 +362,11 @@ def _classify_with_llm(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
 # Expense policy checker (Feature 7)
 # ---------------------------------------------------------------------------
 
+# Legacy EXPENSE_POLICIES kept as a hard fallback / public reference
+# (some tests + downstream tools may import it). The runtime source of truth
+# is now services.policy_rules.get_effective_policies(), which overlays
+# DB-edited thresholds on top of these defaults and falls back to them when
+# the DB has no rows (M81 graceful pattern). Added 2026-06-16 Phase 1 P1.2.
 EXPENSE_POLICIES: Dict[str, Dict[str, Any]] = {
     "business_dinner": {
         "max_per_person": 50.0,
@@ -384,6 +389,22 @@ EXPENSE_POLICIES: Dict[str, Dict[str, Any]] = {
 }
 
 
+def _resolve_policies() -> Dict[str, Dict[str, Any]]:
+    """Load DB-overlaid policies; fall back to EXPENSE_POLICIES if anything
+    fails (classifier must never break the upload pipeline)."""
+    try:
+        from services import policy_rules as _pr  # local import avoids cycle at module load
+        return _pr.get_effective_policies()
+    except Exception:  # noqa: BLE001 — be graceful, never block classify
+        return EXPENSE_POLICIES
+
+
+def _rule_code(policies: Dict[str, Dict[str, Any]], policy_name: str, field: str) -> Optional[str]:
+    rules = (policies.get(policy_name) or {}).get("_rules") or {}
+    meta = rules.get(field)
+    return meta.get("code") if meta else None
+
+
 def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Check if expense complies with corporate policy.
 
@@ -393,16 +414,17 @@ def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any])
 
     Returns:
         List of policy warning dictionaries with 'level' (green/yellow/red),
-        'message', and 'policy' keys.
+        'message', 'policy' and (when DB-backed) 'rule_code' keys.
     """
     warnings: List[Dict[str, Any]] = []
     description = _build_description(parsed).lower()
     money = parsed.get("money", {})
     total = money.get("total_amount", 0.0) or 0.0
 
+    policies = _resolve_policies()
     matched_policy: Optional[str] = None
 
-    for policy_name, policy in EXPENSE_POLICIES.items():
+    for policy_name, policy in policies.items():
         keywords = policy.get("category_keywords", [])
         if any(kw in description for kw in keywords):
             matched_policy = policy_name
@@ -416,7 +438,7 @@ def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any])
         })
         return warnings
 
-    policy = EXPENSE_POLICIES[matched_policy]
+    policy = policies[matched_policy]
 
     if matched_policy == "business_dinner":
         max_total = policy.get("max_total", 200.0)
@@ -426,12 +448,14 @@ def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any])
                 "level": "red",
                 "message": "Exceeds corporate limit (max %.0f EUR for business dinner)" % max_total,
                 "policy": matched_policy,
+                "rule_code": _rule_code(policies, matched_policy, "max_total"),
             })
         elif total > max_pp:
             warnings.append({
                 "level": "yellow",
                 "message": "Requires attendee list (dinner > %.0f EUR/person)" % max_pp,
                 "policy": matched_policy,
+                "rule_code": _rule_code(policies, matched_policy, "max_per_person"),
             })
         else:
             warnings.append({
@@ -447,6 +471,7 @@ def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any])
                 "level": "yellow",
                 "message": "Requires travel order (travel expense > %.0f EUR/day)" % max_per_day,
                 "policy": matched_policy,
+                "rule_code": _rule_code(policies, matched_policy, "max_per_day"),
             })
         else:
             warnings.append({
@@ -462,6 +487,7 @@ def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any])
                 "level": "red",
                 "message": "Exceeds corporate limit (max %.0f EUR for office supplies)" % max_per_item,
                 "policy": matched_policy,
+                "rule_code": _rule_code(policies, matched_policy, "max_per_item"),
             })
         else:
             warnings.append({

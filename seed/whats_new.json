@@ -3,6 +3,19 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-16-phase1",
+      "date": "2026-06-16",
+      "title": "📋 Policies & Limits + ✓ Approved by Accounting + 🛬 Meet & Greet handoff",
+      "summary": "Internal corporate spending limits are now editable through a new Policies & Limits tab; Accounting can mark policy violations as reviewed (full audit log); Alveda/K2Y-style violations on already-approved invoices are hidden by default; and a self-contained dev-handoff doc for the Meet & Greet API bridge ships in /docs.",
+      "highlights": [
+        "📋 New tab — Policies & Limits (after FIO Legend): see every active spending rule (RED/YELLOW thresholds), edit limits inline (Admin/CEO), full change-log of who edited what when.",
+        "✓ Approved by Accounting checkbox on every Policy Violations row — click to record reason; toggle '[ ] Show resolved' to review history.",
+        "🤖 Policy violations on invoices already at confirmed_to_pay / paid / archived are now hidden by default — solves the K2Y/Alveda 'why is RED still showing after I approved it' confusion.",
+        "🔬 Classifier now reads thresholds from the DB (with graceful fallback to hardcoded defaults if table empty), so a CEO can change a corporate limit without a code deploy.",
+        "📨 Meet & Greet ↔ FIO API-bridge spec — bilingual (EN+RU) self-contained handoff doc for external developers in /docs/meet-and-greet-dev-handoff.md (webhook contract, pull API, auth, security checklist, 8-week timeline)."
+      ]
+    },
+    {
       "version": "2026-06-11-top2",
       "date": "2026-06-11",
       "title": "✏️ Editable chase template + 🎉 What's New on login",
