@@ -1947,6 +1947,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <!-- Sub-tabs for the 4 stages -->
       <div id="cp-stage-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
 
+      <!-- 2026-06-16 Phase 3 — Stream Budget banner -->
+      <div id="cp-budget-banner" style="display:none;margin-bottom:10px;"></div>
+
       <!-- 2026-06-16 Phase 2 — Salaries + Payment Date filters (client-side, bookkeeper request) -->
       <div id="cp-extra-filters" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border-radius:6px;font-size:12px;">
         <select id="cp-category-filter" onchange="reapplyCPClientFilters()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;">
@@ -2206,6 +2209,46 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="testSlack()">📤 Send test ping</button>
           <span id="slack-status-pill" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <!-- 2026-06-16 Phase 3 — Stream Budgets + X-alarm log            -->
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">💰 Stream Budgets (CEO-agreed monthly caps)</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
+          Per-stream monthly spend cap. When a CEO-confirmed payment pushes the stream actual over the budget, FIO fires an X-alarm: email to CEO+Artjoms+Rita+stream-owner + Asana auto-task + in-app banner. Dedup 24h.
+        </p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+          <label style="font-size:12px;">Period
+            <input id="sb-period" type="month" value="" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;" onchange="loadStreamBudgets()" />
+          </label>
+          <button class="btn btn-ghost btn-sm" onclick="loadStreamBudgets()">↻ Refresh</button>
+        </div>
+        <div id="sb-list"><div style="color:var(--muted);font-size:13px;padding:14px;">Loading…</div></div>
+        <div style="margin-top:14px;padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;">
+          <div style="font-weight:600;font-size:13px;margin-bottom:6px;">+ Set / update budget</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;font-size:11px;">
+            <label>Stream<br><select id="sb-pc" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;">
+              <option value="AA">AA · Alps2Alps</option>
+              <option value="BK">BK · Skibookers</option>
+              <option value="SR">SR · Skipasser</option>
+              <option value="AH">AH · Mountly</option>
+              <option value="CF">CF · MyPeak Finance</option>
+              <option value="AL">AL · ALVEDA</option>
+            </select></label>
+            <label>Period<br><input id="sb-new-period" type="month" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>
+            <label>Budget (EUR)<br><input id="sb-budget-eur" type="number" step="0.01" min="0" style="width:120px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>
+            <label>CEO name<br><input id="sb-ceo-name" placeholder="Approved by..." style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>
+            <label style="flex:1;min-width:160px;">Reason / notes<br><input id="sb-reason" placeholder="e.g. Q3 peak season bump" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>
+            <button class="btn btn-primary btn-sm" onclick="setStreamBudget()">Save</button>
+          </div>
+        </div>
+
+        <div style="margin-top:18px;">
+          <h4 style="font-size:13px;font-weight:600;margin:0 0 6px;">🚨 Recent X-alarms</h4>
+          <div id="xalarm-list"><div style="color:var(--muted);font-size:12px;padding:10px;">Loading…</div></div>
         </div>
       </div>
 
@@ -2745,6 +2788,7 @@ function switchTab(tabName) {
     loadPayingAccounts();    // 2026-06-08 Top-7 P2.3 — paying accounts roster
     loadChaseTemplate();     // 2026-06-11 Top-2 P1 — chase template editor
     loadBankStatementArchives(); // 2026-06-16 Phase 2 — past imports
+    loadStreamBudgets();         // 2026-06-16 Phase 3 — stream budgets + X-alarm
     // 2026-06-16 Phase 2 — Slack config status pill
     api('GET', '/api/slack/status').then(function(r){
       var p = document.getElementById('slack-status-pill');
@@ -4216,6 +4260,7 @@ function loadConfirmPaymentPanel() {
       console.error('renderCPRows failed', e);
       rowsEl.innerHTML = '<tr><td colspan="13" class="empty-state" style="color:var(--red);">UI error: ' + esc(e.message || String(e)) + '</td></tr>';
     }
+    try { updateCPBudgetBanner(); } catch (e) { console.error('budget banner', e); }
   }).catch(function(err) {
     rowsEl.innerHTML =
       '<tr><td colspan="13" class="empty-state" style="color:var(--red);">Failed to load: ' +
@@ -5948,6 +5993,172 @@ function clearCPExtraFilters() {
     var el = document.getElementById(id); if (el) el.value = '';
   });
   reapplyCPClientFilters();
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Stream Budgets + X-alarm (2026-06-16 Phase 3)
+// ───────────────────────────────────────────────────────────────────
+function _currentPeriodInput() {
+  var el = document.getElementById('sb-period');
+  if (el && el.value) return el.value;
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function loadStreamBudgets() {
+  var period = _currentPeriodInput();
+  var sbEl = document.getElementById('sb-period');
+  if (sbEl && !sbEl.value) sbEl.value = period;
+  var npEl = document.getElementById('sb-new-period');
+  if (npEl && !npEl.value) npEl.value = period;
+
+  api('GET', '/api/stream-budgets?period=' + period).then(function(r){
+    var rows = (r && r.budgets) || [];
+    var box = document.getElementById('sb-list');
+    var streams = ['AA','BK','SR','AH','CF','AL'];
+    var byPc = {};
+    rows.forEach(function(b){ byPc[b.profit_center] = b; });
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+      '<thead style="background:#f1f5f9;"><tr>' +
+      '<th style="padding:6px 8px;text-align:left;">Stream</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Budget EUR</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Actual EUR</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Remaining</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Status</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Set by</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Notes</th>' +
+      '</tr></thead><tbody>';
+    streams.forEach(function(pc){
+      var b = byPc[pc];
+      if (b) {
+        var pctUsed = b.budget_eur > 0 ? Math.min(120, (b.actual_eur / b.budget_eur * 100)) : 0;
+        var color = b.over ? '#dc2626' : (b.remaining_eur < b.budget_eur * 0.2 ? '#f59e0b' : '#16a34a');
+        var statusTxt = b.over
+          ? '🚨 OVER by €' + b.overrun_eur.toLocaleString('en', {minimumFractionDigits:2}) + ' (+' + b.overrun_pct.toFixed(1) + '%)'
+          : (b.remaining_eur < b.budget_eur * 0.2 ? '⚠ ' + Math.round(b.remaining_eur / b.budget_eur * 100) + '% remaining' : '✓ in budget');
+        html += '<tr>' +
+          '<td style="padding:6px 8px;font-weight:600;">' + pc + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;">' + b.budget_eur.toLocaleString('en', {minimumFractionDigits:2}) + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;">' + b.actual_eur.toLocaleString('en', {minimumFractionDigits:2}) + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;color:' + color + ';font-weight:600;">' + b.remaining_eur.toLocaleString('en', {minimumFractionDigits:2}) + '</td>' +
+          '<td style="padding:6px 8px;color:' + color + ';">' + statusTxt + '</td>' +
+          '<td style="padding:6px 8px;font-size:11px;color:var(--muted);">' + esc(b.agreed_by_ceo || b.created_by || '—') + '</td>' +
+          '<td style="padding:6px 8px;font-size:11px;color:var(--muted);">' + esc(b.notes || '—') + '</td>' +
+          '</tr>';
+      } else {
+        var status = sbActualsFor(pc, period);
+        html += '<tr style="color:#94a3b8;">' +
+          '<td style="padding:6px 8px;font-weight:600;">' + pc + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-style:italic;">no budget set</td>' +
+          '<td colspan="5" style="padding:6px 8px;font-size:11px;">— add via form below</td>' +
+          '</tr>';
+      }
+    });
+    html += '</tbody></table>';
+    box.innerHTML = html;
+  }).catch(function(err){
+    document.getElementById('sb-list').innerHTML = '<div style="color:var(--red);font-size:13px;padding:10px;">Failed: ' + esc(err && err.message || err) + '</div>';
+  });
+
+  api('GET', '/api/xalarm-log?limit=10').then(function(r){
+    var items = (r && r.items) || [];
+    var box = document.getElementById('xalarm-list');
+    if (!items.length) {
+      box.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px;">No alarms yet. 🎉</div>';
+      return;
+    }
+    box.innerHTML = items.map(function(x){
+      var when = (x.triggered_at || '').substring(0,16).replace('T',' ');
+      var ackBtn = x.acknowledged_at
+        ? '<span style="color:#16a34a;font-size:11px;">✓ ack ' + esc((x.acknowledged_at||'').substring(0,16).replace('T',' ')) + (x.acknowledged_by ? ' by ' + esc(x.acknowledged_by) : '') + '</span>'
+        : '<button class="btn btn-ghost btn-sm" onclick="ackXalarm(' + x.id + ')">Acknowledge</button>';
+      var emailColor = x.email_status === 'sent' ? '#16a34a' : (x.email_status === 'not_configured' ? '#ca8a04' : '#dc2626');
+      return '<div style="padding:8px;border:1px solid #fecaca;background:#fef2f2;border-radius:6px;margin-bottom:6px;font-size:12px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<b>🚨 ' + esc(x.profit_center) + ' · ' + esc(x.period) + '</b>' +
+        '<span>actual €' + Number(x.actual_eur).toLocaleString('en', {minimumFractionDigits:2}) +
+              ' / budget €' + Number(x.budget_eur).toLocaleString('en', {minimumFractionDigits:2}) +
+              ' → over €' + Number(x.overrun_eur).toLocaleString('en', {minimumFractionDigits:2}) + ' (+' + Number(x.overrun_pct).toFixed(1) + '%)</span>' +
+        '<span style="color:' + emailColor + ';margin-left:auto;">email: ' + esc(x.email_status || '—') + '</span>' +
+        '</div>' +
+        '<div style="margin-top:4px;font-size:11px;color:var(--muted);">at ' + esc(when) +
+          (x.trigger_doc_id ? ' · trigger doc: <a href="/?doc=' + esc(x.trigger_doc_id) + '">' + esc(x.trigger_doc_id) + '</a>' : '') +
+          ' · ' + ackBtn + '</div>' +
+        '</div>';
+    }).join('');
+  }).catch(function(){});
+}
+
+// Lazy fallback: when no budget row, still fetch actuals so user sees "spent so far"
+function sbActualsFor(pc, period) {
+  // Returns 0 — actuals enrichment happens server-side via /actuals when budget exists.
+  // For "no budget set" rows we skip the extra call to keep the panel snappy.
+  return 0;
+}
+
+function setStreamBudget() {
+  var body = {
+    profit_center: document.getElementById('sb-pc').value,
+    period: document.getElementById('sb-new-period').value,
+    budget_eur: parseFloat(document.getElementById('sb-budget-eur').value || '0'),
+    agreed_by_ceo: document.getElementById('sb-ceo-name').value || null,
+    reason: document.getElementById('sb-reason').value || null,
+    notes: document.getElementById('sb-reason').value || null,
+  };
+  if (!body.profit_center || !body.period || !body.budget_eur) {
+    showToast('Stream + period + budget required', 'error'); return;
+  }
+  api('POST', '/api/stream-budgets', body).then(function(){
+    showToast('Budget saved', 'success');
+    ['sb-budget-eur','sb-ceo-name','sb-reason'].forEach(function(id){
+      var el = document.getElementById(id); if (el) el.value = '';
+    });
+    loadStreamBudgets();
+  }).catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function ackXalarm(xid) {
+  api('POST', '/api/xalarm-log/' + xid + '/acknowledge').then(function(){
+    showToast('Acknowledged', 'success');
+    loadStreamBudgets();
+  }).catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+// Budget banner on Confirm for Payment — shows per-stream traffic light
+// based on current CP_QUEUE_CACHE rows (group by pc).
+function updateCPBudgetBanner() {
+  var banner = document.getElementById('cp-budget-banner');
+  if (!banner) return;
+  var pcs = {};
+  (CP_QUEUE_CACHE || []).forEach(function(d){
+    var pc = d.profit_center;
+    if (pc) pcs[pc] = true;
+  });
+  var pcList = Object.keys(pcs);
+  if (!pcList.length) { banner.style.display = 'none'; return; }
+  var d = new Date();
+  var period = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+
+  Promise.all(pcList.map(function(pc) {
+    return api('GET', '/api/stream-budgets/' + pc + '/' + period + '/actuals').catch(function(){ return null; });
+  })).then(function(results) {
+    var items = results.filter(Boolean).filter(function(r){ return r && r.has_budget; });
+    if (!items.length) { banner.style.display = 'none'; return; }
+    banner.style.display = 'block';
+    var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+    items.forEach(function(s) {
+      var pct = s.budget_eur > 0 ? (s.actual_eur / s.budget_eur * 100) : 0;
+      var color = s.over ? '#dc2626' : (s.remaining_eur < s.budget_eur * 0.2 ? '#f59e0b' : '#10b981');
+      var bg = s.over ? '#fef2f2' : (s.remaining_eur < s.budget_eur * 0.2 ? '#fefce8' : '#f0fdf4');
+      var msg = s.over
+        ? '🚨 €' + Number(s.actual_eur).toLocaleString('en', {minimumFractionDigits:2}) + ' / €' + Number(s.budget_eur).toLocaleString('en', {minimumFractionDigits:2}) + ' (OVER by €' + Number(s.overrun_eur).toLocaleString('en', {minimumFractionDigits:2}) + ')'
+        : '💰 €' + Number(s.actual_eur).toLocaleString('en', {minimumFractionDigits:2}) + ' / €' + Number(s.budget_eur).toLocaleString('en', {minimumFractionDigits:2}) + ' (€' + Number(s.remaining_eur).toLocaleString('en', {minimumFractionDigits:2}) + ' left)';
+      html += '<div style="padding:6px 10px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;font-size:12px;color:' + color + ';font-weight:600;">' +
+        s.profit_center + ' · ' + s.period + ': ' + msg + '</div>';
+    });
+    html += '</div>';
+    banner.innerHTML = html;
+  });
 }
 
 function toggleIsSalary(docId, isSalary) {

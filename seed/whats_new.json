@@ -3,6 +3,20 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-16-phase3",
+      "date": "2026-06-16",
+      "title": "💰 Stream Budgets + 🚨 X-alarm wiring (CEO-agreed monthly caps with auto-overrun email)",
+      "summary": "Phase 3 ships the full Stream Budgets system per the architecture sketch. Admin loads CEO-agreed monthly caps per stream; when a confirmed payment pushes a stream over budget, FIO auto-fires X-alarm: email to CEO+Artjoms+Rita+stream-owner, in-app urgent bell, optional Asana auto-task. 24h dedup window prevents alert spam. Stream banner on Confirm for Payment shows live traffic-light status.",
+      "highlights": [
+        "💰 Stream Budgets (Admin tab) — set per-stream / per-month caps with CEO approval timestamp + notes + full change-log history. Live actuals computed from committed-status invoices.",
+        "🚨 X-alarm auto-fires on CEO confirm-payment when (pc, period) actuals exceed budget. 24h dedup so subsequent triggers update the same log row.",
+        "📧 Recipients auto-resolved: XALARM_CEO_EMAIL + XALARM_OPS_EMAIL (defaults to Artjoms) + first active bookkeeper from fio_users + stream owner from fio_users WHERE profit_center=PC AND role in (stream_owner,admin).",
+        "🔔 In-app urgent bell fires alongside email — gracefully degrades when SMTP/Asana not configured (Phase 2 SMTP wrapper). All paths log to xalarm_log with email_status for diagnostics.",
+        "📊 Stream banner on Confirm for Payment — per-stream traffic-light pills (green = in budget, yellow = <20% remaining, red = OVER) based on live actuals call.",
+        "🤖 Asana auto-task on overrun (when ASANA_PAT set) — task created on stream owner via existing services.asana_sync.create_task. URL stored in xalarm_log.asana_task_url."
+      ]
+    },
+    {
       "version": "2026-06-16-phase2",
       "date": "2026-06-16",
       "title": "🔔 In-app bell + 💬 Slack CEO alerts + 🏦 Bank archives + 💼 Salaries + SMTP foundation",

@@ -1688,6 +1688,15 @@ def confirm_payment(doc_id: str):
         )
     except Exception:  # noqa: BLE001
         logger.exception("ceo_approved_invoice notif create failed (non-blocking)")
+    # 2026-06-16 Phase 3 — X-alarm: after the state transition, check
+    # whether this confirmation pushed the stream over its monthly budget.
+    # Best-effort; never blocks the CEO response.
+    try:
+        from services import xalarm as _xa
+        _xa.fire_if_overrun(doc_id=doc_id, triggering_action="confirm_payment",
+                            actor=confirmed_by)
+    except Exception:  # noqa: BLE001
+        logger.exception("xalarm fire_if_overrun failed (non-blocking)")
     return jsonify({"status": "confirmed_to_pay", "document": db.get_document(doc_id)})
 
 
@@ -3596,6 +3605,7 @@ from routes.policy import policy_bp          # noqa: E402
 from routes.payments import payments_bp      # noqa: E402  P1.5 partial payments + is_internal
 from routes.mng import mng_bp                # noqa: E402  Phase 3 stub (P85 graceful)
 from routes.notify import notify_bp          # noqa: E402  Phase 2 notifications + Slack + archive
+from routes.budgets import budgets_bp        # noqa: E402  Phase 3 stream budgets + X-alarm log
 
 app.register_blueprint(card_audit_bp)
 app.register_blueprint(admin_bp)
@@ -3603,6 +3613,7 @@ app.register_blueprint(policy_bp)
 app.register_blueprint(payments_bp)
 app.register_blueprint(mng_bp)
 app.register_blueprint(notify_bp)
+app.register_blueprint(budgets_bp)
 
 
 # ---------------------------------------------------------------------------

@@ -247,6 +247,55 @@ CREATE INDEX IF NOT EXISTS ix_notif_role ON notifications(recipient_role);
 CREATE INDEX IF NOT EXISTS ix_notif_user ON notifications(recipient_user);
 CREATE INDEX IF NOT EXISTS ix_notif_unread ON notifications(read_at);
 
+-- 2026-06-16 Phase 3 — Stream budgets (CEO-agreed monthly caps per stream).
+-- Schema per docs/stream-budgets-architecture.md.
+CREATE TABLE IF NOT EXISTS stream_budgets (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    profit_center    TEXT NOT NULL,                 -- 'AA' / 'BK' / 'SR' / 'AH' / 'CF' / 'AL'
+    period           TEXT NOT NULL,                 -- 'YYYY-MM'
+    budget_eur       REAL NOT NULL,
+    currency         TEXT NOT NULL DEFAULT 'EUR',
+    agreed_by_ceo_at TEXT,
+    agreed_by_ceo    TEXT,
+    notes            TEXT,
+    created_at       TEXT NOT NULL,
+    created_by       TEXT,
+    updated_at       TEXT,
+    updated_by       TEXT,
+    UNIQUE(profit_center, period)
+);
+CREATE INDEX IF NOT EXISTS ix_sb_pc_period ON stream_budgets(profit_center, period);
+
+CREATE TABLE IF NOT EXISTS stream_budget_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    budget_id  INTEGER,
+    pc         TEXT NOT NULL,
+    period     TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    changed_by TEXT,
+    old_eur    REAL,
+    new_eur    REAL,
+    reason     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS xalarm_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    triggered_at    TEXT NOT NULL,
+    profit_center   TEXT NOT NULL,
+    period          TEXT NOT NULL,
+    budget_eur      REAL NOT NULL,
+    actual_eur      REAL NOT NULL,
+    overrun_eur     REAL NOT NULL,
+    overrun_pct     REAL NOT NULL,
+    trigger_doc_id  TEXT,
+    recipients_json TEXT NOT NULL,
+    email_status    TEXT,
+    asana_task_url  TEXT,
+    acknowledged_at TEXT,
+    acknowledged_by TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_xalarm_pc_period ON xalarm_log(profit_center, period);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,
