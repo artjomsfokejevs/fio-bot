@@ -206,6 +206,24 @@ CREATE INDEX IF NOT EXISTS ix_policy_rules_hist_rule ON policy_rules_history(rul
 -- so approvals survive re-classifying the same doc. When approved, the
 -- violation hides from the default Policy Violations panel (toggle shows
 -- resolved ones with full who/when/why). Audit-trail by design.
+-- 2026-06-16 Phase 1 P1.5 — Partial payments on internal invoices.
+-- An internal invoice (vendor = our own legal entity) is often paid in
+-- instalments rather than one wire. Each row here = one instalment.
+-- When SUM(amount_eur) >= documents.amount, the doc auto-transitions
+-- to status='paid'. Visible only on docs where documents.is_internal=1.
+CREATE TABLE IF NOT EXISTS partial_payments (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id        TEXT NOT NULL,
+    amount_eur    REAL NOT NULL,
+    paid_at       TEXT NOT NULL,                    -- YYYY-MM-DD
+    method        TEXT,                             -- 'bank_transfer' | 'card' | 'cash' | 'netting'
+    reference     TEXT,                             -- bank-statement ref or note
+    created_at    TEXT NOT NULL,
+    created_by    TEXT,
+    FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_pp_doc ON partial_payments(doc_id);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,
@@ -316,6 +334,12 @@ def init_db() -> None:
                 "ALTER TABLE documents ADD COLUMN payment_amount_orig REAL"),
             ("payment_fx_rate",
                 "ALTER TABLE documents ADD COLUMN payment_fx_rate REAL"),
+            # 2026-06-16 Phase 1 P1.5 — Internal-invoice flag (gates the
+            # partial-payments UI). Default 0; bookkeeper toggles via Admin
+            # or it's set at parse time when vendor matches our own legal
+            # entities list.
+            ("is_internal",
+                "ALTER TABLE documents ADD COLUMN is_internal INTEGER DEFAULT 0"),
         ):
             try:
                 conn.execute("SELECT %s FROM documents LIMIT 1" % col)
@@ -371,26 +395,65 @@ def update_document(doc_id: str, fields: Dict[str, Any]) -> None:
         conn.close()
 
 
-def get_documents(status: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Return documents, optionally filtered by status.
+_DOC_SORT_KEYS = {
+    "date_desc":         "COALESCE(uploaded_at, '') DESC",
+    "date_asc":          "COALESCE(uploaded_at, '') ASC",
+    "amount_desc":       "COALESCE(amount, 0) DESC",
+    "amount_asc":        "COALESCE(amount, 0) ASC",
+    "legal_entity":      "COALESCE(legal_entity, '') ASC, COALESCE(uploaded_at, '') DESC",
+    "vendor":            "COALESCE(vendor, '') ASC, COALESCE(uploaded_at, '') DESC",
+}
+
+
+def get_documents(
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    sort: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return documents, optionally filtered.
 
     Args:
-        status: If provided, only return documents with this status.
+        status:    filter by exact status value
+        q:         case-insensitive search across vendor / description / amount
+        sort:      one of _DOC_SORT_KEYS (defaults to date_desc)
+        date_from: YYYY-MM-DD inclusive lower bound on uploaded_at
+        date_to:   YYYY-MM-DD inclusive upper bound on uploaded_at
 
-    Returns:
-        List of document dictionaries.
+    Phase 1 P1.4 (2026-06-16) added q/sort/date filters — back-compat for
+    callers passing only status. Returns full document dict rows.
     """
+    where: List[str] = []
+    params: List[Any] = []
+    if status:
+        where.append("status = ?")
+        params.append(status)
+    if q:
+        like = "%" + q.strip().lower() + "%"
+        where.append(
+            "(LOWER(COALESCE(vendor,'')) LIKE ? OR "
+            " LOWER(COALESCE(original_name,'')) LIKE ? OR "
+            " LOWER(COALESCE(filename,'')) LIKE ? OR "
+            " CAST(COALESCE(amount,0) AS TEXT) LIKE ?)"
+        )
+        params.extend([like, like, like, like])
+    if date_from:
+        where.append("DATE(COALESCE(uploaded_at,'')) >= DATE(?)")
+        params.append(date_from)
+    if date_to:
+        where.append("DATE(COALESCE(uploaded_at,'')) <= DATE(?)")
+        params.append(date_to)
+
+    sql = "SELECT * FROM documents"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    order = _DOC_SORT_KEYS.get(sort or "date_desc", _DOC_SORT_KEYS["date_desc"])
+    sql += " ORDER BY " + order
+
     conn = get_connection()
     try:
-        if status:
-            rows = conn.execute(
-                "SELECT * FROM documents WHERE status = ? ORDER BY uploaded_at DESC",
-                (status,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM documents ORDER BY uploaded_at DESC"
-            ).fetchall()
+        rows = conn.execute(sql, tuple(params)).fetchall()
         return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()

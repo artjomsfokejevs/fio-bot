@@ -1448,6 +1448,27 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <option value="posted">Posted</option>
         </select>
       </div>
+      <!-- 2026-06-16 P1.4 — Bookkeeper-requested filters -->
+      <div id="approve-filter-bar" style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;">
+        <input id="approve-q" type="search" placeholder="🔍 Search vendor / file / amount…"
+               oninput="onApproveFilterChange()"
+               style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;" />
+        <select id="approve-sort" onchange="loadApprovePanel()" class="filter-select">
+          <option value="date_desc">Sort: newest first</option>
+          <option value="date_asc">Sort: oldest first</option>
+          <option value="amount_desc">Sort: amount high → low</option>
+          <option value="amount_asc">Sort: amount low → high</option>
+          <option value="vendor">Sort: vendor A→Z</option>
+          <option value="legal_entity">Sort: legal entity A→Z</option>
+        </select>
+        <label style="color:#475569;">From
+          <input id="approve-date-from" type="date" onchange="loadApprovePanel()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;" />
+        </label>
+        <label style="color:#475569;">To
+          <input id="approve-date-to" type="date" onchange="loadApprovePanel()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;" />
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="clearApproveFilters()" title="Clear search + dates + sort">✕ Clear</button>
+      </div>
       <table>
         <thead>
           <tr>
@@ -4960,13 +4981,37 @@ function uploadFiles(files) {
 // ===========================================================================
 // PANEL 2: APPROVE
 // ===========================================================================
+// 2026-06-16 P1.4 — debounced search input + clear helper
+var _APPROVE_Q_TIMER = null;
+function onApproveFilterChange() {
+  if (_APPROVE_Q_TIMER) clearTimeout(_APPROVE_Q_TIMER);
+  _APPROVE_Q_TIMER = setTimeout(loadApprovePanel, 300);
+}
+function clearApproveFilters() {
+  ['approve-q','approve-date-from','approve-date-to'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  var s = document.getElementById('approve-sort');
+  if (s) s.value = 'date_desc';
+  loadApprovePanel();
+}
+
 function loadApprovePanel() {
   var pc = document.getElementById('stream-filter').value;
   var status = document.getElementById('approve-status-filter').value;
+  var q = (document.getElementById('approve-q') || {}).value || '';
+  var sort = (document.getElementById('approve-sort') || {}).value || '';
+  var dateFrom = (document.getElementById('approve-date-from') || {}).value || '';
+  var dateTo = (document.getElementById('approve-date-to') || {}).value || '';
   var url = '/api/documents';
   var params = [];
   if (pc) params.push('profit_center=' + pc);
   if (status) params.push('status=' + status);
+  if (q.trim()) params.push('q=' + encodeURIComponent(q.trim()));
+  if (sort) params.push('sort=' + sort);
+  if (dateFrom) params.push('date_from=' + dateFrom);
+  if (dateTo) params.push('date_to=' + dateTo);
   if (params.length) url += '?' + params.join('&');
 
   // Stream dot color
@@ -6215,8 +6260,124 @@ function renderDetails(doc) {
           '</div>';
   html += '</div>';
 
+  // 2026-06-16 P1.5 — Internal-invoice toggle + partial-payments section.
+  // Always render the toggle; show the partial-payments editor only when
+  // is_internal=1 (bookkeeper request: track per-instalment for our own
+  // entity-to-entity invoices).
+  html += '<div id="partials-section" style="margin-top:14px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fafafa;">';
+  html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  html += '<label style="cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;">';
+  html += '<input type="checkbox" id="pp-is-internal" ' + (doc.is_internal ? 'checked' : '') +
+          ' onchange="toggleIsInternal(\'' + esc(doc.id) + '\', this.checked)" />';
+  html += 'Internal invoice (our entity → our entity)';
+  html += '</label>';
+  html += '<span style="font-size:11px;color:var(--muted);">Enables tracking partial payments / instalments.</span>';
+  html += '</div>';
+  html += '<div id="partials-body" style="margin-top:10px;">' +
+          (doc.is_internal ? '<div style="color:var(--muted);font-size:13px;">Loading partial payments…</div>' : '') +
+          '</div>';
+  html += '</div>';
+
   el.innerHTML = html;
   setTimeout(function() { if (document.getElementById('alloc-rows')) recalcAllocTotals(); }, 0);
+  if (doc.is_internal) setTimeout(function(){ loadPartialPayments(doc.id); }, 0);
+}
+
+function toggleIsInternal(docId, isInternal) {
+  api('PATCH', '/api/documents/' + docId + '/is-internal', { is_internal: !!isInternal })
+    .then(function() {
+      showToast(isInternal ? 'Marked as internal' : 'Marked as external', 'success');
+      var body = document.getElementById('partials-body');
+      if (isInternal && body) { body.innerHTML = '<div style="color:var(--muted);font-size:13px;">Loading…</div>'; loadPartialPayments(docId); }
+      else if (body) body.innerHTML = '';
+    })
+    .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function loadPartialPayments(docId) {
+  api('GET', '/api/documents/' + docId + '/partial-payments').then(function(d) {
+    var body = document.getElementById('partials-body');
+    if (!body) return;
+    var ccy = d.currency || 'EUR';
+    var pct = d.invoice_total > 0 ? Math.min(100, Math.round((d.total_paid / d.invoice_total) * 100)) : 0;
+    var barColor = pct >= 100 ? '#10b981' : (pct >= 50 ? '#f59e0b' : '#0ea5e9');
+
+    var rows = (d.items || []).map(function(p) {
+      return '<tr>' +
+        '<td style="padding:4px 8px;">' + esc(p.paid_at || '—') + '</td>' +
+        '<td style="padding:4px 8px;text-align:right;font-weight:600;">' + ccy + ' ' + Number(p.amount_eur || 0).toLocaleString('en', {minimumFractionDigits:2}) + '</td>' +
+        '<td style="padding:4px 8px;">' + esc(p.method || '—') + '</td>' +
+        '<td style="padding:4px 8px;font-family:monospace;font-size:11px;">' + esc(p.reference || '—') + '</td>' +
+        '<td style="padding:4px 8px;font-size:11px;color:var(--muted);">' + esc(p.created_by || '—') + '</td>' +
+        '<td style="padding:4px 8px;"><button class="btn btn-ghost btn-sm" onclick="deletePartialPayment(' + p.id + ', \'' + esc(docId) + '\')">✕</button></td>' +
+        '</tr>';
+    }).join('');
+
+    var html = '';
+    html += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;">';
+    html += '<span><b>' + ccy + ' ' + d.total_paid.toLocaleString('en', {minimumFractionDigits:2}) + '</b> paid of <b>' + ccy + ' ' + d.invoice_total.toLocaleString('en', {minimumFractionDigits:2}) + '</b> total</span>';
+    html += '<span style="margin-left:auto;color:' + barColor + ';font-weight:600;">' + ccy + ' ' + d.remaining.toLocaleString('en', {minimumFractionDigits:2}) + ' remaining</span>';
+    html += '</div>';
+    html += '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">' +
+            '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';"></div></div>';
+
+    if (rows) {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">' +
+        '<thead style="background:#f1f5f9;"><tr>' +
+        '<th style="padding:4px 8px;text-align:left;">Paid at</th>' +
+        '<th style="padding:4px 8px;text-align:right;">Amount</th>' +
+        '<th style="padding:4px 8px;text-align:left;">Method</th>' +
+        '<th style="padding:4px 8px;text-align:left;">Reference</th>' +
+        '<th style="padding:4px 8px;text-align:left;">By</th>' +
+        '<th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+    } else {
+      html += '<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">No partial payments yet.</div>';
+    }
+
+    if (d.remaining > 0) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end;padding:8px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;">';
+      html += '<label style="font-size:11px;">Amount (' + ccy + ')<br><input id="pp-amount" type="number" step="0.01" min="0.01" max="' + d.remaining + '" value="' + d.remaining.toFixed(2) + '" style="width:120px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>';
+      html += '<label style="font-size:11px;">Paid at<br><input id="pp-paid-at" type="date" value="' + (new Date().toISOString().substring(0,10)) + '" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>';
+      html += '<label style="font-size:11px;">Method<br><select id="pp-method" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;">' +
+              '<option value="bank_transfer">bank_transfer</option>' +
+              '<option value="card">card</option>' +
+              '<option value="cash">cash</option>' +
+              '<option value="netting">netting</option>' +
+              '<option value="other">other</option>' +
+              '</select></label>';
+      html += '<label style="font-size:11px;flex:1;min-width:160px;">Reference<br><input id="pp-reference" placeholder="bank ref / note" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;" /></label>';
+      html += '<button class="btn btn-primary btn-sm" onclick="addPartialPayment(\'' + esc(docId) + '\')">+ Add</button>';
+      html += '</div>';
+    } else {
+      html += '<div style="padding:8px;background:#dcfce7;color:#15803d;border-radius:6px;font-size:13px;">✓ Fully paid. Doc auto-transitioned to status=paid.</div>';
+    }
+
+    body.innerHTML = html;
+  }).catch(function(err){
+    var body = document.getElementById('partials-body');
+    if (body) body.innerHTML = '<div style="color:var(--red);font-size:13px;">Failed to load: ' + esc(err && err.message || err) + '</div>';
+  });
+}
+
+function addPartialPayment(docId) {
+  var body = {
+    amount_eur: parseFloat(document.getElementById('pp-amount').value || '0'),
+    paid_at: document.getElementById('pp-paid-at').value,
+    method: document.getElementById('pp-method').value,
+    reference: document.getElementById('pp-reference').value || null
+  };
+  if (!body.amount_eur || body.amount_eur <= 0) { showToast('Amount must be > 0', 'error'); return; }
+  if (!body.paid_at) { showToast('Paid-at date required', 'error'); return; }
+  api('POST', '/api/documents/' + docId + '/partial-payments', body)
+    .then(function(){ showToast('Partial payment recorded', 'success'); loadPartialPayments(docId); reloadModal(); })
+    .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function deletePartialPayment(partialId, docId) {
+  if (!confirm('Delete this partial payment? The doc will NOT auto-revert from paid — undo via the normal unmark-paid flow if needed.')) return;
+  api('DELETE', '/api/partial-payments/' + partialId)
+    .then(function(){ showToast('Deleted', 'success'); loadPartialPayments(docId); })
+    .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
 }
 
 function renderModalActions(doc) {

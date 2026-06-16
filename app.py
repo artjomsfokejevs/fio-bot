@@ -583,11 +583,43 @@ def list_documents():
     status = request.args.get("status")
     profit_center = request.args.get("profit_center")
     ledger_code = request.args.get("ledger_code")
+    # 2026-06-16 P1.4 — Search + sort + date-range (Bookkeeper feedback #1).
+    q = (request.args.get("q") or "").strip() or None
+    sort = (request.args.get("sort") or "").strip() or None
+    date_from = (request.args.get("date_from") or "").strip() or None
+    date_to = (request.args.get("date_to") or "").strip() or None
 
     if profit_center:
         docs = db.get_documents_by_profit_center(profit_center, status=status)
+        # Apply q/sort/date filters in-Python over the PC-filtered list
+        # (PC query path doesn't share the new SQL filter — keep it simple).
+        if q:
+            qq = q.lower()
+            docs = [
+                d for d in docs
+                if qq in (d.get("vendor") or "").lower()
+                or qq in (d.get("original_name") or "").lower()
+                or qq in (d.get("filename") or "").lower()
+                or qq in str(d.get("amount") or "")
+            ]
+        if date_from:
+            docs = [d for d in docs if (d.get("uploaded_at") or "")[:10] >= date_from]
+        if date_to:
+            docs = [d for d in docs if (d.get("uploaded_at") or "")[:10] <= date_to]
+        if sort:
+            sort_key = {
+                "date_asc":     lambda d: d.get("uploaded_at") or "",
+                "date_desc":    lambda d: d.get("uploaded_at") or "",
+                "amount_asc":   lambda d: float(d.get("amount") or 0),
+                "amount_desc":  lambda d: float(d.get("amount") or 0),
+                "legal_entity": lambda d: d.get("legal_entity") or "",
+                "vendor":       lambda d: (d.get("vendor") or "").lower(),
+            }.get(sort)
+            if sort_key:
+                docs.sort(key=sort_key, reverse=sort.endswith("_desc") or sort == "date_desc")
     else:
-        docs = db.get_documents(status=status)
+        docs = db.get_documents(status=status, q=q, sort=sort,
+                                date_from=date_from, date_to=date_to)
 
     # Helper: pull the allocation row for (pc, code) from a doc, if any
     def _alloc_match(doc, pc, code):
@@ -3543,10 +3575,14 @@ def export_by_legal_entity():
 from routes.card_audit import card_audit_bp  # noqa: E402
 from routes.admin import admin_bp            # noqa: E402
 from routes.policy import policy_bp          # noqa: E402
+from routes.payments import payments_bp      # noqa: E402  P1.5 partial payments + is_internal
+from routes.mng import mng_bp                # noqa: E402  Phase 3 stub (P85 graceful)
 
 app.register_blueprint(card_audit_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(policy_bp)
+app.register_blueprint(payments_bp)
+app.register_blueprint(mng_bp)
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,18 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-16-phase1b",
+      "date": "2026-06-16",
+      "title": "🔍 Search/Sort/Date filters + 💰 Partial payments + 🛬 M&G stub endpoints",
+      "summary": "Bookkeeper backlog: search/sort/date-range in Approve queue, partial-payments tracking on internal invoices with auto-transition to paid when full amount reached. Plus Phase-3 prep: M&G stub endpoints live (graceful 503 until external dev side ships).",
+      "highlights": [
+        "🔍 Documents for Approval — new filter bar: search by vendor/file/amount (debounced 300ms), 6 sort options (date/amount/vendor/legal entity), date-from / date-to range, ✕ Clear button.",
+        "💰 Partial payments on internal invoices — toggle 'Internal invoice' in the detail modal. Add instalments (amount + paid_at + method + reference). Running progress bar. Auto-transition to status=paid when sum reaches invoice total.",
+        "🛬 Meet & Greet integration — three endpoints live as P85 graceful stubs at /api/mng/webhook, /api/mng/pull, /api/mng/status — returning 503 with hint until external dev team ships their side. Full contract in docs/meet-and-greet-dev-handoff.md.",
+        "📐 Stream Budgets architecture sketch — docs/stream-budgets-architecture.md describes the Phase-3 schema + X-alarm flow. Implementation ready to start in next session."
+      ]
+    },
+    {
       "version": "2026-06-16-phase1",
       "date": "2026-06-16",
       "title": "📋 Policies & Limits + ✓ Approved by Accounting + 🛬 Meet & Greet handoff",
