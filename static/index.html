@@ -251,6 +251,100 @@ a:hover { text-decoration: underline; }
 .bt-row-editing { background: var(--brand-light) !important; }
 .bt-row-editing td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
 
+/* ──────────────────────────────────────────────────────────────────────
+   2026-06-16 GLOBAL NORMALIZATION (Upload → Approve → Admin → all tabs)
+   Single source of truth for font / size / control heights — eliminates
+   "fonts jumping" across panels.
+   ────────────────────────────────────────────────────────────────────── */
+
+/* Actions cell — buttons MUST stay on one line + go side-by-side */
+.bt-table td.actions,
+table td.actions,
+.actions {
+  white-space: nowrap;
+  text-align: right;
+  vertical-align: middle;
+}
+.actions > * + * { margin-left: 6px; }   /* uniform spacing between buttons */
+.actions .btn { display: inline-flex; align-items: center; }
+
+/* Make all data tables share the same baseline.
+   Any table that doesn't already opt-in to .bt-table gets the same baseline
+   rules so font hierarchy stays consistent. */
+table { font-family: inherit; }
+table th { font-weight: 600; }
+
+/* Normalise every form control: same height, same border, same font.
+   Scoped to interactive controls only — won't override toggles or pill chips. */
+input[type="text"], input[type="email"], input[type="number"],
+input[type="search"], input[type="date"], input[type="month"],
+input[type="password"], input[type="url"], input[type="tel"],
+select, textarea {
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+textarea { line-height: 1.45; padding: 8px 10px; }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+}
+input[disabled], select[disabled], textarea[disabled] {
+  background: #f8fafc;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+input::placeholder, textarea::placeholder { color: #9ca3af; }
+
+/* Buttons — same font, same line-height across all sizes */
+.btn {
+  font-family: inherit;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+/* Forms commonly use a "floating label" pattern — give those labels
+   a single, recognisable typographic treatment so they stop "jumping". */
+.field-label, label.field-label,
+.bt-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+/* .section-card + .section-card-header live at lines ~1347 — leave them.
+   Just add the form-light backdrop for the add-form area inside Admin cards. */
+.bt-card-form-row {
+  background: var(--brand-light);
+  padding: 14px 16px;
+  border-bottom: 1px solid #d6e1f5;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.bt-card-form-row label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.bt-card-form-row > button { align-self: end; }
+
 /* Filter bar — brand-aligned (used in Approve + Confirm-for-Payment) */
 .bt-filter-bar {
   padding: 10px 14px;
