@@ -61,10 +61,10 @@ a:hover { text-decoration: underline; }
 }
 /* Inner constraint so tabs + chip stay aligned to the 1400px content column */
 .header { gap: 0; }
-.header-left { padding-left: 28px; flex: 1 1 auto; min-width: 0; max-width: 1100px; }
-.header-right { padding-right: 28px; flex: 0 0 auto; }
+.header-left { padding-left: 20px; flex: 1 1 auto; min-width: 0; }
+.header-right { padding-right: 20px; flex: 0 0 auto; }
 @media (min-width: 1500px) {
-  .header { padding: 0 calc((100vw - 1400px) / 2); }
+  .header { padding: 0 calc((100vw - 1480px) / 2); }
 }
 .header-left {
   display: flex;
@@ -103,25 +103,39 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.5px;
 }
 
-/* Header tabs — inline pills (Call QA style) */
+/* Header tabs — inline pills (Call QA / BT4YOU style).
+   2026-06-16: horizontal scroll + fade-mask to prevent overflow into the user chip.
+*/
 .header-tabs {
   display: flex;
-  gap: 4px;
-  margin-left: 18px;
+  gap: 2px;
+  margin-left: 14px;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;            /* lets flex item shrink below content size */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;   /* Firefox */
+  -ms-overflow-style: none;/* IE/Edge */
+  /* Soft fade at the right edge so users see "there's more to scroll" */
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
 }
+.header-tabs::-webkit-scrollbar { display: none; }  /* WebKit */
 .tab-btn {
   background: transparent;
   border: none;
-  color: rgba(255,255,255,0.75);
+  color: rgba(255,255,255,0.78);
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
-  padding: 6px 14px;
+  padding: 6px 12px;
   cursor: pointer;
-  border-radius: 20px;
-  transition: background-color .15s, color .15s;
+  border-radius: 18px;
+  transition: background-color .15s ease, color .15s ease;
   white-space: nowrap;
+  flex-shrink: 0;          /* never compress tab text */
 }
 .tab-btn:hover {
   background: rgba(255,255,255,0.10);
@@ -135,6 +149,128 @@ a:hover { text-decoration: underline; }
 }
 /* Legacy .tab-bar (in case used elsewhere) — hidden in this layout */
 .tab-bar { display: none; }
+
+/* ──────────────────────────────────────────────────────────────────────
+   2026-06-16 brand-aligned utility classes (eliminate inline styling in
+   new panels — single source of truth for spacing, table, banner, forms).
+   ────────────────────────────────────────────────────────────────────── */
+.page-shell { max-width: 1280px; margin: 0 auto; padding: 24px 20px 64px; }
+.page-head { margin-bottom: 18px; }
+.page-title { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; margin: 0 0 4px; }
+.page-subtitle { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0; max-width: 780px; }
+
+.section-card + .section-card { margin-top: 14px; }
+
+.bt-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+.bt-banner-warn  { background: #fefce8; border-color: #fde68a; color: #92400e; }
+.bt-banner-info  { background: var(--brand-light); border-color: #bfdbfe; color: var(--brand-dark); }
+.bt-banner-success{ background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.bt-banner-error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+.bt-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 980px; }
+.bt-table thead { background: #f8fafc; border-bottom: 2px solid var(--border); }
+.bt-table th { padding: 9px 12px; text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.bt-table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.bt-table tbody tr:hover { background: #f8fafc; }
+.bt-table tbody tr:last-child td { border-bottom: none; }
+.ta-right { text-align: right; }
+.ta-center { text-align: center; }
+
+.form-grid { display: grid; gap: 10px; padding: 14px 16px 16px; }
+.form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.form-grid input, .form-grid select, .form-grid textarea {
+  font-family: inherit; font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: #fff; color: var(--text);
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+  width: 100%;
+}
+.form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+}
+.grid-span-2 { grid-column: span 2; }
+.grid-span-3 { grid-column: span 3; }
+.grid-span-4 { grid-column: span 4; }
+
+.bt-log-list { padding: 12px 16px; font-size: 12px; color: var(--muted); }
+.bt-log-list > div { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.bt-log-list > div:last-child { border-bottom: none; }
+
+/* Filter bar — brand-aligned (used in Approve + Confirm-for-Payment) */
+.bt-filter-bar {
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 13px;
+}
+.bt-filter-bar input[type="search"],
+.bt-filter-bar input[type="date"],
+.bt-filter-bar select {
+  font-family: inherit; font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; color: var(--text);
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.bt-filter-bar input[type="search"] { flex: 1 1 220px; min-width: 200px; }
+.bt-filter-bar input:focus, .bt-filter-bar select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.10);
+}
+.bt-filter-bar label { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+
+/* 2026-06-16 — Notification bell (Phase 2). Mirrors bt-status-pill but icon-only. */
+.bt-notif-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease;
+  padding: 0;
+}
+.bt-notif-bell:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.28);
+}
+.bt-notif-badge {
+  display: none;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  border: 1.5px solid var(--brand-dark);
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
 
 /* Header status pill (mirror BT4YOU pattern) */
 .bt-status-pill {
@@ -156,6 +292,19 @@ a:hover { text-decoration: underline; }
   border-radius: 50%;
   background: #22c55e;
   box-shadow: 0 0 4px #22c55e;
+}
+
+/* 2026-06-16 — brand lockup (title + subtitle next to logo mark) */
+.bt-brand-lockup { display: flex; flex-direction: column; line-height: 1.15; white-space: nowrap; flex-shrink: 0; }
+.bt-brand-title { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: .02em; }
+.bt-brand-subtitle { font-size: 10px; font-weight: 400; color: rgba(255,255,255,.65); margin-top: 1px; }
+/* Hide subtitle on narrow viewports to give tabs more room */
+@media (max-width: 1100px) {
+  .bt-brand-subtitle { display: none; }
+  .bt-brand-title { font-size: 14px; }
+}
+@media (max-width: 900px) {
+  .bt-brand-lockup { display: none; }
 }
 
 /* Logo mark (square chip) */
@@ -1251,31 +1400,32 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 <header class="header">
   <div class="header-left">
     <span class="bt-logo-mark">FIO</span>
-    <div style="display:flex;flex-direction:column;line-height:1.15">
-      <span style="font-size:15px;font-weight:700;color:#fff;letter-spacing:.02em">FIO Accounting Bot</span>
-      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7);margin-top:1px">BT4YOU Business Bots</span>
+    <div class="bt-brand-lockup">
+      <span class="bt-brand-title">FIO Accounting Bot</span>
+      <span class="bt-brand-subtitle">BT4YOU Business Bots</span>
     </div>
     <nav class="header-tabs">
       <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
       <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
       <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
-      <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">📊 Bank Statement Audit</button>
+      <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Bank Statement Audit</button>
       <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
       <button class="tab-btn" onclick="switchTab('confirm-payment')" data-tab="confirm-payment">Confirm for Payment</button>
       <button class="tab-btn" onclick="switchTab('admin')" data-tab="admin">Admin</button>
       <button class="tab-btn" onclick="switchTab('legend')" data-tab="legend">FIO Legend</button>
-      <button class="tab-btn" onclick="switchTab('policies')" data-tab="policies">📋 Policies &amp; Limits</button>
+      <button class="tab-btn" onclick="switchTab('policies')" data-tab="policies">Policies &amp; Limits</button>
     </nav>
   </div>
   <div class="header-right">
     <span class="bt-status-pill" title="FIO liveness · last sync"><span class="bt-status-dot"></span> ON</span>
-    <!-- 2026-06-16 Phase 2 — notification bell -->
-    <button id="notif-bell" type="button" onclick="openNotificationsModal()"
-            title="Notifications"
-            style="position:relative;background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;padding:4px 6px;">
-      🔔
-      <span id="notif-badge"
-            style="display:none;position:absolute;top:0;right:0;background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:8px;padding:1px 5px;line-height:1.2;">0</span>
+    <!-- 2026-06-16 Phase 2 — notification bell (matched to bt-status-pill brand style) -->
+    <button id="notif-bell" type="button" onclick="openNotificationsModal()" title="Notifications"
+            class="bt-notif-bell">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+      </svg>
+      <span id="notif-badge" class="bt-notif-badge">0</span>
     </button>
     <button id="signed-in-chip"
             onclick="openSignInModal()"
@@ -1455,12 +1605,10 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <option value="posted">Posted</option>
         </select>
       </div>
-      <!-- 2026-06-16 P1.4 — Bookkeeper-requested filters -->
-      <div id="approve-filter-bar" style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;">
-        <input id="approve-q" type="search" placeholder="🔍 Search vendor / file / amount…"
-               oninput="onApproveFilterChange()"
-               style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;" />
-        <select id="approve-sort" onchange="loadApprovePanel()" class="filter-select">
+      <!-- 2026-06-16 P1.4 — Bookkeeper-requested filters (brand-aligned) -->
+      <div id="approve-filter-bar" class="bt-filter-bar">
+        <input id="approve-q" type="search" placeholder="Search vendor, file or amount…" oninput="onApproveFilterChange()" />
+        <select id="approve-sort" onchange="loadApprovePanel()">
           <option value="date_desc">Sort: newest first</option>
           <option value="date_asc">Sort: oldest first</option>
           <option value="amount_desc">Sort: amount high → low</option>
@@ -1468,13 +1616,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <option value="vendor">Sort: vendor A→Z</option>
           <option value="legal_entity">Sort: legal entity A→Z</option>
         </select>
-        <label style="color:#475569;">From
-          <input id="approve-date-from" type="date" onchange="loadApprovePanel()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;" />
-        </label>
-        <label style="color:#475569;">To
-          <input id="approve-date-to" type="date" onchange="loadApprovePanel()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;" />
-        </label>
-        <button class="btn btn-ghost btn-sm" onclick="clearApproveFilters()" title="Clear search + dates + sort">✕ Clear</button>
+        <label>From <input id="approve-date-from" type="date" onchange="loadApprovePanel()" /></label>
+        <label>To <input id="approve-date-to" type="date" onchange="loadApprovePanel()" /></label>
+        <button class="btn btn-ghost btn-sm" onclick="clearApproveFilters()" title="Clear search + dates + sort">Clear</button>
       </div>
       <table>
         <thead>
@@ -1949,18 +2093,18 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <!-- 2026-06-16 Phase 3 — Stream Budget banner -->
       <div id="cp-budget-banner" style="display:none;margin-bottom:10px;"></div>
 
-      <!-- 2026-06-16 Phase 2 — Salaries + Payment Date filters (client-side, bookkeeper request) -->
-      <div id="cp-extra-filters" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border-radius:6px;font-size:12px;">
-        <select id="cp-category-filter" onchange="reapplyCPClientFilters()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;">
+      <!-- 2026-06-16 Phase 2 — Salaries + Payment Date filters (brand-aligned) -->
+      <div id="cp-extra-filters" class="bt-filter-bar" style="border-radius:8px;border-bottom:none;margin-bottom:10px;">
+        <select id="cp-category-filter" onchange="reapplyCPClientFilters()">
           <option value="">All categories</option>
-          <option value="salaries">💼 Salaries only</option>
+          <option value="salaries">Salaries only</option>
           <option value="non-salaries">Non-salary invoices only</option>
-          <option value="internal">🏢 Internal invoices only</option>
+          <option value="internal">Internal invoices only</option>
         </select>
-        <label>Pay date from <input id="cp-paydate-from" type="date" onchange="reapplyCPClientFilters()" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;" /></label>
-        <label>to <input id="cp-paydate-to" type="date" onchange="reapplyCPClientFilters()" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;" /></label>
-        <button class="btn btn-ghost btn-sm" onclick="clearCPExtraFilters()">✕ Clear</button>
-        <span id="cp-filter-summary" style="margin-left:auto;color:var(--muted);"></span>
+        <label>Pay date from <input id="cp-paydate-from" type="date" onchange="reapplyCPClientFilters()" /></label>
+        <label>to <input id="cp-paydate-to" type="date" onchange="reapplyCPClientFilters()" /></label>
+        <button class="btn btn-ghost btn-sm" onclick="clearCPExtraFilters()">Clear</button>
+        <span id="cp-filter-summary" style="margin-left:auto;color:var(--muted);font-size:12px;"></span>
       </div>
 
       <!-- Per-status counter strip (diagnostic + jump-to-stage) -->
@@ -2599,46 +2743,49 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
        Policies & Limits (2026-06-16 P1.2) — editable corporate thresholds
        ─────────────────────────────────────────────────────────────────── -->
   <div class="panel" id="panel-policies">
-    <div style="max-width:1200px;margin:0 auto;padding:24px 16px;">
-      <h2 style="margin:0 0 8px;font-size:20px;">📋 Internal Policies &amp; Limits</h2>
-      <p style="color:var(--muted);margin:0 0 16px;font-size:14px;">
-        These are the active spend-limit rules that drive every "Policy Violation" message
-        in FIO. When an invoice crosses a threshold below, the system flags it in the
-        Approve queue and a chip appears in the Policy Violations panel. Edit a threshold
-        to update what counts as a violation going forward — the change-log at the bottom
-        records every edit for audit.
-      </p>
-      <div id="policies-empty" style="display:none;padding:16px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;color:#92400e;font-size:13px;">
-        ⚠ No policy rules in the database — falling back to hard-coded defaults. Use the form below to seed.
+    <div class="page-shell">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">Internal Policies &amp; Limits</h1>
+          <p class="page-subtitle">
+            The active spend-limit rules driving every Policy Violation message in FIO. Edit a threshold to
+            change what counts as a violation going forward — the change log records every edit for audit.
+          </p>
+        </div>
+      </header>
+
+      <div id="policies-empty" class="bt-banner bt-banner-warn" style="display:none;">
+        No policy rules in the database — falling back to hard-coded defaults. Use the form below to seed.
       </div>
+
       <div class="section-card">
         <div class="section-card-header">Active rules</div>
-        <div class="table-wrapper" style="overflow-x:auto;">
-          <table style="min-width:1000px;width:100%;border-collapse:collapse;font-size:13px;">
-            <thead style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+        <div class="table-wrapper">
+          <table class="bt-table">
+            <thead>
               <tr>
-                <th style="padding:8px 10px;text-align:left;">Code</th>
-                <th style="padding:8px 10px;text-align:left;">Policy</th>
-                <th style="padding:8px 10px;text-align:left;">Field</th>
-                <th style="padding:8px 10px;text-align:left;">Level</th>
-                <th style="padding:8px 10px;text-align:right;">Threshold (EUR)</th>
-                <th style="padding:8px 10px;text-align:left;">Unit</th>
-                <th style="padding:8px 10px;text-align:left;">Requires</th>
-                <th style="padding:8px 10px;text-align:left;">Owner</th>
-                <th style="padding:8px 10px;text-align:left;">Updated</th>
-                <th style="padding:8px 10px;text-align:left;">Actions</th>
+                <th>Code</th>
+                <th>Policy</th>
+                <th>Field</th>
+                <th>Level</th>
+                <th class="ta-right">Threshold (EUR)</th>
+                <th>Unit</th>
+                <th>Requires</th>
+                <th>Owner</th>
+                <th>Updated</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="policies-tbody">
-              <tr><td colspan="10" class="empty-state" style="padding:24px;text-align:center;color:var(--muted);">Loading…</td></tr>
+              <tr><td colspan="10" class="empty-state">Loading…</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <div class="section-card" style="margin-top:16px;" id="policies-add-card">
-        <div class="section-card-header">+ Add new rule</div>
-        <div style="padding:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      <div class="section-card" id="policies-add-card">
+        <div class="section-card-header">Add new rule</div>
+        <div class="form-grid form-grid-4">
           <input id="pr-code" placeholder="code (e.g. office_supplies_max_per_item)" />
           <input id="pr-policy_name" placeholder="policy_name (e.g. office_supplies)" />
           <input id="pr-field" placeholder="field (e.g. max_per_item)" />
@@ -2651,16 +2798,14 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <input id="pr-unit" placeholder="unit (per_invoice / per_person / per_day)" />
           <input id="pr-requires" placeholder="requires (optional)" />
           <input id="pr-owner" placeholder="owner (CEO / CFO name)" />
-          <input id="pr-description" placeholder="description" style="grid-column:span 3;" />
+          <input id="pr-description" placeholder="description" class="grid-span-3" />
           <button class="btn btn-primary" onclick="addPolicyRule()">Add rule</button>
         </div>
       </div>
 
-      <div class="section-card" style="margin-top:16px;">
+      <div class="section-card">
         <div class="section-card-header">Recent changes</div>
-        <div id="policies-history" style="padding:12px;font-size:12px;color:var(--muted);">
-          Loading…
-        </div>
+        <div id="policies-history" class="bt-log-list">Loading…</div>
       </div>
     </div>
   </div>
@@ -5806,8 +5951,8 @@ function refreshNotifBadge() {
     var n = (r && r.unread_count) || 0;
     var badge = document.getElementById('notif-badge');
     if (!badge) return;
-    if (n > 0) { badge.style.display = 'inline-block'; badge.textContent = n > 99 ? '99+' : String(n); }
-    else { badge.style.display = 'none'; }
+    badge.textContent = n > 99 ? '99+' : String(n);
+    badge.style.display = n > 0 ? 'inline-block' : 'none';
   }).catch(function(){ /* silent — bell is best-effort */ });
 }
 
