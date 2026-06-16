@@ -3,6 +3,19 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-16-phase2",
+      "date": "2026-06-16",
+      "title": "🔔 In-app bell + 💬 Slack CEO alerts + 🏦 Bank archives + 💼 Salaries + SMTP foundation",
+      "summary": "Phase 2 ships: notification bell with auto-fire when CEO approves invoices; Slack integration for CEO urgent-payment alerts (graceful 503 until SLACK_CEO_WEBHOOK set); bank statement archive with re-check; salary doc tagging + payment-date filter in Confirm for Payment; SMTP foundation for Phase 3 X-alarm emails.",
+      "highlights": [
+        "🔔 Notification bell (top-right header) — badge shows unread count, modal lists all. Auto-fires for Rita when CEO approves an invoice. 60s polling.",
+        "🚨 Send to CEO (Slack) — admin/bookkeeper button in Awaiting Payment row → posts to Slack channel + in-app bell. Graceful fallback when SLACK_CEO_WEBHOOK secret not set (in-app only). Setup guide: docs/slack-setup-for-ceo.md.",
+        "🏦 Bank Statement Archives (Admin tab) — list past CSV imports, ↻ Re-check unmatched/suggested rows to pick up newly-uploaded invoices.",
+        "💼 Salary doc tag — toggle in detail modal. New filters in Confirm for Payment: 💼 Salaries only / Non-salary only / 🏢 Internal only + payment-date range filter (Bookkeeper request #2 from the feedback doc).",
+        "📧 SMTP wrapper (services/email_send.py) — foundation for Phase 3 X-alarm emails. Graceful when SMTP_USER/PASS not set."
+      ]
+    },
+    {
       "version": "2026-06-16-phase1b",
       "date": "2026-06-16",
       "title": "🔍 Search/Sort/Date filters + 💰 Partial payments + 🛬 M&G stub endpoints",

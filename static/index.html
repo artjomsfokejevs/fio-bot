@@ -1947,6 +1947,20 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <!-- Sub-tabs for the 4 stages -->
       <div id="cp-stage-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
 
+      <!-- 2026-06-16 Phase 2 — Salaries + Payment Date filters (client-side, bookkeeper request) -->
+      <div id="cp-extra-filters" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border-radius:6px;font-size:12px;">
+        <select id="cp-category-filter" onchange="reapplyCPClientFilters()" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;">
+          <option value="">All categories</option>
+          <option value="salaries">💼 Salaries only</option>
+          <option value="non-salaries">Non-salary invoices only</option>
+          <option value="internal">🏢 Internal invoices only</option>
+        </select>
+        <label>Pay date from <input id="cp-paydate-from" type="date" onchange="reapplyCPClientFilters()" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;" /></label>
+        <label>to <input id="cp-paydate-to" type="date" onchange="reapplyCPClientFilters()" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;" /></label>
+        <button class="btn btn-ghost btn-sm" onclick="clearCPExtraFilters()">✕ Clear</button>
+        <span id="cp-filter-summary" style="margin-left:auto;color:var(--muted);"></span>
+      </div>
+
       <!-- Per-status counter strip (diagnostic + jump-to-stage) -->
       <div id="cp-status-counts" style="margin-bottom:10px;"></div>
 
@@ -2179,6 +2193,31 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
             <span id="setting-chase-status" style="font-size:12px;color:var(--muted);"></span>
           </div>
         </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <!-- 2026-06-16 Phase 2 — Slack integration                       -->
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">💬 Slack integration (CEO urgent payment alerts)</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
+          When a bookkeeper hits <b>🚨 Send to CEO</b> on an Awaiting-Payment row, FIO posts the invoice details to a Slack channel for CEO eyes + creates an in-app notification. Set <code>SLACK_CEO_WEBHOOK</code> Fly secret to a Slack Incoming Webhook URL. Until set, posts go to the in-app bell only.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="testSlack()">📤 Send test ping</button>
+          <span id="slack-status-pill" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <!-- 2026-06-16 Phase 2 — Bank Statement Archives                 -->
+      <!-- ──────────────────────────────────────────────────────────── -->
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);">
+        <h3 style="font-size:16px;font-weight:600;margin:0 0 4px;">🏦 Bank Statement Archives</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">
+          Past CSV imports for Bank Statement Audit. Click <b>↻ Re-check</b> to reset the batch's unmatched + suggested rows so the next reconcile finds new invoices that didn't exist when the batch was first imported.
+        </p>
+        <div id="bsa-list"><div style="color:var(--muted);font-size:13px;padding:14px;">Loading…</div></div>
       </div>
 
     </div>
@@ -2705,6 +2744,13 @@ function switchTab(tabName) {
     loadFioUsers();          // 2026-06-07 P1.2 — FIO-managed users roster
     loadPayingAccounts();    // 2026-06-08 Top-7 P2.3 — paying accounts roster
     loadChaseTemplate();     // 2026-06-11 Top-2 P1 — chase template editor
+    loadBankStatementArchives(); // 2026-06-16 Phase 2 — past imports
+    // 2026-06-16 Phase 2 — Slack config status pill
+    api('GET', '/api/slack/status').then(function(r){
+      var p = document.getElementById('slack-status-pill');
+      if (p) p.textContent = r && r.configured ? '✓ webhook configured' : '⚠ webhook not set — alerts go to in-app bell only';
+      if (p) p.style.color = r && r.configured ? '#16a34a' : '#ca8a04';
+    }).catch(function(){});
   } else if (tabName === 'analytics') {
     loadAnalyticsPanel();
   } else if (tabName === 'policies') {
@@ -4165,7 +4211,7 @@ function loadConfirmPaymentPanel() {
     catch (e) { console.error('renderCPStatusCounts failed', e); }
     try { renderCPTotals((d && d.documents) || []); }
     catch (e) { console.error('renderCPTotals failed', e); }
-    try { renderCPRows((d && d.documents) || []); }
+    try { renderCPRows(_filterCPDocs((d && d.documents) || [])); }
     catch (e) {
       console.error('renderCPRows failed', e);
       rowsEl.innerHTML = '<tr><td colspan="13" class="empty-state" style="color:var(--red);">UI error: ' + esc(e.message || String(e)) + '</td></tr>';
@@ -5871,6 +5917,39 @@ function recheckArchive(batchId) {
 // ───────────────────────────────────────────────────────────────────
 // Salary toggle (2026-06-16 Phase 2) — adds to detail modal P1.5 section
 // ───────────────────────────────────────────────────────────────────
+// 2026-06-16 Phase 2 — CP client-side filters (Salaries / payment date / internal)
+function _filterCPDocs(docs) {
+  var cat = (document.getElementById('cp-category-filter') || {}).value || '';
+  var from = (document.getElementById('cp-paydate-from') || {}).value || '';
+  var to = (document.getElementById('cp-paydate-to') || {}).value || '';
+  var out = docs.filter(function(d) {
+    if (cat === 'salaries' && !d.is_salary) return false;
+    if (cat === 'non-salaries' && d.is_salary) return false;
+    if (cat === 'internal' && !d.is_internal) return false;
+    var pd = d.desired_payment_date || '';
+    if (from && (!pd || pd < from)) return false;
+    if (to && (!pd || pd > to)) return false;
+    return true;
+  });
+  var sum = document.getElementById('cp-filter-summary');
+  if (sum) {
+    var hidden = docs.length - out.length;
+    sum.textContent = hidden > 0 ? (out.length + ' shown · ' + hidden + ' hidden by filters') : (out.length + ' rows');
+  }
+  return out;
+}
+
+function reapplyCPClientFilters() {
+  if (CP_QUEUE_CACHE && CP_QUEUE_CACHE.length) renderCPRows(_filterCPDocs(CP_QUEUE_CACHE));
+}
+
+function clearCPExtraFilters() {
+  ['cp-category-filter','cp-paydate-from','cp-paydate-to'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  reapplyCPClientFilters();
+}
+
 function toggleIsSalary(docId, isSalary) {
   // Reuses the is-internal endpoint pattern; add the new endpoint hook
   // via PATCH /api/documents/<id>/is-salary — added to routes/payments.py
