@@ -1430,9 +1430,8 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         <select id="stream-filter" class="filter-select" onchange="loadApprovePanel()">
           <option value="">All Streams</option>
           <option value="AA">Alps2Alps &mdash; Artjoms Fokejevs</option>
-          <option value="BK">Skibookers &mdash; Anastasiia Lizanets</option>
           <option value="SR">Skipasser &mdash; Serge Cymbal</option>
-          <option value="AH">Mountly &mdash; Katia Sogreeva-Peyron</option>
+          <option value="AH">Mountly &mdash; Katia Sogreeva</option>
           <option value="CF">MyPeak Finance &mdash; Rihards Sakovics</option>
           <option value="AL">ALVEDA &mdash; Evgeny Arsentev</option>
         </select>
@@ -2063,7 +2062,6 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
               <option value="">— none —</option>
               <option value="AG">AG · Amitours Group</option>
               <option value="AA">AA · Alps2Alps</option>
-              <option value="BK">BK · Skibookers</option>
               <option value="SR">SR · Skipasser</option>
               <option value="MT">MT · Mountly</option>
               <option value="CF">CF · MyPeak Finance</option>
@@ -2235,7 +2233,6 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;font-size:11px;">
             <label>Stream<br><select id="sb-pc" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;">
               <option value="AA">AA · Alps2Alps</option>
-              <option value="BK">BK · Skibookers</option>
               <option value="SR">SR · Skipasser</option>
               <option value="AH">AH · Mountly</option>
               <option value="CF">CF · MyPeak Finance</option>
@@ -2831,7 +2828,6 @@ function renderAnalyticsStreamFilter() {
     {code: '', label: 'All streams', color: '#64748b'},
     {code: 'AG', label: 'Amitours Group', color: '#dc2626'},
     {code: 'AA', label: 'Alps2Alps', color: '#0ea5e9'},
-    {code: 'BK', label: 'Skibookers', color: '#059669'},
     {code: 'SR', label: 'Skipasser', color: '#f59e0b'},
     {code: 'AH', label: 'Mountly', color: '#14b8a6'},
     {code: 'CF', label: 'MyPeak Finance', color: '#ec4899'},
@@ -6028,7 +6024,7 @@ function loadStreamBudgets() {
   api('GET', '/api/stream-budgets?period=' + period).then(function(r){
     var rows = (r && r.budgets) || [];
     var box = document.getElementById('sb-list');
-    var streams = ['AA','BK','SR','AH','CF','AL'];
+    var streams = ['AA','SR','AH','CF','AL'];  // BK Skibookers decommissioned 2026-06-16
     var byPc = {};
     rows.forEach(function(b){ byPc[b.profit_center] = b; });
     var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
@@ -6911,7 +6907,7 @@ function renderModalActions(doc) {
 
   var pcOptions = '<option value="">-- Select Profit Center --</option>';
   var pcList = [
-    {code: 'AA', name: 'Alps2Alps'}, {code: 'BK', name: 'Skibookers'},
+    {code: 'AA', name: 'Alps2Alps'},
     {code: 'SR', name: 'Skipasser'}, {code: 'AH', name: 'Mountly'},
     {code: 'CF', name: 'MyPeak Finance'}, {code: 'AL', name: 'ALVEDA'}
   ];
@@ -7851,7 +7847,6 @@ function populateCaPcSelects() {
   var PC_LIST = [
     {code: 'AA', name: 'Alps2Alps'},
     {code: 'AG', name: 'Amitours Group'},
-    {code: 'BK', name: 'Skibookers'},
     {code: 'SR', name: 'Skipasser'},
     {code: 'MT', name: 'Mountly'},
     {code: 'AH', name: 'Mountly (AH)'},

@@ -269,7 +269,70 @@ FIO sends:
 
 ---
 
-## 13. Contact
+## 13. Your-side task list & access requirements (for your sprint planning)
+
+Hand this section to your project manager — it's a one-page sprint-planning checklist of what your team needs to build, request, or configure on YOUR side. Estimates are rough; adjust to your team's velocity.
+
+### A. Engineering tasks (your dev team builds)
+
+| # | Task | Spec section | Est. |
+|---|---|---|---|
+| 1 | Outbound webhook publisher: emit `shift.completed` POST to FIO's `/api/mng/webhook` on every shift state change to `completed` | §2 | 3 d |
+| 2 | Retry queue + dead-letter for webhook failures (1s → 5s → 30s → 5m → 30m → 2h → 24h then DLQ) | §2 | 2 d |
+| 3 | Idempotency: stable `X-Idempotency-Key` per `event_id`; replay uses SAME key | §2 | 1 d |
+| 4 | Pull API endpoint: `GET /v1/shifts?period=YYYY-MM&status=completed` with pagination, sorted by `completed_at ASC` | §3 | 3 d |
+| 5 | Bearer-auth middleware on the Pull API endpoint (validate `FIO_PULL_TOKEN`) | §4 | 0.5 d |
+| 6 | Outbound auth: include `Authorization: Bearer <MNG_WEBHOOK_TOKEN>` on every webhook POST | §4 | 0.5 d |
+| 7 | Currency normalisation: emit `shift.amount` in invoice currency; if multi-currency, also emit `amount_breakdown` | §2 | 1 d |
+| 8 | PII handling: log payloads with `passenger_name` redacted after 30 days at-rest | §8 | 1 d |
+| 9 | Cancelled-shift policy decision (drop or send with `status=cancelled`); document and ship | §6 | 0.5 d |
+| 10 | Load test: 200 webhooks/sec sustained 1 min against FIO staging URL | §7 | 1 d |
+| 11 | Reconciliation runbook: monthly script that compares webhook count vs Pull API count for the period | §6 | 1 d |
+| **Σ** | | | **~14 d** |
+
+### B. Access / credentials you need to request
+
+| # | Item | From whom | Purpose |
+|---|---|---|---|
+| 1 | `FIO_PULL_TOKEN` — Bearer token FIO uses to call YOUR Pull API | Issue yourselves; share with Artjoms securely (1Password Share / Signal) | FIO calls your /v1/shifts |
+| 2 | `MNG_WEBHOOK_TOKEN` — Bearer token your webhook publisher uses when calling FIO | Artjoms (FIO admin) issues; he'll deliver via 1Password Share | Your bot authenticates to FIO |
+| 3 | FIO staging URL | Artjoms | `https://fio-amitours-staging.fly.dev` (to be created upon kickoff) |
+| 4 | FIO prod URL | Artjoms | `https://fio-amitours.fly.dev` (already live) |
+| 5 | Slack channel `#mng-integration-ops` invite | Artjoms | Joint ops channel |
+| 6 | PagerDuty integration key for sustained-failure pages | Your team creates; share key | Wake-up call when FIO sees 3+ pull failures |
+| 7 | Sample-export PDF/CSV from your M&G provider system | Your team | FIO needs at least 1 real shift sample for parser-stub validation |
+
+### C. Configuration on your side (your secrets-manager)
+
+```
+FIO_WEBHOOK_URL=https://fio-amitours.fly.dev/api/mng/webhook
+FIO_WEBHOOK_TOKEN=<provided by Artjoms after kickoff>
+FIO_STAGING_WEBHOOK_URL=https://fio-amitours-staging.fly.dev/api/mng/webhook
+FIO_STAGING_WEBHOOK_TOKEN=<provided by Artjoms>
+```
+
+### D. Pre-staging readiness checklist (deliver to Artjoms before staging cutover)
+
+- [ ] All §7 testing-checklist items demonstrated against FIO staging
+- [ ] §8 security-checklist signed off by your security lead
+- [ ] PII redaction implemented + tested
+- [ ] Reconciliation script in CI / scheduled
+- [ ] Dead-letter queue alert wired to your ops
+- [ ] On-call rotation set up; Slack channel + PagerDuty key shared
+- [ ] Sample export shared with Artjoms (for parser-stub validation)
+
+### E. Decisions to bring to kickoff
+
+1. **Cancelled-shift policy** — drop, OR send with `status=cancelled`?
+2. **Backfill scope** — how far back can your Pull API go? (1 month? 6 months? since-inception?)
+3. **PII storage** — your retention policy for passenger names / arrival details?
+4. **Refund / chargeback flow** — out-of-scope per §11, but worth confirming with Marita
+5. **Multi-vendor mode** — single M&G provider or multiple? Affects `vendor_legal_entity` semantics.
+6. **Pagination cursor encoding** — opaque token (your choice) or timestamp+id?
+
+---
+
+## 14. Contact
 
 - **FIO product owner**: Artjoms Fokejevs — artjoms.fokejevs@gmail.com
 - **FIO bookkeeper (reconciliation lead)**: Rita Petukhova

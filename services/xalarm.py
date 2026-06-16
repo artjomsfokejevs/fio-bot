@@ -33,7 +33,10 @@ __all__ = [
 ]
 
 PC_LABELS = {
-    "AA": "Alps2Alps", "BK": "Skibookers", "SR": "Skipasser",
+    # 2026-06-16 — BK (Skibookers) decommissioned per Artjoms.
+    # Anastasiia Lizanets removed from all logs. Historic data with PC=BK
+    # remains queryable but the stream is not listed for new uploads.
+    "AA": "Alps2Alps", "SR": "Skipasser",
     "AH": "Mountly",   "CF": "MyPeak Finance", "AL": "ALVEDA",
 }
 
