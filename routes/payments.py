@@ -137,3 +137,31 @@ def toggle_is_internal(doc_id: str) -> Any:
     except Exception:  # noqa: BLE001
         pass
     return jsonify({"doc_id": doc_id, "is_internal": bool(val)})
+
+
+@payments_bp.route("/documents/<doc_id>/is-salary", methods=["PATCH"])
+def toggle_is_salary(doc_id: str) -> Any:
+    """Phase 2 — Salaries section. Bookkeeper marks salary invoices so
+    they show in a dedicated Salaries filter in Budget Check (avoids
+    mixing salary docs with vendor invoices)."""
+    err = _require_role(*_WRITE_ROLES)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    val = 1 if bool(body.get("is_salary")) else 0
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "doc not found"}), 404
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE documents SET is_salary = ? WHERE id = ?", (val, doc_id))
+        conn.commit()
+    finally:
+        conn.close()
+    actor = _current_user_name() or "admin"
+    try:
+        db.insert_audit_log(doc_id, "is_salary_toggled",
+                            {"is_salary": val}, performed_by=actor)
+    except Exception:  # noqa: BLE001
+        pass
+    return jsonify({"doc_id": doc_id, "is_salary": bool(val)})

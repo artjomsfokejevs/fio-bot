@@ -224,6 +224,29 @@ CREATE TABLE IF NOT EXISTS partial_payments (
 );
 CREATE INDEX IF NOT EXISTS ix_pp_doc ON partial_payments(doc_id);
 
+-- 2026-06-16 Phase 2 — In-app notification bell.
+-- Used (so far) when CEO confirms a payment to surface to Rita without
+-- forcing her to refresh the queue. Also a sink for future Phase 3
+-- budget-alarm pings, P85-stub messages, etc.
+CREATE TABLE IF NOT EXISTS notifications (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient_role  TEXT,                          -- 'bookkeeper' / 'admin' / 'holding_ceo' / NULL = broadcast
+    recipient_user  TEXT,                          -- specific full_name (overrides role); NULL = all users with role
+    kind            TEXT NOT NULL,                 -- 'ceo_approved_invoice' / 'urgent_payment' / 'system' / 'budget_alarm'
+    title           TEXT NOT NULL,
+    body            TEXT,
+    doc_id          TEXT,
+    href            TEXT,                          -- optional deep-link
+    severity        TEXT NOT NULL DEFAULT 'info',  -- 'info' / 'warning' / 'urgent'
+    created_at      TEXT NOT NULL,
+    created_by      TEXT,
+    read_at         TEXT,
+    read_by         TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_notif_role ON notifications(recipient_role);
+CREATE INDEX IF NOT EXISTS ix_notif_user ON notifications(recipient_user);
+CREATE INDEX IF NOT EXISTS ix_notif_unread ON notifications(read_at);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,
@@ -340,6 +363,16 @@ def init_db() -> None:
             # entities list.
             ("is_internal",
                 "ALTER TABLE documents ADD COLUMN is_internal INTEGER DEFAULT 0"),
+            # 2026-06-16 Phase 2 — Salary doc category (bookkeeper request).
+            # When True the doc shows up in the new Salaries section of
+            # Budget Check, filterable by desired_payment_date so Rita can
+            # batch-approve invoices coming due on a specific payday.
+            ("is_salary",
+                "ALTER TABLE documents ADD COLUMN is_salary INTEGER DEFAULT 0"),
+            # 2026-06-16 Phase 2 — bank-statement archive metadata.
+            # batch_id already lives on card_transactions; this remembers
+            # the user-facing archive label + last re-check timestamp
+            # without polluting card_transactions rows.
         ):
             try:
                 conn.execute("SELECT %s FROM documents LIMIT 1" % col)

@@ -1269,6 +1269,14 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   </div>
   <div class="header-right">
     <span class="bt-status-pill" title="FIO liveness · last sync"><span class="bt-status-dot"></span> ON</span>
+    <!-- 2026-06-16 Phase 2 — notification bell -->
+    <button id="notif-bell" type="button" onclick="openNotificationsModal()"
+            title="Notifications"
+            style="position:relative;background:transparent;border:none;color:#fff;cursor:pointer;font-size:18px;padding:4px 6px;">
+      🔔
+      <span id="notif-badge"
+            style="display:none;position:absolute;top:0;right:0;background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:8px;padding:1px 5px;line-height:1.2;">0</span>
+    </button>
     <button id="signed-in-chip"
             onclick="openSignInModal()"
             title="Click to switch user"
@@ -3262,6 +3270,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }, 15000);
   setupUpload();
+  // 2026-06-16 Phase 2 — start notification bell polling once DOM is ready
+  setTimeout(startNotifPolling, 1000);
 });
 
 // ---------------------------------------------------------------------------
@@ -5686,6 +5696,189 @@ function reactivatePolicyRule(ruleId) {
     .catch(function(err) { showToast('Failed: ' + (err && err.message ? err.message : err), 'error'); });
 }
 
+// ───────────────────────────────────────────────────────────────────
+// Notifications bell + modal (2026-06-16 Phase 2)
+// ───────────────────────────────────────────────────────────────────
+var _NOTIF_POLL_TIMER = null;
+
+function refreshNotifBadge() {
+  api('GET', '/api/notifications/unread-count').then(function(r) {
+    var n = (r && r.unread_count) || 0;
+    var badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    if (n > 0) { badge.style.display = 'inline-block'; badge.textContent = n > 99 ? '99+' : String(n); }
+    else { badge.style.display = 'none'; }
+  }).catch(function(){ /* silent — bell is best-effort */ });
+}
+
+function startNotifPolling() {
+  if (_NOTIF_POLL_TIMER) clearInterval(_NOTIF_POLL_TIMER);
+  refreshNotifBadge();
+  _NOTIF_POLL_TIMER = setInterval(refreshNotifBadge, 60000);  // poll every 60s
+}
+
+function openNotificationsModal() {
+  api('GET', '/api/notifications').then(function(r) {
+    var items = (r && r.items) || [];
+    var html = '<div style="padding:14px;max-width:520px;">';
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">';
+    html += '<h3 style="margin:0;">🔔 Notifications</h3>';
+    if (items.some(function(i){ return !i.read_at; })) {
+      html += '<button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="markAllNotifsRead()">Mark all read</button>';
+    }
+    html += '</div>';
+    if (!items.length) {
+      html += '<div style="color:var(--muted);font-size:13px;padding:20px;text-align:center;">No notifications yet.</div>';
+    } else {
+      items.forEach(function(n) {
+        var bg = n.read_at ? '#fff' : (n.severity === 'urgent' ? '#fef2f2' : (n.severity === 'warning' ? '#fefce8' : '#eff6ff'));
+        var bar = n.severity === 'urgent' ? '#dc2626' : (n.severity === 'warning' ? '#eab308' : '#3b82f6');
+        html += '<div style="margin-bottom:6px;padding:8px 10px;background:' + bg + ';border-left:3px solid ' + bar + ';border-radius:4px;font-size:13px;">';
+        html += '<div style="display:flex;align-items:start;gap:8px;">';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-weight:600;">' + esc(n.title) + '</div>';
+        if (n.body) html += '<div style="font-size:12px;color:#475569;margin-top:2px;">' + esc(n.body) + '</div>';
+        html += '<div style="font-size:11px;color:var(--muted);margin-top:4px;">' + esc((n.created_at || '').substring(0,16).replace('T',' ')) + (n.created_by ? ' · by ' + esc(n.created_by) : '') + '</div>';
+        html += '</div>';
+        if (n.href) {
+          html += '<a href="' + esc(n.href) + '" onclick="markNotifRead(' + n.id + ')" class="btn btn-ghost btn-sm" style="text-decoration:none;">Open</a>';
+        }
+        if (!n.read_at) {
+          html += '<button class="btn btn-ghost btn-sm" onclick="markNotifRead(' + n.id + ')" title="Mark read">✓</button>';
+        }
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    showOverlay(html);
+  }).catch(function(err) {
+    showToast('Failed to load notifications: ' + (err && err.message || err), 'error');
+  });
+}
+
+function markNotifRead(id) {
+  api('POST', '/api/notifications/' + id + '/read').then(function(){
+    refreshNotifBadge();
+    openNotificationsModal();
+  }).catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function markAllNotifsRead() {
+  api('POST', '/api/notifications/mark-all-read').then(function(r){
+    showToast('Marked ' + (r && r.marked || 0) + ' as read', 'success');
+    refreshNotifBadge();
+    openNotificationsModal();
+  }).catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+// Minimal overlay primitive — appended to <body>, removed on close.
+function showOverlay(innerHtml) {
+  closeOverlay();
+  var div = document.createElement('div');
+  div.id = '__notif_overlay';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:flex-end;padding-top:60px;padding-right:14px;';
+  div.onclick = function(e){ if (e.target === div) closeOverlay(); };
+  var card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.25);min-width:380px;max-width:560px;max-height:80vh;overflow-y:auto;';
+  card.innerHTML = innerHtml;
+  div.appendChild(card);
+  document.body.appendChild(div);
+}
+function closeOverlay() {
+  var d = document.getElementById('__notif_overlay');
+  if (d) d.remove();
+}
+
+// ───────────────────────────────────────────────────────────────────
+// CEO-urgent Slack button (2026-06-16 Phase 2)
+// ───────────────────────────────────────────────────────────────────
+function sendCeoUrgent(docId) {
+  var reason = prompt('Why is this urgent? (one line, sent to CEO via Slack + bell)');
+  if (reason === null) return;
+  api('POST', '/api/documents/' + docId + '/send-ceo-urgent', { reason: reason })
+    .then(function(r) {
+      var slack = (r && r.slack) || {};
+      if (slack.status === 'sent') {
+        showToast('✅ Sent to CEO via Slack + in-app bell', 'success');
+      } else if (slack.status === 'not_configured') {
+        showToast('🔔 In-app bell posted. Slack not configured — admin needs SLACK_CEO_WEBHOOK.', 'info');
+      } else {
+        showToast('🔔 In-app bell posted. Slack: ' + (slack.status || 'unknown'), 'info');
+      }
+    })
+    .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+function testSlack() {
+  api('POST', '/api/slack/test').then(function(r) {
+    var res = (r && r.result) || {};
+    if (res.status === 'sent') showToast('✅ Test ping sent — check Slack channel', 'success');
+    else if (res.status === 'not_configured') showToast('Not configured: ' + (res.hint || ''), 'warning');
+    else showToast('Slack response: ' + (res.status || 'unknown'), 'info');
+  }).catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Bank statement archives (2026-06-16 Phase 2)
+// ───────────────────────────────────────────────────────────────────
+function loadBankStatementArchives() {
+  var box = document.getElementById('bsa-list');
+  if (!box) return;
+  api('GET', '/api/bank-statements/archives').then(function(r){
+    var rows = (r && r.archives) || [];
+    if (!rows.length) {
+      box.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;">No bank-statement imports yet.</div>';
+      return;
+    }
+    box.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+      '<thead style="background:#f1f5f9;"><tr>' +
+      '<th style="padding:6px 8px;text-align:left;">Batch</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Source</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Period</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Tx count</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Matched</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Suggested</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Unmatched</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Imported</th>' +
+      '<th></th></tr></thead><tbody>' +
+      rows.map(function(a) {
+        var when = (a.last_at || '').substring(0,16).replace('T',' ');
+        return '<tr>' +
+          '<td style="padding:5px 8px;font-family:monospace;font-size:11px;">' + esc((a.batch_id || '').substring(0,12)) + '…</td>' +
+          '<td style="padding:5px 8px;">' + esc(a.source || '—') + '</td>' +
+          '<td style="padding:5px 8px;">' + esc(a.period || '—') + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;">' + (a.tx_count || 0) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;color:#16a34a;">' + (a.matched || 0) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;color:#ca8a04;">' + (a.suggested || 0) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;color:#dc2626;">' + (a.unmatched || 0) + '</td>' +
+          '<td style="padding:5px 8px;font-size:11px;color:var(--muted);">' + esc(when) + '</td>' +
+          '<td style="padding:5px 8px;"><button class="btn btn-ghost btn-sm" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched and let next reconcile re-evaluate">↻ Re-check</button></td>' +
+          '</tr>';
+      }).join('') + '</tbody></table>';
+  }).catch(function(err){
+    box.innerHTML = '<div style="color:var(--red);font-size:13px;padding:10px;">Failed: ' + esc(err && err.message || err) + '</div>';
+  });
+}
+
+function recheckArchive(batchId) {
+  if (!confirm('Re-check this batch? Suggested+unmatched rows reset to unmatched; matched rows untouched. Then run a fresh reconcile from the Bank Statement Audit tab.')) return;
+  api('POST', '/api/bank-statements/archives/' + encodeURIComponent(batchId) + '/recheck')
+    .then(function(r){ showToast('Reset ' + (r && r.rows_reset_for_recheck || 0) + ' rows — now run reconcile.', 'success'); loadBankStatementArchives(); })
+    .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Salary toggle (2026-06-16 Phase 2) — adds to detail modal P1.5 section
+// ───────────────────────────────────────────────────────────────────
+function toggleIsSalary(docId, isSalary) {
+  // Reuses the is-internal endpoint pattern; add the new endpoint hook
+  // via PATCH /api/documents/<id>/is-salary — added to routes/payments.py
+  api('PATCH', '/api/documents/' + docId + '/is-salary', { is_salary: !!isSalary })
+    .then(function(){ showToast(isSalary ? 'Marked as salary doc' : 'Unmarked as salary', 'success'); })
+    .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
 function renderAuditLog(entries) {
   var tbody = document.getElementById('audit-log-body');
   if (!entries.length) {
@@ -6272,6 +6465,13 @@ function renderDetails(doc) {
   html += 'Internal invoice (our entity → our entity)';
   html += '</label>';
   html += '<span style="font-size:11px;color:var(--muted);">Enables tracking partial payments / instalments.</span>';
+  html += '<span style="margin-left:10px;border-left:1px solid #cbd5e1;padding-left:10px;"></span>';
+  html += '<label style="cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;">';
+  html += '<input type="checkbox" id="pp-is-salary" ' + (doc.is_salary ? 'checked' : '') +
+          ' onchange="toggleIsSalary(\'' + esc(doc.id) + '\', this.checked)" />';
+  html += '💼 Salary doc';
+  html += '</label>';
+  html += '<span style="font-size:11px;color:var(--muted);">Bookkeeper can filter Budget Check by salary + payment due date.</span>';
   html += '</div>';
   html += '<div id="partials-body" style="margin-top:10px;">' +
           (doc.is_internal ? '<div style="color:var(--muted);font-size:13px;">Loading partial payments…</div>' : '') +

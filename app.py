@@ -1670,6 +1670,24 @@ def confirm_payment(doc_id: str):
         "at": now,
         "note": body.get("note") or "",
     })
+    # 2026-06-16 Phase 2 — In-app notification for bookkeepers so Rita
+    # doesn't have to poll the queue all day. Best-effort (never blocks
+    # the CEO confirm response).
+    try:
+        from services import notifications as _notif
+        _notif.create(
+            kind="ceo_approved_invoice",
+            title="✅ CEO approved invoice: " + (doc.get("vendor") or "—") +
+                  " · %.2f %s" % (float(doc.get("amount") or 0), doc.get("currency") or "EUR"),
+            body=(body.get("note") or "").strip() or None,
+            recipient_role="bookkeeper",
+            doc_id=doc_id,
+            href="/?doc=" + doc_id,
+            severity="info",
+            created_by=confirmed_by,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("ceo_approved_invoice notif create failed (non-blocking)")
     return jsonify({"status": "confirmed_to_pay", "document": db.get_document(doc_id)})
 
 
@@ -3577,12 +3595,14 @@ from routes.admin import admin_bp            # noqa: E402
 from routes.policy import policy_bp          # noqa: E402
 from routes.payments import payments_bp      # noqa: E402  P1.5 partial payments + is_internal
 from routes.mng import mng_bp                # noqa: E402  Phase 3 stub (P85 graceful)
+from routes.notify import notify_bp          # noqa: E402  Phase 2 notifications + Slack + archive
 
 app.register_blueprint(card_audit_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(policy_bp)
 app.register_blueprint(payments_bp)
 app.register_blueprint(mng_bp)
+app.register_blueprint(notify_bp)
 
 
 # ---------------------------------------------------------------------------
