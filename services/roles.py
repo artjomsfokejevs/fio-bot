@@ -8,15 +8,51 @@ Two-layer model:
      The browser sends this back as the X-FIO-User header on every API call.
      This module looks up the user's role and gates each endpoint / tab.
 
-Roles (MVP):
-  - admin         : sees everything; manages user-to-role assignments.
-                    Bootstrapped from data/user_roles.json (Artjoms + Rita).
-  - holding_ceo   : sees Confirm-for-Payment for any stream. Ticks the
-                    'approved to pay this week' checkbox.
-  - bookkeeper    : sees Confirm-for-Payment + Card Audit. Executes payments.
-  - stream_owner  : sees Approve/Accounting for ONE specific profit center.
-  - viewer        : default fallback. Sees only Upload + Approve (own uploads)
-                    + Legend.
+Roles (2026-06-16 — refreshed for Phase 1–3 capabilities):
+
+  ── admin (Artjoms · technical owner) ────────────────────────────────────
+     Sees: ALL tabs (Upload · Approve · Accounting · Bank Statement Audit ·
+           Analytics · Confirm for Payment · Admin · FIO Legend · Policies & Limits)
+     Can:  manage FIO users + paying accounts (CRUD + INLINE EDIT) ·
+           manage policy rules (add / edit threshold / deactivate) ·
+           set stream budgets · acknowledge X-alarms · run bank-statement
+           archive re-check · send Slack test ping · delete partial payments ·
+           edit chase task template.
+     Receives: in-app bell for ALL urgent events; X-alarm emails via
+           XALARM_OPS_EMAIL Fly secret.
+
+  ── holding_ceo (Raitis) ─────────────────────────────────────────────────
+     Sees: Upload · Approve · Accounting · Analytics · Confirm for Payment ·
+           FIO Legend · Policies & Limits   (NO Card Audit, NO Admin)
+     Can:  approve a week's payments (✓ Confirm for Payment) which triggers
+           Rita's bookkeeper-bell + auto-fires X-alarm IF stream is over
+           budget · acknowledge X-alarms · edit policy rule thresholds ·
+           set stream budgets · approve policy violations as Accounting.
+     Receives: Slack DM via BT4YOU Bot for every "Send to CEO" urgent
+           payment + every X-alarm; email via XALARM_CEO_EMAIL Fly secret.
+
+  ── bookkeeper (Rita) ────────────────────────────────────────────────────
+     Sees: Upload · Approve · Accounting · Bank Statement Audit · Analytics ·
+           Confirm for Payment · FIO Legend · Policies & Limits  (NO Admin)
+     Can:  execute payments (mark-paid + paying account picker) · budget-validate
+           docs · run bank-statement reconciliation + chase tasks · approve
+           policy violations as Accounting · send urgent-payment Slack to CEO ·
+           add partial payments on internal invoices · toggle is_internal /
+           is_salary flags on docs · acknowledge X-alarms · re-check bank
+           statement archives.
+     Receives: in-app bell when CEO confirms ANY payment; X-alarm emails
+           (looked up from fio_users WHERE role=bookkeeper).
+
+  ── stream_owner (Serge / Katia / Rihards / Evgeny) ──────────────────────
+     Sees: Upload · Approve · Accounting · Bank Statement Audit · Analytics ·
+           FIO Legend   (frontend constrains data by their profit_center)
+     Can:  approve docs for their own stream · view their stream's spend.
+     Receives: X-alarm email when their stream goes over budget + Asana
+           auto-task on the same trigger.
+
+  ── viewer (anyone unmapped) ─────────────────────────────────────────────
+     Sees: Upload · Approve · FIO Legend
+     Can:  upload invoices · view own uploads.
 
 Stored as JSON on the persistent volume so it survives redeploys.
 """
