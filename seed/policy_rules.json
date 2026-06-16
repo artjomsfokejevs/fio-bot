@@ -1,0 +1,46 @@
+[
+  {
+    "code": "business_dinner_max_total",
+    "policy_name": "business_dinner",
+    "field": "max_total",
+    "description": "Hard cap on a single business-dinner invoice. Above this → RED, must be re-approved by CEO.",
+    "level": "red",
+    "threshold_eur": 200.0,
+    "unit": "per_invoice",
+    "requires": null,
+    "owner": "CEO"
+  },
+  {
+    "code": "business_dinner_max_per_person",
+    "policy_name": "business_dinner",
+    "field": "max_per_person",
+    "description": "Per-person dinner spend that triggers YELLOW (attendee list required).",
+    "level": "yellow",
+    "threshold_eur": 50.0,
+    "unit": "per_person",
+    "requires": "attendee_list",
+    "owner": "CEO"
+  },
+  {
+    "code": "business_travel_max_per_day",
+    "policy_name": "business_travel",
+    "field": "max_per_day",
+    "description": "Daily travel-expense cap (hotel/taxi/fuel/train). Above this → YELLOW (travel order required).",
+    "level": "yellow",
+    "threshold_eur": 150.0,
+    "unit": "per_day",
+    "requires": "travel_order",
+    "owner": "CEO"
+  },
+  {
+    "code": "office_supplies_max_per_item",
+    "policy_name": "office_supplies",
+    "field": "max_per_item",
+    "description": "Per-line office-supply cap. Above this → RED, must be re-approved by CEO.",
+    "level": "red",
+    "threshold_eur": 500.0,
+    "unit": "per_invoice",
+    "requires": null,
+    "owner": "CEO"
+  }
+]

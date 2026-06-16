@@ -160,6 +160,65 @@ CREATE TABLE IF NOT EXISTS fio_settings (
     updated_at  TEXT NOT NULL,
     updated_by  TEXT
 );
+
+-- 2026-06-16 Phase 1 P1.2 — Editable policy rules.
+-- Replaces hardcoded EXPENSE_POLICIES in classifier.py. Each row is one
+-- threshold ("office_supplies > 500 EUR per item → RED"). Admin/CEO edit
+-- via the new Policies & Limits tab. classifier.check_expense_policy()
+-- loads via services.policy_rules (with mtime/version cache + DEFAULTS
+-- fallback if table empty, so a fresh DB still produces violations
+-- using the canonical built-in thresholds).
+CREATE TABLE IF NOT EXISTS policy_rules (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    code          TEXT NOT NULL UNIQUE,        -- e.g. "office_supplies_max_per_item"
+    policy_name   TEXT NOT NULL,               -- "office_supplies" / "business_dinner" / "business_travel"
+    field         TEXT NOT NULL,               -- "max_per_item" / "max_total" / "max_per_person" / "max_per_day"
+    description   TEXT,                        -- human copy shown in the tab
+    level         TEXT NOT NULL DEFAULT 'red', -- 'red' | 'yellow' | 'green'
+    threshold_eur REAL NOT NULL,
+    unit          TEXT NOT NULL DEFAULT 'per_invoice',  -- 'per_invoice' | 'per_person' | 'per_day'
+    requires      TEXT,                        -- e.g. "travel_order", "attendee_list", or NULL
+    scope         TEXT,                        -- optional: legal_entity / department scope
+    owner         TEXT,                        -- who set / approved this limit (CEO/CFO name)
+    active        INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT NOT NULL,
+    created_by    TEXT,
+    updated_at    TEXT,
+    updated_by    TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_policy_rules_active ON policy_rules(active);
+CREATE INDEX IF NOT EXISTS ix_policy_rules_policy ON policy_rules(policy_name);
+
+CREATE TABLE IF NOT EXISTS policy_rules_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id     INTEGER,
+    rule_code   TEXT NOT NULL,
+    changed_at  TEXT NOT NULL,
+    changed_by  TEXT,
+    change_type TEXT NOT NULL,                 -- 'create' | 'update' | 'delete' | 'reactivate'
+    old_json    TEXT,
+    new_json    TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_policy_rules_hist_rule ON policy_rules_history(rule_id);
+
+-- 2026-06-16 Phase 1 P1.3 — Accounting / CEO approval of policy violations.
+-- A violation_key is a stable hash of (doc_id, policy_name, level, message)
+-- so approvals survive re-classifying the same doc. When approved, the
+-- violation hides from the default Policy Violations panel (toggle shows
+-- resolved ones with full who/when/why). Audit-trail by design.
+CREATE TABLE IF NOT EXISTS policy_violation_approvals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    violation_key   TEXT NOT NULL UNIQUE,
+    doc_id          TEXT,
+    policy_name     TEXT,
+    level           TEXT,
+    message         TEXT,
+    approved_by     TEXT NOT NULL,
+    approved_at     TEXT NOT NULL,
+    role            TEXT,
+    reason          TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_pva_doc ON policy_violation_approvals(doc_id);
 """
 
 
