@@ -2772,7 +2772,7 @@ def analytics_ai_report():
         import anthropic
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -2812,7 +2812,7 @@ def analytics_ai_report():
     return jsonify({
         "status": "ok",
         "report": text,
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-6",
         "focus": focus,
         "profit_center": pc_filter,
         "generated_at": datetime.utcnow().isoformat(),

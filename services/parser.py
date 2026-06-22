@@ -331,7 +331,7 @@ def _parse_image(file_path: str) -> Dict[str, Any]:
             ]
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             messages=[{"role": "user", "content": content_block}],
         )
@@ -364,7 +364,7 @@ def _parse_text_with_llm(text: str, filename: str) -> Dict[str, Any]:
         prompt = _extraction_prompt() + "\n\nDocument text:\n" + text[:8000]
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
