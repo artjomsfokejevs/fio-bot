@@ -3070,6 +3070,99 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     </div>
   </div>
 
+  <!-- ───────────────────────────────────────────────────────────────────
+       💵 Revenue / Accounts Receivable (2026-06-23 #94 Phase 1)
+       Mirror of the AP flow — issue proformas/invoices, log receipts.
+       ─────────────────────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-revenue">
+    <div class="page-shell">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">💵 Revenue</h1>
+          <p class="page-subtitle">
+            Accounts Receivable — proforma and real invoices we issue to customers.
+            Status moves Draft → Sent → Partially paid → Paid as receipts come in.
+          </p>
+        </div>
+        <div class="page-head-actions">
+          <button class="btn btn-primary" onclick="openRevenueAddModal()">+ Add proforma / invoice</button>
+        </div>
+      </header>
+
+      <div class="bt-filter-bar" id="revenue-filter-bar">
+        <input id="rev-q" type="search" placeholder="🔍 customer / invoice # / description" oninput="loadRevenue()" />
+        <select id="rev-status" onchange="loadRevenue()">
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="partially_paid">Partially paid</option>
+          <option value="paid">Paid</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select id="rev-kind" onchange="loadRevenue()">
+          <option value="">All kinds</option>
+          <option value="proforma">Proforma</option>
+          <option value="invoice">Invoice</option>
+          <option value="credit_note">Credit note</option>
+        </select>
+        <select id="rev-pc" onchange="loadRevenue()">
+          <option value="">All streams</option>
+          <option value="AA">AA · Alps2Alps</option>
+          <option value="AH">AH · Amitours Holding</option>
+          <option value="AG">AG · Amitours Group</option>
+          <option value="AL">AL · ALVEDA</option>
+          <option value="CF">CF · MyPeak Finance</option>
+          <option value="MN">MN · Mountly</option>
+          <option value="MT">MT · Medical Travel</option>
+          <option value="SP">SP · Skipasser</option>
+          <option value="RR">RR · Rock2Rock</option>
+        </select>
+        <input id="rev-period" type="month" onchange="loadRevenue()" title="Filter by issue month" />
+      </div>
+
+      <div class="section-card">
+        <div class="section-card-header">
+          Revenue documents
+          <span id="revenue-count" class="bt-pill" style="margin-left:8px;"></span>
+        </div>
+        <div class="table-wrapper">
+          <table class="bt-table">
+            <thead>
+              <tr>
+                <th>Issue date</th>
+                <th>Kind</th>
+                <th>PC</th>
+                <th>Customer</th>
+                <th>Invoice #</th>
+                <th class="ta-right">Amount</th>
+                <th class="ta-right">Received</th>
+                <th class="ta-right">Remaining</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="revenue-tbody">
+              <tr><td colspan="10" class="empty-state">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / Detail modal for Revenue (shared) -->
+  <div class="modal-overlay" id="revenue-modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="revenue-modal-title">Add revenue document</h3>
+        <button class="modal-close" onclick="closeRevenueModal()">×</button>
+      </div>
+      <div class="modal-body" id="revenue-modal-body">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Detail Modal -->
@@ -3241,6 +3334,8 @@ function switchTab(tabName) {
     loadAnalyticsPanel();
   } else if (tabName === 'policies') {
     loadPoliciesPanel();
+  } else if (tabName === 'revenue') {
+    loadRevenue();
   }
 }
 
@@ -9490,6 +9585,293 @@ async function caDelete(txId) {
   showToast('Deleted', 'info');
   closeCaModal();
   loadCardAudit();
+}
+
+// ---------------------------------------------------------------------------
+// 💵 Revenue / Accounts Receivable — #94 Phase 1 (2026-06-23)
+// ---------------------------------------------------------------------------
+var _REV_DOCS = [];
+
+function _revStatusPill(s) {
+  var map = {
+    'draft': '#94a3b8', 'sent': '#3b82f6',
+    'partially_paid': '#eab308', 'paid': '#22c55e',
+    'cancelled': '#94a3b8'
+  };
+  var color = map[s] || '#94a3b8';
+  return '<span class="bt-pill" style="background:' + color + ';color:#fff;">' +
+         (s || '—').replace('_', ' ') + '</span>';
+}
+
+function _revKindLabel(k) {
+  return {'proforma':'Proforma', 'invoice':'Invoice', 'credit_note':'Credit note'}[k] || k;
+}
+
+async function loadRevenue() {
+  var tb = document.getElementById('revenue-tbody');
+  if (!tb) return;
+  var params = new URLSearchParams();
+  ['q','status','kind','pc','period'].forEach(function(k){
+    var el = document.getElementById('rev-' + k);
+    var v = el && el.value && el.value.trim();
+    if (v) params.set(k, v);
+  });
+  // period input is YYYY-MM; backend matches substr(issue_date,1,7) — passthrough ok
+  tb.innerHTML = '<tr><td colspan="10" class="empty-state">Loading…</td></tr>';
+  try {
+    var r = await fetch('/api/revenue?' + params.toString(),
+                        {headers: {'X-FIO-User': (window.currentUser || '')}})
+                    .then(function(r){ return r.json(); });
+    if (r.error) {
+      tb.innerHTML = '<tr><td colspan="10" class="empty-state">' + r.error + '</td></tr>';
+      return;
+    }
+    _REV_DOCS = r.docs || [];
+    var cnt = document.getElementById('revenue-count');
+    if (cnt) cnt.textContent = _REV_DOCS.length + ' docs';
+    if (!_REV_DOCS.length) {
+      tb.innerHTML = '<tr><td colspan="10" class="empty-state">' +
+        'No revenue documents yet. Click <b>+ Add proforma / invoice</b> to create one.</td></tr>';
+      return;
+    }
+    tb.innerHTML = _REV_DOCS.map(function(d){
+      var amt = Number(d.amount_eur || d.amount || 0);
+      // Per-doc receipts/remaining are derived async via detail modal; for list we show
+      // amount only (Phase 2 will add a /summary endpoint for batch totals).
+      return '<tr>' +
+        '<td>' + (d.issue_date || '—') + '</td>' +
+        '<td>' + _revKindLabel(d.kind) + '</td>' +
+        '<td><b>' + (d.profit_center || '—') + '</b></td>' +
+        '<td>' + (d.customer || '—') + '</td>' +
+        '<td>' + (d.invoice_number || '—') + '</td>' +
+        '<td class="ta-right">EUR ' + amt.toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+        '<td class="ta-right" data-rev-received="' + d.id + '">…</td>' +
+        '<td class="ta-right" data-rev-remaining="' + d.id + '">…</td>' +
+        '<td>' + _revStatusPill(d.status) + '</td>' +
+        '<td>' +
+          '<button class="btn btn-ghost btn-sm" onclick="openRevenueDetail(\'' + d.id + '\')">👁 Open</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    // Lazy-load receipt totals — one fetch per doc, fine for Phase 1 volumes.
+    _REV_DOCS.forEach(function(d){
+      fetch('/api/revenue/' + d.id + '/receipts',
+            {headers: {'X-FIO-User': (window.currentUser || '')}})
+        .then(function(r){ return r.json(); })
+        .then(function(rr){
+          var rcv = document.querySelector('[data-rev-received="' + d.id + '"]');
+          var rem = document.querySelector('[data-rev-remaining="' + d.id + '"]');
+          if (rcv) rcv.textContent = 'EUR ' + Number(rr.total_received || 0)
+            .toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+          if (rem) rem.textContent = 'EUR ' + Number(rr.remaining || 0)
+            .toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+        }).catch(function(){});
+    });
+  } catch (e) {
+    tb.innerHTML = '<tr><td colspan="10" class="empty-state">Load failed: ' + e.message + '</td></tr>';
+  }
+}
+
+function openRevenueAddModal() {
+  document.getElementById('revenue-modal-title').textContent = 'Add revenue document';
+  document.getElementById('revenue-modal-body').innerHTML =
+    '<div class="form-grid form-grid-4">' +
+    '  <select id="rev-add-kind">' +
+    '    <option value="proforma">Proforma</option>' +
+    '    <option value="invoice">Invoice</option>' +
+    '    <option value="credit_note">Credit note</option>' +
+    '  </select>' +
+    '  <select id="rev-add-pc">' +
+    '    <option value="AA">AA · Alps2Alps</option><option value="AH">AH · Holding</option>' +
+    '    <option value="AG">AG · Group</option><option value="AL">AL · ALVEDA</option>' +
+    '    <option value="CF">CF · MyPeak</option><option value="MN">MN · Mountly</option>' +
+    '    <option value="MT">MT · Medical Travel</option><option value="SP">SP · Skipasser</option>' +
+    '    <option value="RR">RR · Rock2Rock</option>' +
+    '  </select>' +
+    '  <input id="rev-add-customer" placeholder="Customer name" />' +
+    '  <input id="rev-add-vat" placeholder="Customer VAT (optional)" />' +
+    '  <input id="rev-add-invno" placeholder="Invoice #" />' +
+    '  <input id="rev-add-issue" type="date" />' +
+    '  <input id="rev-add-due" type="date" placeholder="Due date" />' +
+    '  <input id="rev-add-amount" type="number" step="0.01" placeholder="Amount" />' +
+    '  <select id="rev-add-currency">' +
+    '    <option value="EUR" selected>EUR</option><option value="USD">USD</option>' +
+    '    <option value="GBP">GBP</option><option value="HUF">HUF</option>' +
+    '    <option value="CHF">CHF</option>' +
+    '  </select>' +
+    '  <input id="rev-add-ledger" placeholder="Ledger code (BB00/BC00/INT0/OTH0)" />' +
+    '  <input id="rev-add-entity" placeholder="Legal entity (issuer)" />' +
+    '  <input id="rev-add-desc" placeholder="Description" class="grid-span-3" />' +
+    '</div>' +
+    '<div class="modal-footer" style="margin-top:16px;">' +
+    '  <button class="btn btn-ghost" onclick="closeRevenueModal()">Cancel</button>' +
+    '  <button class="btn btn-primary" onclick="submitRevenueAdd()">Save</button>' +
+    '</div>';
+  document.getElementById('revenue-modal-overlay').classList.add('open');
+}
+
+async function submitRevenueAdd() {
+  var payload = {
+    kind: document.getElementById('rev-add-kind').value,
+    profit_center: document.getElementById('rev-add-pc').value,
+    customer: document.getElementById('rev-add-customer').value || null,
+    customer_vat: document.getElementById('rev-add-vat').value || null,
+    invoice_number: document.getElementById('rev-add-invno').value || null,
+    issue_date: document.getElementById('rev-add-issue').value || null,
+    due_date: document.getElementById('rev-add-due').value || null,
+    amount: parseFloat(document.getElementById('rev-add-amount').value) || null,
+    currency: document.getElementById('rev-add-currency').value || 'EUR',
+    ledger_code: document.getElementById('rev-add-ledger').value || null,
+    legal_entity: document.getElementById('rev-add-entity').value || null,
+    description: document.getElementById('rev-add-desc').value || null,
+    status: 'draft'
+  };
+  try {
+    var r = await fetch('/api/revenue', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); });
+    if (r.error) { showToast(r.message || r.error, 'error'); return; }
+    showToast('Created ' + r.doc.id, 'success');
+    closeRevenueModal();
+    loadRevenue();
+  } catch (e) { showToast('Create failed: ' + e.message, 'error'); }
+}
+
+async function openRevenueDetail(docId) {
+  document.getElementById('revenue-modal-title').textContent = 'Revenue document — ' + docId;
+  document.getElementById('revenue-modal-body').innerHTML = '<div class="empty-state">Loading…</div>';
+  document.getElementById('revenue-modal-overlay').classList.add('open');
+  try {
+    var r = await fetch('/api/revenue/' + docId,
+                        {headers: {'X-FIO-User': (window.currentUser || '')}})
+                    .then(function(r){ return r.json(); });
+    if (r.error) { document.getElementById('revenue-modal-body').innerHTML =
+      '<div class="empty-state">' + r.error + '</div>'; return; }
+    var d = r.doc;
+    var receipts = (r.receipts || []).map(function(x){
+      return '<tr>' +
+        '<td>' + (x.received_at || '').slice(0,10) + '</td>' +
+        '<td class="ta-right">EUR ' + Number(x.amount_eur).toFixed(2) + '</td>' +
+        '<td>' + (x.method || '—') + '</td>' +
+        '<td>' + (x.reference || '—') + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" onclick="deleteRevReceipt(' + x.id + ',\'' + docId + '\')">🗑</button></td>' +
+      '</tr>';
+    }).join('') || '<tr><td colspan="5" class="empty-state">No receipts yet.</td></tr>';
+    var audit = (r.audit || []).map(function(a){
+      return '<li><b>' + a.action + '</b> · ' + (a.occurred_at || '').slice(0,19) +
+             (a.actor ? ' · by ' + a.actor : '') +
+             (a.details_json ? ' — <code>' + a.details_json + '</code>' : '') +
+             '</li>';
+    }).join('') || '<li class="empty-state">No audit entries.</li>';
+    var stageBtns = '';
+    if (d.kind === 'proforma' && d.status !== 'cancelled') {
+      stageBtns += '<button class="btn btn-secondary btn-sm" onclick="convertProforma(\'' + docId + '\')">Convert → Invoice</button> ';
+    }
+    if (d.status === 'draft') {
+      stageBtns += '<button class="btn btn-secondary btn-sm" onclick="setRevStatus(\'' + docId + '\',\'sent\')">Mark Sent</button> ';
+    }
+    if (d.status !== 'cancelled' && d.status !== 'paid') {
+      stageBtns += '<button class="btn btn-ghost btn-sm" onclick="setRevStatus(\'' + docId + '\',\'cancelled\')">Cancel</button> ';
+    }
+    document.getElementById('revenue-modal-body').innerHTML =
+      '<div class="form-grid form-grid-2">' +
+      '  <div><b>Kind:</b> ' + _revKindLabel(d.kind) + '</div>' +
+      '  <div><b>Status:</b> ' + _revStatusPill(d.status) + '</div>' +
+      '  <div><b>PC:</b> ' + (d.profit_center || '—') + '</div>' +
+      '  <div><b>Invoice #:</b> ' + (d.invoice_number || '—') + '</div>' +
+      '  <div><b>Customer:</b> ' + (d.customer || '—') + '</div>' +
+      '  <div><b>VAT:</b> ' + (d.customer_vat || '—') + '</div>' +
+      '  <div><b>Issue:</b> ' + (d.issue_date || '—') + '</div>' +
+      '  <div><b>Due:</b> ' + (d.due_date || '—') + '</div>' +
+      '  <div><b>Amount:</b> EUR ' + Number(d.amount_eur || d.amount || 0).toFixed(2) + '</div>' +
+      '  <div><b>Ledger:</b> ' + (d.ledger_code || '—') + '</div>' +
+      '  <div class="grid-span-2"><b>Description:</b> ' + (d.description || '—') + '</div>' +
+      '</div>' +
+      '<div style="margin:12px 0;">' + stageBtns + '</div>' +
+      '<h4>Receipts (received: EUR ' + Number(r.total_received).toFixed(2) +
+      ' · remaining: EUR ' + Number(r.remaining).toFixed(2) + ')</h4>' +
+      '<table class="bt-table"><thead><tr><th>Date</th><th class="ta-right">Amount</th>' +
+      '<th>Method</th><th>Reference</th><th></th></tr></thead><tbody>' + receipts + '</tbody></table>' +
+      '<div class="form-grid form-grid-4" style="margin-top:8px;">' +
+      '  <input id="rcp-amount" type="number" step="0.01" placeholder="Amount EUR" />' +
+      '  <input id="rcp-date" type="date" />' +
+      '  <select id="rcp-method"><option value="bank_transfer">Bank transfer</option>' +
+      '    <option value="card">Card</option><option value="stripe">Stripe</option>' +
+      '    <option value="netting">Netting</option></select>' +
+      '  <input id="rcp-ref" placeholder="Reference (optional)" />' +
+      '  <button class="btn btn-primary" onclick="addRevReceipt(\'' + docId + '\')">+ Add receipt</button>' +
+      '</div>' +
+      '<h4 style="margin-top:16px;">Audit trail</h4><ul class="bt-log-list">' + audit + '</ul>';
+  } catch (e) {
+    document.getElementById('revenue-modal-body').innerHTML =
+      '<div class="empty-state">Load failed: ' + e.message + '</div>';
+  }
+}
+
+function closeRevenueModal() {
+  document.getElementById('revenue-modal-overlay').classList.remove('open');
+}
+
+async function setRevStatus(docId, newStatus) {
+  var r = await fetch('/api/revenue/' + docId + '/status', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+    body: JSON.stringify({status: newStatus})
+  }).then(function(r){ return r.json(); });
+  if (r.error) { showToast(r.message || r.error, 'error'); return; }
+  showToast('Status → ' + newStatus, 'success');
+  openRevenueDetail(docId);
+  loadRevenue();
+}
+
+async function convertProforma(docId) {
+  var invNo = prompt('Invoice number for the new real invoice?', '');
+  if (invNo === null) return;
+  var r = await fetch('/api/revenue/' + docId + '/convert', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+    body: JSON.stringify({invoice_number: invNo || null, status: 'sent',
+                          issue_date: new Date().toISOString().slice(0,10)})
+  }).then(function(r){ return r.json(); });
+  if (r.error) { showToast(r.message || r.error, 'error'); return; }
+  showToast('Converted → ' + r.doc.id, 'success');
+  closeRevenueModal();
+  loadRevenue();
+}
+
+async function addRevReceipt(docId) {
+  var payload = {
+    amount_eur: parseFloat(document.getElementById('rcp-amount').value),
+    received_at: document.getElementById('rcp-date').value || null,
+    method: document.getElementById('rcp-method').value,
+    reference: document.getElementById('rcp-ref').value || null
+  };
+  if (!payload.amount_eur || payload.amount_eur <= 0) {
+    showToast('Amount must be > 0', 'error'); return;
+  }
+  var r = await fetch('/api/revenue/' + docId + '/receipts', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+    body: JSON.stringify(payload)
+  }).then(function(r){ return r.json(); });
+  if (r.error) { showToast(r.message || r.error, 'error'); return; }
+  showToast('Receipt added · status: ' + (r.doc && r.doc.status), 'success');
+  openRevenueDetail(docId);
+  loadRevenue();
+}
+
+async function deleteRevReceipt(receiptId, docId) {
+  if (!confirm('Delete this receipt? Status may downgrade.')) return;
+  var r = await fetch('/api/revenue-receipts/' + receiptId,
+                      {method: 'DELETE',
+                       headers: {'X-FIO-User': (window.currentUser || '')}})
+                .then(function(r){ return r.json(); });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Receipt deleted', 'info');
+  openRevenueDetail(docId);
+  loadRevenue();
 }
 </script>
 

@@ -281,10 +281,12 @@ def delete_doc(doc_id: str, *, by: Optional[str] = None) -> bool:
         return False
     conn = db.get_connection()
     try:
-        # Cascade deletes receipts via FK; audit row preserved with separate insert
+        # SQLite default has PRAGMA foreign_keys=OFF, so we cascade manually.
+        # Audit row is written FIRST so the snapshot survives even if delete fails.
         _audit(conn, doc_id, "deleted",
                {"snapshot": {"kind": existing["kind"], "amount": existing.get("amount"),
                              "status": existing.get("status")}}, by)
+        conn.execute("DELETE FROM revenue_receipts WHERE revenue_doc_id = ?", (doc_id,))
         conn.execute("DELETE FROM revenue_documents WHERE id = ?", (doc_id,))
         conn.commit()
     finally:
