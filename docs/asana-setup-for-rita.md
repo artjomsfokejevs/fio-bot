@@ -39,10 +39,10 @@ create a task (after that it's cached).
 5. Click **Create token**
 6. **COPY THE TOKEN IMMEDIATELY** — Asana shows it ONCE. If you close
    the page without copying, you'll need to delete it and start over.
-   The token starts with `1/` and looks like:
-   ```
-   1/1234567890123456:abcdef1234567890abcdef1234567890
-   ```
+   The token starts with `1/` and is roughly 50 characters long
+   (16-digit numeric id, a colon, then ~32 hex characters). Example
+   format (not a real token):
+   `1/<16-digit-id>:<32-hex-chars>`
 
 ---
 
