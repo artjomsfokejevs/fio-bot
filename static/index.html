@@ -2313,19 +2313,28 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <!-- 2026-06-16 Phase 3 — Stream Budget banner -->
       <div id="cp-budget-banner" style="display:none;margin-bottom:10px;"></div>
 
-      <!-- 2026-06-16 Phase 2 — Salaries + Payment Date filters (brand-aligned) -->
-      <div id="cp-extra-filters" class="bt-filter-bar" style="border-radius:8px;border-bottom:none;margin-bottom:10px;">
+      <!-- 2026-06-22 #93 — extended CP filter bar with multi-select ledger codes -->
+      <div id="cp-extra-filters" class="bt-filter-bar" style="border-radius:8px;border-bottom:none;margin-bottom:10px;flex-wrap:wrap;">
         <select id="cp-category-filter" onchange="reapplyCPClientFilters()">
           <option value="">All categories</option>
           <option value="salaries">Salaries only</option>
           <option value="non-salaries">Non-salary invoices only</option>
           <option value="internal">Internal invoices only</option>
         </select>
+        <div style="position:relative;">
+          <button type="button" id="cp-ledger-trigger" class="btn btn-ghost btn-sm"
+                  onclick="toggleCPLedgerPicker()" title="Filter by one or more ledger codes">
+            Ledger codes <span id="cp-ledger-count" class="pill pill-info" style="display:none;margin-left:6px;">0</span> ▾
+          </button>
+          <div id="cp-ledger-picker" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);min-width:340px;max-height:420px;overflow:auto;padding:8px 10px;"></div>
+        </div>
         <label>Pay date from <input id="cp-paydate-from" type="date" onchange="reapplyCPClientFilters()" /></label>
         <label>to <input id="cp-paydate-to" type="date" onchange="reapplyCPClientFilters()" /></label>
         <button class="btn btn-ghost btn-sm" onclick="clearCPExtraFilters()">Clear</button>
         <span id="cp-filter-summary" style="margin-left:auto;color:var(--muted);font-size:12px;"></span>
       </div>
+      <!-- 2026-06-22 #93 — per-ledger aggregation strip (visible when codes selected) -->
+      <div id="cp-ledger-breakdown" style="display:none;font-size:12px;color:var(--text);padding:8px 12px;background:var(--brand-light);border:1px solid #c7dafd;border-radius:6px;margin-bottom:10px;line-height:1.6;"></div>
 
       <!-- Per-status counter strip (diagnostic + jump-to-stage) -->
       <div id="cp-status-counts" style="margin-bottom:10px;"></div>
@@ -6612,15 +6621,20 @@ function previewArchiveBatch(batchId) {
 // ───────────────────────────────────────────────────────────────────
 // Salary toggle (2026-06-16 Phase 2) — adds to detail modal P1.5 section
 // ───────────────────────────────────────────────────────────────────
-// 2026-06-16 Phase 2 — CP client-side filters (Salaries / payment date / internal)
+// 2026-06-16 Phase 2 — CP client-side filters
+// 2026-06-22 #93 — added multi-select ledger codes filter + per-code EUR breakdown
+var CP_SELECTED_LEDGERS = new Set();   // codes selected in the picker
+
 function _filterCPDocs(docs) {
   var cat = (document.getElementById('cp-category-filter') || {}).value || '';
   var from = (document.getElementById('cp-paydate-from') || {}).value || '';
   var to = (document.getElementById('cp-paydate-to') || {}).value || '';
+  var ledgerFilterActive = CP_SELECTED_LEDGERS.size > 0;
   var out = docs.filter(function(d) {
     if (cat === 'salaries' && !d.is_salary) return false;
     if (cat === 'non-salaries' && d.is_salary) return false;
     if (cat === 'internal' && !d.is_internal) return false;
+    if (ledgerFilterActive && !CP_SELECTED_LEDGERS.has(d.ledger_code || '')) return false;
     var pd = d.desired_payment_date || '';
     if (from && (!pd || pd < from)) return false;
     if (to && (!pd || pd > to)) return false;
@@ -6631,6 +6645,7 @@ function _filterCPDocs(docs) {
     var hidden = docs.length - out.length;
     sum.textContent = hidden > 0 ? (out.length + ' shown · ' + hidden + ' hidden by filters') : (out.length + ' rows');
   }
+  _renderCPLedgerBreakdown(out);
   return out;
 }
 
@@ -6642,7 +6657,152 @@ function clearCPExtraFilters() {
   ['cp-category-filter','cp-paydate-from','cp-paydate-to'].forEach(function(id){
     var el = document.getElementById(id); if (el) el.value = '';
   });
+  CP_SELECTED_LEDGERS.clear();
+  _updateCPLedgerBadge();
+  // Re-render picker if open so checkboxes clear
+  var picker = document.getElementById('cp-ledger-picker');
+  if (picker && picker.style.display !== 'none') _renderCPLedgerPicker();
   reapplyCPClientFilters();
+}
+
+function toggleCPLedgerPicker() {
+  var p = document.getElementById('cp-ledger-picker');
+  if (!p) return;
+  if (p.style.display === 'none' || !p.style.display) {
+    _renderCPLedgerPicker();
+    p.style.display = 'block';
+    setTimeout(function(){ document.addEventListener('click', _outsideCPLedgerHandler, true); }, 0);
+  } else {
+    p.style.display = 'none';
+    document.removeEventListener('click', _outsideCPLedgerHandler, true);
+  }
+}
+
+function _outsideCPLedgerHandler(e) {
+  var p = document.getElementById('cp-ledger-picker');
+  var t = document.getElementById('cp-ledger-trigger');
+  if (!p) return;
+  if (p.contains(e.target) || (t && t.contains(e.target))) return;
+  p.style.display = 'none';
+  document.removeEventListener('click', _outsideCPLedgerHandler, true);
+}
+
+function _renderCPLedgerPicker() {
+  var p = document.getElementById('cp-ledger-picker');
+  if (!p) return;
+  // ledgerSchema loaded by loadSchema() on DOMContentLoaded
+  var codes = (ledgerSchema && ledgerSchema.codes) || [];
+  if (!codes.length) {
+    p.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:12px;">Ledger schema not loaded — try reloading the page.</div>';
+    return;
+  }
+  // Group by statement
+  var groups = {};
+  codes.forEach(function(c) {
+    var k = c.statement || 'OTHER';
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(c);
+  });
+  var html = '<div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:0 4px 8px;margin-bottom:6px;">';
+  html += '<input type="search" id="cp-ledger-search" placeholder="Search code or label…" oninput="_filterCPLedgerOptions(this.value)" style="flex:1;padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;">';
+  html += '<button type="button" class="btn btn-ghost btn-xs" onclick="_cpLedgerSelectAll()">All</button>';
+  html += '<button type="button" class="btn btn-ghost btn-xs" onclick="_cpLedgerClearAll()">None</button>';
+  html += '</div>';
+  Object.keys(groups).forEach(function(stmt) {
+    html += '<div class="cp-ledger-group" style="margin-top:4px;">';
+    html += '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 4px 2px;">' + esc(stmt) + '</div>';
+    groups[stmt].forEach(function(c) {
+      var checked = CP_SELECTED_LEDGERS.has(c.code) ? 'checked' : '';
+      var label = c.code + ' — ' + (c.label || '');
+      html += '<label class="cp-ledger-opt" data-code="' + esc(c.code) + '" data-label="' + esc(label.toLowerCase()) + '" style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:12px;border-radius:4px;cursor:pointer;">' +
+        '<input type="checkbox" value="' + esc(c.code) + '" ' + checked + ' onchange="_toggleCPLedger(this)">' +
+        '<span style="font-family:ui-monospace,monospace;font-weight:600;min-width:48px;">' + esc(c.code) + '</span>' +
+        '<span style="color:var(--text);">' + esc(c.label || '') + '</span>' +
+      '</label>';
+    });
+    html += '</div>';
+  });
+  p.innerHTML = html;
+}
+
+function _filterCPLedgerOptions(q) {
+  q = (q || '').toLowerCase().trim();
+  var opts = document.querySelectorAll('#cp-ledger-picker .cp-ledger-opt');
+  opts.forEach(function(el) {
+    var label = el.getAttribute('data-label') || '';
+    el.style.display = (!q || label.indexOf(q) !== -1) ? 'flex' : 'none';
+  });
+  // Hide empty groups
+  document.querySelectorAll('#cp-ledger-picker .cp-ledger-group').forEach(function(g){
+    var visible = Array.prototype.some.call(g.querySelectorAll('.cp-ledger-opt'), function(o){ return o.style.display !== 'none'; });
+    g.style.display = visible ? 'block' : 'none';
+  });
+}
+
+function _toggleCPLedger(cb) {
+  if (cb.checked) CP_SELECTED_LEDGERS.add(cb.value);
+  else CP_SELECTED_LEDGERS.delete(cb.value);
+  _updateCPLedgerBadge();
+  reapplyCPClientFilters();
+}
+
+function _cpLedgerSelectAll() {
+  document.querySelectorAll('#cp-ledger-picker input[type="checkbox"]').forEach(function(cb){
+    if (cb.offsetParent !== null) { // visible only (respects search filter)
+      cb.checked = true;
+      CP_SELECTED_LEDGERS.add(cb.value);
+    }
+  });
+  _updateCPLedgerBadge();
+  reapplyCPClientFilters();
+}
+
+function _cpLedgerClearAll() {
+  CP_SELECTED_LEDGERS.clear();
+  document.querySelectorAll('#cp-ledger-picker input[type="checkbox"]').forEach(function(cb){ cb.checked = false; });
+  _updateCPLedgerBadge();
+  reapplyCPClientFilters();
+}
+
+function _updateCPLedgerBadge() {
+  var c = document.getElementById('cp-ledger-count');
+  if (!c) return;
+  if (CP_SELECTED_LEDGERS.size > 0) {
+    c.style.display = 'inline-flex';
+    c.textContent = String(CP_SELECTED_LEDGERS.size);
+  } else {
+    c.style.display = 'none';
+  }
+}
+
+// Render per-ledger EUR breakdown under the filter bar (analytics request — #93)
+function _renderCPLedgerBreakdown(filteredDocs) {
+  var box = document.getElementById('cp-ledger-breakdown');
+  if (!box) return;
+  if (!CP_SELECTED_LEDGERS.size) { box.style.display = 'none'; return; }
+  // Sum amount per selected ledger code from the filtered set
+  var sums = {};
+  CP_SELECTED_LEDGERS.forEach(function(code){ sums[code] = 0; });
+  filteredDocs.forEach(function(d){
+    if (CP_SELECTED_LEDGERS.has(d.ledger_code || '')) {
+      var v = parseFloat(d.amount_eur != null ? d.amount_eur : d.amount) || 0;
+      sums[d.ledger_code] = (sums[d.ledger_code] || 0) + v;
+    }
+  });
+  var total = 0;
+  var entries = Object.keys(sums).sort();
+  if (!entries.length) { box.style.display = 'none'; return; }
+  var parts = entries.map(function(code){
+    var v = sums[code]; total += v;
+    return '<span style="display:inline-block;padding:2px 8px;margin:2px 4px 2px 0;background:#fff;border-radius:10px;border:1px solid #c7dafd;">' +
+      '<strong style="font-family:ui-monospace,monospace;">' + esc(code) + '</strong> · €' +
+      Number(v).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2}) +
+    '</span>';
+  });
+  box.innerHTML = '<b>Selected ledger breakdown:</b> ' + parts.join('') +
+    ' <span style="margin-left:8px;color:var(--brand-dark);"><b>Total: €' +
+      Number(total).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</b></span>';
+  box.style.display = 'block';
 }
 
 // ───────────────────────────────────────────────────────────────────
