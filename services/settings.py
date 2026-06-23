@@ -29,8 +29,9 @@ DEFAULTS = {
         "📄 Missing invoice — €{amount} · {vendor} · {date}"
     ),
     "chase_task_body": (
-        "FIO Bank Statement Audit flagged a transaction that has no "
-        "matching invoice.\n\n"
+        "Hi {stakeholder},\n\n"
+        "FIO Bank Statement Audit flagged a transaction in your stream "
+        "({pc} — {pc_label}) that has no matching invoice.\n\n"
         "Transaction details:\n"
         "  Date: {date}\n"
         "  Amount: €{amount}\n"
@@ -38,11 +39,13 @@ DEFAULTS = {
         "  Counterparty: {counterparty}\n"
         "  Reference: {reference}\n"
         "  Source: {source}\n\n"
-        "FIO attribution: stream {pc} ({reason})\n\n"
+        "FIO attribution: stream {pc} ({reason})\n"
+        "Routed to: {stakeholder} — {stakeholder_title}\n\n"
         "Action: please find the invoice for this charge and upload it "
         "to FIO (https://fio-amitours.fly.dev/) under Upload → mark as "
-        "'already paid'.\n\n"
-        "— FIO Accounting Bot (auto-generated month-close chase)"
+        "'already paid'. If this charge belongs to a different stream, "
+        "reply with the correct profit-center code so Rita can re-route.\n\n"
+        "— FIO Accounting Bot (auto-generated month-close chase, routed by stream)"
     ),
 }
 

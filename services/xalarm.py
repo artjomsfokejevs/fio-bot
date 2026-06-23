@@ -33,11 +33,16 @@ __all__ = [
 ]
 
 PC_LABELS = {
-    # 2026-06-16 — BK (Skibookers) decommissioned per Artjoms.
-    # Anastasiia Lizanets removed from all logs. Historic data with PC=BK
-    # remains queryable but the stream is not listed for new uploads.
-    "AA": "Alps2Alps", "SR": "Skipasser",
-    "AH": "Mountly",   "CF": "MyPeak Finance", "AL": "ALVEDA",
+    # 2026-06-22 #87 — canonical codes per BT4YOU ledger (services/pc_codes.py).
+    # AH now canonically means Amitours Holding OÜ (not Mountly).
+    # MN = Mountly (was MT/AH historically). MT = Medical Travel (new).
+    # SP = Skipasser (was SR). Legacy codes are auto-translated by pc_codes.label_of().
+    "AA": "Alps2Alps", "SP": "Skipasser",
+    "MN": "Mountly",   "MT": "Medical Travel",
+    "CF": "MyPeak Finance", "AL": "ALVEDA",
+    "AH": "Amitours Holding OÜ",
+    # Legacy aliases kept for backwards-compat label rendering:
+    "SR": "Skipasser (legacy SR)", "BK": "Skibookers (decommissioned)",
 }
 
 

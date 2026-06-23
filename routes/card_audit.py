@@ -496,9 +496,13 @@ def card_audit_chase_missing() -> Any:
 
         amount_eur = abs(float(t.get("amount_eur") or t.get("amount") or 0))
         # 2026-06-11 Top-2 P1 — templates editable via Admin tab.
-        # Placeholders: {amount} {vendor} {date} {description}
-        # {counterparty} {reference} {source} {pc} {reason}
+        # 2026-06-22 #92 — chase routing: derive stakeholder per stream
+        # from BT4YOU holding_config snapshot. New placeholders:
+        # {stakeholder} {stakeholder_title} {stakeholder_asana_gid}
         from services import settings as _settings
+        from services import chase_routing as _cr
+        from services import pc_codes as _pcc
+        stakeholder_info = _cr.stakeholder_for(suggested_pc) or {}
         title_tmpl = _settings.get("chase_task_title")
         body_tmpl  = _settings.get("chase_task_body")
         fmt_args = {
@@ -510,6 +514,10 @@ def card_audit_chase_missing() -> Any:
             "reference":    t.get("reference", "—"),
             "source":       t.get("source", "?"),
             "pc":           suggested_pc,
+            "pc_label":              _pcc.label_of(suggested_pc),
+            "stakeholder":           stakeholder_info.get("name") or "—",
+            "stakeholder_title":     stakeholder_info.get("title") or "",
+            "stakeholder_asana_gid": stakeholder_info.get("asana_gid") or "",
             "reason":       reason,
         }
         try:
@@ -532,6 +540,8 @@ def card_audit_chase_missing() -> Any:
             "reason": reason,
             "task_title": task_title,
             "task_body": task_body,
+            # 2026-06-22 #92 — routed stakeholder per stream (BT4YOU snapshot)
+            "stakeholder": stakeholder_info or None,
         })
 
     # Group by suggested_profit_center for easier batch chasing
