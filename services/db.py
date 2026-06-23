@@ -296,6 +296,65 @@ CREATE TABLE IF NOT EXISTS xalarm_log (
 );
 CREATE INDEX IF NOT EXISTS ix_xalarm_pc_period ON xalarm_log(profit_center, period);
 
+-- 2026-06-22 Revenue module Phase 1 (#94 / #96) — Accounts Receivable.
+-- Mirrors documents (Accounts Payable) for outgoing invoices: proforma →
+-- invoice → paid. Receipts table tracks partial payments from customers.
+-- Audit table preserves status-change history. Per docs/revenue-module-architecture.md.
+CREATE TABLE IF NOT EXISTS revenue_documents (
+    id              TEXT PRIMARY KEY,
+    kind            TEXT NOT NULL CHECK(kind IN ('proforma','invoice','credit_note')),
+    profit_center   TEXT NOT NULL,                 -- canonical PC code (services/pc_codes.py)
+    customer        TEXT,                          -- customer / counterparty name
+    customer_vat    TEXT,                          -- VAT number (for B2B)
+    legal_entity    TEXT,                          -- our entity that issued the doc
+    invoice_number  TEXT,                          -- our internal numbering
+    issue_date      TEXT,                          -- YYYY-MM-DD
+    due_date        TEXT,                          -- YYYY-MM-DD
+    amount          REAL,                          -- in original currency
+    amount_eur      REAL,                          -- EUR-equivalent at issue date
+    currency        TEXT NOT NULL DEFAULT 'EUR',
+    description     TEXT,
+    ledger_code     TEXT,                          -- e.g. BB00 / BC00 / INT0 / OTH0
+    status          TEXT NOT NULL DEFAULT 'draft', -- draft|sent|partially_paid|paid|cancelled
+    proforma_id     TEXT,                          -- back-ref when kind='invoice' replaces a proforma
+    uploaded_at     TEXT NOT NULL,
+    uploaded_by     TEXT,
+    file_path       TEXT,                          -- PDF / image / docx
+    file_type       TEXT,
+    parsed_json     TEXT,                          -- LLM-extracted data
+    classification_json TEXT,
+    notes           TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_rd_pc_period ON revenue_documents(profit_center, issue_date);
+CREATE INDEX IF NOT EXISTS ix_rd_status   ON revenue_documents(status);
+CREATE INDEX IF NOT EXISTS ix_rd_proforma ON revenue_documents(proforma_id);
+CREATE INDEX IF NOT EXISTS ix_rd_customer ON revenue_documents(customer);
+
+CREATE TABLE IF NOT EXISTS revenue_receipts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    revenue_doc_id  TEXT NOT NULL,
+    received_at     TEXT NOT NULL,                 -- YYYY-MM-DD
+    amount_eur      REAL NOT NULL,
+    method          TEXT,                          -- bank_transfer / card / stripe / netting / other
+    reference       TEXT,                          -- bank ref / Stripe charge id
+    bank_statement_tx_id TEXT,                     -- optional FK → card_transactions.id (Phase 3)
+    created_at      TEXT NOT NULL,
+    created_by      TEXT,
+    FOREIGN KEY (revenue_doc_id) REFERENCES revenue_documents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rr_doc ON revenue_receipts(revenue_doc_id);
+CREATE INDEX IF NOT EXISTS ix_rr_received_at ON revenue_receipts(received_at);
+
+CREATE TABLE IF NOT EXISTS revenue_audit (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    revenue_doc_id  TEXT NOT NULL,
+    action          TEXT NOT NULL,                 -- created / converted / sent / received_payment / cancelled / updated
+    details_json    TEXT,
+    actor           TEXT,
+    occurred_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ra_doc ON revenue_audit(revenue_doc_id);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,

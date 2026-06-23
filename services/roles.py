@@ -106,6 +106,7 @@ ALL_ROLES = [
 ALL_TABS = [
     "upload", "approve", "accounting", "card-audit",
     "analytics", "confirm-payment", "admin", "legend", "policies",
+    "revenue",
 ]
 
 # Role -> list of tab IDs that role can see.
@@ -122,11 +123,12 @@ ALL_TABS = [
 TAB_ACCESS: Dict[str, List[str]] = {
     ROLE_ADMIN:        ALL_TABS,  # everything
     ROLE_HOLDING_CEO:  ["upload", "approve", "accounting", "analytics",
-                        "confirm-payment", "legend", "policies"],
+                        "confirm-payment", "legend", "policies", "revenue"],
     ROLE_BOOKKEEPER:   ["upload", "approve", "accounting", "card-audit",
-                        "analytics", "confirm-payment", "legend", "policies"],
+                        "analytics", "confirm-payment", "legend", "policies",
+                        "revenue"],
     ROLE_STREAM_OWNER: ["upload", "approve", "accounting", "card-audit",
-                        "analytics", "legend"],
+                        "analytics", "legend", "revenue"],
     ROLE_VIEWER:       ["upload", "approve", "legend"],
 }
 

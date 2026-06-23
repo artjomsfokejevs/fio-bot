@@ -3616,6 +3616,7 @@ from routes.payments import payments_bp      # noqa: E402  P1.5 partial payments
 from routes.mng import mng_bp                # noqa: E402  Phase 3 stub (P85 graceful)
 from routes.notify import notify_bp          # noqa: E402  Phase 2 notifications + Slack + archive
 from routes.budgets import budgets_bp        # noqa: E402  Phase 3 stream budgets + X-alarm log
+from routes.revenue import revenue_bp        # noqa: E402  #94 Revenue / AR Phase 1
 
 app.register_blueprint(card_audit_bp)
 app.register_blueprint(admin_bp)
@@ -3624,6 +3625,7 @@ app.register_blueprint(payments_bp)
 app.register_blueprint(mng_bp)
 app.register_blueprint(notify_bp)
 app.register_blueprint(budgets_bp)
+app.register_blueprint(revenue_bp)
 
 
 # ---------------------------------------------------------------------------
