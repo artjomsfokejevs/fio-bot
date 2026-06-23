@@ -2172,6 +2172,17 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </div>
     </div>
 
+    <!-- 2026-06-23 #94 Phase 4 — Cashflow chart card -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2>💸 Cashflow by stream</h2>
+        <span style="font-size:12px;color:var(--muted);">Revenue (green) minus paid expenses (red) per month — uses Analytics date range above.</span>
+      </div>
+      <div id="cashflow-card-body" style="padding:16px;">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
     <!-- Optimization suggestions -->
     <div class="table-wrapper" style="margin-bottom:20px;">
       <div class="table-header">
@@ -2984,6 +2995,27 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           </ul>
         </div>
 
+        <!-- 2026-06-23 #94 — Revenue / AR glossary -->
+        <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
+          <h3 style="margin:0 0 8px 0;font-size:16px;">💵 Revenue, AR, AP &amp; Cashflow</h3>
+          <p style="margin:0 0 10px 0;font-size:13px;line-height:1.6;color:var(--text);">
+            FIO now tracks both the money going out (expenses) and the money coming in (revenue).
+            Use the <strong>💵 Revenue</strong> tab to issue proformas / invoices and log receipts as
+            customers pay.
+          </p>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
+            <li><strong>AP — Accounts Payable</strong>: what we owe vendors. This is the existing expense flow (Upload → Approve → Confirm for Payment → paid).</li>
+            <li><strong>AR — Accounts Receivable</strong>: what customers owe us. Lives in the 💵 Revenue tab.</li>
+            <li><strong>Proforma invoice</strong>: pre-sale draft sent to a customer. Not yet a true receivable.</li>
+            <li><strong>Real invoice</strong>: issued after the deal closes. Use <em>Convert → Invoice</em> on a proforma row to create the linked invoice and cancel the proforma automatically.</li>
+            <li><strong>Credit note</strong>: refund/cancellation document. Reduces a previously-invoiced amount.</li>
+            <li><strong>Receipt</strong>: a single inbound payment against an invoice. Multiple receipts can sum up to the invoice amount.</li>
+            <li><strong>Status machine</strong>: Draft → Sent → Partially paid → Paid. Cancelled is a terminal exit at any point. The status auto-advances when receipts are added (e.g. 400 + 600 of a €1000 invoice flips to <em>paid</em>).</li>
+            <li><strong>Cashflow</strong>: revenue receipts (cash in) minus paid expenses (cash out), grouped by month and by stream. See <em>Analytics → Cashflow by stream</em>.</li>
+            <li><strong>Bank-match (Phase 3)</strong>: when Bank Statement Audit imports inflows, FIO scores each credit against open receivables (exact amount, invoice #, customer name tokens, PC, date ±14d). High-confidence matches can auto-apply via <em>/api/revenue/bank-match/auto/&lt;batch_id&gt;</em>.</li>
+          </ul>
+        </div>
+
         <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
           <h3 style="margin:0 0 8px 0;font-size:16px;">Tips &amp; gotchas</h3>
           <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">
@@ -3425,6 +3457,7 @@ function loadAnalyticsPanel() {
     try { renderAnalyticsTrend(data); } catch (e) { console.error('trend chart failed', e); }
     renderAnalyticsSuspicious(data);
     renderAnalyticsCashflow(data);
+    try { renderRevenueCashflowCard(); } catch (e) { console.error('revenue cashflow card failed', e); }
     renderAnalyticsByPeriod(data);
     renderAnalyticsProjection(data);
     renderAnalyticsVendors(data);
@@ -6642,7 +6675,8 @@ function loadBankStatementArchives() {
           '<td style="padding:5px 8px;white-space:nowrap;">' +
             '<button class="btn btn-ghost btn-xs" onclick="previewArchiveBatch(\'' + esc(a.batch_id) + '\')" title="Open transactions in this batch (read-only, even after confirmation)">👁 Preview</button> ' +
             '<button class="btn btn-ghost btn-xs" onclick="reopenArchiveInAudit(\'' + esc(a.batch_id) + '\', \'' + esc(a.period || '') + '\')" title="Jump to Bank Statement Audit tab on this batch period">↗ Open in Audit</button> ' +
-            '<button class="btn btn-ghost btn-xs" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched and let next reconcile re-evaluate">↻ Re-check</button>' +
+            '<button class="btn btn-ghost btn-xs" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched and let next reconcile re-evaluate">↻ Re-check</button> ' +
+            '<button class="btn btn-ghost btn-xs" onclick="revenueMatchSuggest(\'' + esc(a.batch_id) + '\')" title="Score inflows in this batch against open receivables in 💵 Revenue">💵 Match revenue</button>' +
           '</td>' +
           '</tr>';
       }).join('') + '</tbody></table>';
@@ -9860,6 +9894,178 @@ async function addRevReceipt(docId) {
   showToast('Receipt added · status: ' + (r.doc && r.doc.status), 'success');
   openRevenueDetail(docId);
   loadRevenue();
+}
+
+// 💵 Bank-match suggestions — Phase 4a of #94 (2026-06-23)
+// Surfaces /api/revenue/bank-match/suggestions/<batch_id> as a modal so the
+// bookkeeper can apply a match without leaving Bank Statement Audit.
+async function revenueMatchSuggest(batchId) {
+  // Reuse the revenue modal shell so we don't duplicate markup.
+  document.getElementById('revenue-modal-title').textContent = '💵 Match bank inflows to receivables — batch ' + batchId.slice(0,12) + '…';
+  document.getElementById('revenue-modal-body').innerHTML = '<div class="empty-state">Scoring…</div>';
+  document.getElementById('revenue-modal-overlay').classList.add('open');
+  try {
+    var r = await fetch('/api/revenue/bank-match/suggestions/' + encodeURIComponent(batchId),
+                        {headers: {'X-FIO-User': (window.currentUser || '')}}).then(r => r.json());
+    if (r.error) {
+      document.getElementById('revenue-modal-body').innerHTML =
+        '<div class="empty-state">' + (r.message || r.error) + '</div>'; return;
+    }
+    var sugg = r.suggestions || {};
+    var keys = Object.keys(sugg);
+    if (!keys.length) {
+      document.getElementById('revenue-modal-body').innerHTML =
+        '<div class="empty-state">No bank inflows in this batch could be confidently matched against open revenue documents.</div>';
+      return;
+    }
+    var html = '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+      '<span style="font-size:13px;color:var(--muted);">Found ' + keys.length + ' transaction(s) with candidate matches.</span>' +
+      '<button class="btn btn-secondary btn-sm" onclick="revenueMatchAuto(\'' + esc(batchId) + '\')">⚡ Auto-apply ≥ 80 score</button>' +
+      '</div>';
+    keys.forEach(function(txId){
+      var cands = sugg[txId];
+      html += '<div style="padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;">' +
+        '<div style="font-size:11px;color:var(--muted);font-family:monospace;margin-bottom:6px;">tx ' + esc(txId) + '</div>' +
+        '<table style="width:100%;font-size:12px;">' +
+        '<thead><tr><th style="text-align:left;">Score</th><th style="text-align:left;">Receivable</th><th>Reasons</th><th></th></tr></thead><tbody>';
+      cands.forEach(function(c){
+        var d = c.doc || {};
+        html += '<tr>' +
+          '<td><b>' + c.score + '</b></td>' +
+          '<td>' + esc(d.invoice_number || d.id) + ' · ' + esc(d.customer || '—') + ' · ' + fmtEUR(d.amount_eur || d.amount || 0) + '</td>' +
+          '<td style="color:var(--muted);">' + esc((c.reasons || []).join(' · ')) + '</td>' +
+          '<td><button class="btn btn-primary btn-xs" onclick="revenueMatchApply(\'' + esc(txId) + '\',\'' + esc(c.doc_id) + '\',\'' + esc(batchId) + '\')">Apply</button></td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+    document.getElementById('revenue-modal-body').innerHTML = html;
+  } catch (e) {
+    document.getElementById('revenue-modal-body').innerHTML =
+      '<div class="empty-state">Failed: ' + e.message + '</div>';
+  }
+}
+
+async function revenueMatchApply(txId, docId, batchId) {
+  var r = await fetch('/api/revenue/bank-match/apply', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+    body: JSON.stringify({tx_id: txId, revenue_doc_id: docId})
+  }).then(r => r.json());
+  if (r.error) { showToast(r.message || r.error, 'error'); return; }
+  showToast('Matched · ' + (r.doc && r.doc.status), 'success');
+  revenueMatchSuggest(batchId);   // refresh
+}
+
+async function revenueMatchAuto(batchId) {
+  if (!confirm('Auto-apply all matches with score ≥ 80? This writes receipts and tags bank transactions.')) return;
+  var r = await fetch('/api/revenue/bank-match/auto/' + encodeURIComponent(batchId) + '?min_score=80',
+                      {method:'POST', headers: {'X-FIO-User': (window.currentUser || '')}})
+                .then(r => r.json());
+  if (r.error) { showToast(r.message || r.error, 'error'); return; }
+  showToast('Auto-applied ' + (r.count || 0) + ' match(es)', 'success');
+  revenueMatchSuggest(batchId);
+}
+
+// 💸 Cashflow chart card on Analytics tab — Phase 4b of #94 (2026-06-23)
+async function renderRevenueCashflowCard() {
+  var box = document.getElementById('cashflow-card-body');
+  if (!box) return;
+  var qs = [];
+  if (typeof ANALYTICS_FROM !== 'undefined' && ANALYTICS_FROM) qs.push('from=' + encodeURIComponent(ANALYTICS_FROM));
+  if (typeof ANALYTICS_TO !== 'undefined' && ANALYTICS_TO) qs.push('to=' + encodeURIComponent(ANALYTICS_TO));
+  if (typeof ANALYTICS_PC !== 'undefined' && ANALYTICS_PC) {
+    var pcCode = (typeof STREAM_PC_MAP !== 'undefined' && STREAM_PC_MAP[ANALYTICS_PC]) || ANALYTICS_PC;
+    qs.push('pc=' + encodeURIComponent(pcCode));
+  }
+  var monthlyUrl = '/api/cashflow' + (qs.length ? '?' + qs.join('&') : '');
+  var streamQs = qs.filter(function(p){ return p.indexOf('pc=') !== 0; });
+  var streamUrl = '/api/cashflow/by-stream' + (streamQs.length ? '?' + streamQs.join('&') : '');
+  try {
+    var [monthly, byStream] = await Promise.all([
+      fetch(monthlyUrl, {headers: {'X-FIO-User': (window.currentUser || '')}}).then(r => r.json()),
+      fetch(streamUrl,  {headers: {'X-FIO-User': (window.currentUser || '')}}).then(r => r.json()),
+    ]);
+    if (monthly.error || byStream.error) {
+      box.innerHTML = '<div class="empty-state" style="font-size:13px;">' +
+        (monthly.error || byStream.error) + '</div>';
+      return;
+    }
+    var totals = monthly.totals || {revenue: 0, expense: 0, net: 0, months: 0};
+    var series = monthly.series || [];
+    var rows = byStream.rows || [];
+
+    // KPI strip
+    var net = totals.net || 0;
+    var netColor = net >= 0 ? '#16a34a' : '#dc2626';
+    var html =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px;">' +
+      '  <div style="padding:12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#166534;text-transform:uppercase;font-weight:700;">Revenue (cash in)</div>' +
+      '    <div style="font-size:20px;font-weight:700;color:#166534;margin-top:4px;">' + fmtEUR(totals.revenue) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#991b1b;text-transform:uppercase;font-weight:700;">Expense (cash out)</div>' +
+      '    <div style="font-size:20px;font-weight:700;color:#991b1b;margin-top:4px;">' + fmtEUR(totals.expense) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Net</div>' +
+      '    <div style="font-size:20px;font-weight:700;color:' + netColor + ';margin-top:4px;">' + fmtEUR(net) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Months covered</div>' +
+      '    <div style="font-size:20px;font-weight:700;margin-top:4px;">' + (totals.months || 0) + '</div>' +
+      '  </div>' +
+      '</div>';
+
+    // Monthly bar chart (simple CSS bars — no chart lib)
+    if (series.length) {
+      var max = 0;
+      series.forEach(function(r){
+        max = Math.max(max, Math.abs(r.revenue || 0), Math.abs(r.expense || 0));
+      });
+      max = max || 1;
+      html += '<div><strong style="font-size:13px;">Monthly cash in / out</strong>' +
+        '<div style="display:flex;align-items:flex-end;gap:8px;margin-top:10px;min-height:140px;border-bottom:1px solid var(--border);padding-bottom:6px;">';
+      series.forEach(function(r){
+        var hRev = Math.round(120 * (r.revenue || 0) / max);
+        var hExp = Math.round(120 * (r.expense || 0) / max);
+        html += '<div style="flex:1;min-width:36px;text-align:center;">' +
+          '<div title="Revenue: ' + fmtEUR(r.revenue) + '" style="height:' + hRev + 'px;background:#22c55e;border-radius:3px 3px 0 0;"></div>' +
+          '<div title="Expense: ' + fmtEUR(r.expense) + '" style="height:' + hExp + 'px;background:#ef4444;border-radius:0 0 3px 3px;margin-top:1px;"></div>' +
+          '<div style="font-size:10px;margin-top:4px;color:var(--muted);font-family:monospace;">' + r.month + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    } else {
+      html += '<div class="empty-state" style="font-size:13px;">No cashflow data in the selected period.</div>';
+    }
+
+    // By stream table
+    if (rows.length) {
+      html += '<div style="margin-top:18px;"><strong style="font-size:13px;">Breakdown by stream</strong>' +
+        '<table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse;">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:4px;">Stream</th>' +
+        '<th style="text-align:right;padding:4px;">Revenue</th>' +
+        '<th style="text-align:right;padding:4px;">Expense</th>' +
+        '<th style="text-align:right;padding:4px;">Net</th>' +
+        '</tr></thead><tbody>';
+      rows.forEach(function(r){
+        var nc = (r.net || 0) >= 0 ? '#16a34a' : '#dc2626';
+        html += '<tr>' +
+          '<td style="padding:4px;"><b>' + esc(r.pc) + '</b> · ' + esc(r.label || '') + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#166534;font-weight:600;">' + fmtEUR(r.revenue) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#991b1b;font-weight:600;">' + fmtEUR(r.expense) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:' + nc + ';font-weight:700;">' + fmtEUR(r.net) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state" style="font-size:13px;">Cashflow load failed: ' + e.message + '</div>';
+  }
 }
 
 async function deleteRevReceipt(receiptId, docId) {
