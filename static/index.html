@@ -106,10 +106,43 @@ a:hover { text-decoration: underline; }
 /* Header tabs — inline pills (Call QA / BT4YOU style).
    2026-06-16: horizontal scroll + fade-mask to prevent overflow into the user chip.
 */
+/* 2026-06-22 #86 — tabs wrapper with visible scroll arrows.
+   The earlier mask-image fade was too subtle — users didn't realise
+   tabs were scrollable and the rightmost tab still looked clipped. */
+.bt-tabs-wrap {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 14px;
+  position: relative;
+}
+.bt-tabs-arrow {
+  flex: 0 0 auto;
+  display: none;          /* JS toggles via .show class when overflowing */
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  border-radius: 14px;
+  transition: background-color .15s ease;
+}
+.bt-tabs-arrow:hover { background: rgba(255, 255, 255, 0.20); }
+.bt-tabs-arrow:disabled { opacity: 0.30; cursor: not-allowed; }
+.bt-tabs-arrow.show { display: inline-flex; }
+.bt-tabs-arrow-left  { margin-right: 4px; }
+.bt-tabs-arrow-right { margin-left: 4px; }
+
 .header-tabs {
   display: flex;
   gap: 2px;
-  margin-left: 14px;
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;            /* lets flex item shrink below content size */
@@ -118,9 +151,6 @@ a:hover { text-decoration: underline; }
   scroll-behavior: smooth;
   scrollbar-width: none;   /* Firefox */
   -ms-overflow-style: none;/* IE/Edge */
-  /* Soft fade at the right edge so users see "there's more to scroll" */
-  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
 }
 .header-tabs::-webkit-scrollbar { display: none; }  /* WebKit */
 .tab-btn {
@@ -1588,17 +1618,23 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <span class="bt-brand-title">FIO Accounting Bot</span>
       <span class="bt-brand-subtitle">BT4YOU Business Bots</span>
     </div>
-    <nav class="header-tabs">
-      <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
-      <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
-      <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
-      <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Bank Statement Audit</button>
-      <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
-      <button class="tab-btn" onclick="switchTab('confirm-payment')" data-tab="confirm-payment">Confirm for Payment</button>
-      <button class="tab-btn" onclick="switchTab('admin')" data-tab="admin">Admin</button>
-      <button class="tab-btn" onclick="switchTab('legend')" data-tab="legend">FIO Legend</button>
-      <button class="tab-btn" onclick="switchTab('policies')" data-tab="policies">Policies &amp; Limits</button>
-    </nav>
+    <div class="bt-tabs-wrap">
+      <button class="bt-tabs-arrow bt-tabs-arrow-left"  type="button" aria-label="Scroll tabs left"
+              onclick="scrollHeaderTabs(-200)" title="Scroll tabs left">‹</button>
+      <nav class="header-tabs" id="header-tabs">
+        <button class="tab-btn active" onclick="switchTab('upload')" data-tab="upload">Upload</button>
+        <button class="tab-btn" onclick="switchTab('approve')" data-tab="approve">Approve</button>
+        <button class="tab-btn" onclick="switchTab('accounting')" data-tab="accounting">Accounting</button>
+        <button class="tab-btn" onclick="switchTab('card-audit')" data-tab="card-audit">Bank Statement Audit</button>
+        <button class="tab-btn" onclick="switchTab('analytics')" data-tab="analytics">Analytics</button>
+        <button class="tab-btn" onclick="switchTab('confirm-payment')" data-tab="confirm-payment">Confirm for Payment</button>
+        <button class="tab-btn" onclick="switchTab('admin')" data-tab="admin">Admin</button>
+        <button class="tab-btn" onclick="switchTab('legend')" data-tab="legend">FIO Legend</button>
+        <button class="tab-btn" onclick="switchTab('policies')" data-tab="policies">Policies &amp; Limits</button>
+      </nav>
+      <button class="bt-tabs-arrow bt-tabs-arrow-right" type="button" aria-label="Scroll tabs right"
+              onclick="scrollHeaderTabs(200)" title="Scroll tabs right">›</button>
+    </div>
   </div>
   <div class="header-right">
     <span class="bt-status-pill" title="FIO liveness · last sync"><span class="bt-status-dot"></span> ON</span>
@@ -2825,15 +2861,19 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 
         <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
           <h3 style="margin:0 0 12px 0;font-size:16px;">Profit centers (business streams)</h3>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:12px;">
-            <div><strong>AG</strong> &mdash; Amitours Group (holding)</div>
+          <p style="margin:0 0 10px;font-size:12px;color:var(--muted);">Canonical codes — synced with BT4YOU Executive Bot ledger. Single source of truth.</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px;font-size:12px;">
+            <div><strong>AG</strong> &mdash; Amitours Group (holding ops)</div>
+            <div><strong>AH</strong> &mdash; Amitours Holding OÜ <span style="color:var(--muted);">(not Mountly!)</span></div>
             <div><strong>AA</strong> &mdash; Alps2Alps</div>
-            <div><strong>SR</strong> &mdash; Skipasser</div>
-            <div><strong>MT / AH</strong> &mdash; Mountly</div>
-            <div><strong>CF / PK</strong> &mdash; MyPeak Finance</div>
+            <div><strong>SP</strong> &mdash; Skipasser <span style="color:var(--muted);">(was SR)</span></div>
+            <div><strong>MN</strong> &mdash; Mountly <span style="color:var(--muted);">(was MT/AH)</span></div>
+            <div><strong>MT</strong> &mdash; Medical Travel <span style="color:var(--muted);">(new)</span></div>
+            <div><strong>CF</strong> &mdash; MyPeak Finance</div>
             <div><strong>AL</strong> &mdash; ALVEDA</div>
             <div><strong>RR</strong> &mdash; Rock2Rock</div>
           </div>
+          <p style="margin:10px 0 0;font-size:11px;color:var(--yellow);">⚠ PC code migration in progress (#87). Old codes (SR, MT for Mountly) auto-mapped to new codes; historical data preserved. New uploads use the canonical codes above.</p>
         </div>
 
         <div style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;">
@@ -3113,10 +3153,37 @@ var expandedCostRow = null;
 // ---------------------------------------------------------------------------
 // Tab switching
 // ---------------------------------------------------------------------------
+// 2026-06-22 #86 — scroll the tab bar by Npx (+/-) with smooth easing
+function scrollHeaderTabs(delta) {
+  var bar = document.getElementById('header-tabs');
+  if (!bar) return;
+  bar.scrollBy({ left: delta, behavior: 'smooth' });
+  setTimeout(updateHeaderTabArrows, 350);
+}
+
+// Show/hide left/right arrows based on overflow state
+function updateHeaderTabArrows() {
+  var bar = document.getElementById('header-tabs');
+  if (!bar) return;
+  var hasOverflow = bar.scrollWidth - bar.clientWidth > 4;
+  var atLeft = bar.scrollLeft <= 1;
+  var atRight = bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1;
+  var left  = document.querySelector('.bt-tabs-arrow-left');
+  var right = document.querySelector('.bt-tabs-arrow-right');
+  if (left)  { left.classList.toggle('show', hasOverflow);  left.disabled  = atLeft;  }
+  if (right) { right.classList.toggle('show', hasOverflow); right.disabled = atRight; }
+}
+
 function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
   });
+  // Auto-scroll the active tab into view so it's never clipped (#86)
+  var activeBtn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+  if (activeBtn && activeBtn.scrollIntoView) {
+    activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    setTimeout(updateHeaderTabArrows, 350);
+  }
   document.querySelectorAll('.panel').forEach(function(p) {
     p.classList.toggle('active', p.id === 'panel-' + tabName);
   });
@@ -3720,6 +3787,17 @@ document.addEventListener('DOMContentLoaded', function() {
   setupUpload();
   // 2026-06-16 Phase 2 — start notification bell polling once DOM is ready
   setTimeout(startNotifPolling, 1000);
+  // 2026-06-22 #86 — header tab arrows (overflow detection + resize re-check)
+  setTimeout(updateHeaderTabArrows, 100);
+  window.addEventListener('resize', function() {
+    if (window._btTabResizeT) clearTimeout(window._btTabResizeT);
+    window._btTabResizeT = setTimeout(updateHeaderTabArrows, 100);
+  });
+  var headerTabsEl = document.getElementById('header-tabs');
+  if (headerTabsEl) headerTabsEl.addEventListener('scroll', function() {
+    if (window._btTabScrollT) clearTimeout(window._btTabScrollT);
+    window._btTabScrollT = setTimeout(updateHeaderTabArrows, 60);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -4998,27 +5076,31 @@ function renderCPRows(docs) {
     // Desired payment date + payment state pill (P2.2, 2026-06-07)
     var desiredDateCell = _cpDesiredDateCell(d, canEditEntity);
 
-    // Stage-specific action button
-    var actionsCell = '—';
+    // 2026-06-22 #88 — Preview button on EVERY stage so CEO + bookkeeper can
+    // open any invoice (PDF, bank details, line items) regardless of stage.
+    // Was previously only on `paid`.
+    var previewBtn = '<button class="btn btn-ghost btn-sm" onclick="openModal(\'' + d.id + '\')" title="Open invoice preview + details">👁 Preview</button>';
+
+    // Stage-specific action button(s) — composed with the preview button.
+    var stageAction = '';
     if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper' || ME.role === 'stream_owner')) {
-      // Two actions side-by-side: regular budget-OK flow OR
-      // "skip Rita" — already paid by card (P2.1)
-      actionsCell =
-        '<div style="display:flex;flex-direction:column;gap:4px;">' +
-          '<button class="btn btn-sm btn-success" onclick="markBudgetOK(\'' + d.id + '\')">✓ Budget OK</button>' +
-          '<button class="btn btn-sm" style="background:#fef3c7;color:#92400e;border-color:#fcd34d;" ' +
-                  'onclick="markAlreadyPaidByCard(\'' + d.id + '\')" ' +
-                  'title="Skip CEO + Payment. Use when someone already paid via corporate card.">' +
-            '💳 Already paid (card)' +
-          '</button>' +
-        '</div>';
+      // Two actions: regular budget-OK flow OR "skip Rita" already-paid-by-card (P2.1)
+      stageAction =
+        '<button class="btn btn-sm btn-success" onclick="markBudgetOK(\'' + d.id + '\')">✓ Budget OK</button>' +
+        '<button class="btn btn-sm" style="background:#fef3c7;color:#92400e;border-color:#fcd34d;" ' +
+                'onclick="markAlreadyPaidByCard(\'' + d.id + '\')" ' +
+                'title="Skip CEO + Payment. Use when someone already paid via corporate card.">' +
+          '💳 Already paid (card)' +
+        '</button>';
     } else if (CP_STAGE === 'awaiting_ceo' && (ME.role === 'admin' || ME.role === 'holding_ceo')) {
-      actionsCell = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay</button>';
+      stageAction = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay</button>';
     } else if (CP_STAGE === 'awaiting_payment' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
-      actionsCell = '<button class="btn btn-sm btn-success" onclick="markDocPaid(\'' + d.id + '\')">💸 Mark paid</button>';
-    } else if (CP_STAGE === 'paid') {
-      actionsCell = '<button class="btn btn-ghost btn-sm" onclick="openModal(\'' + d.id + '\')">View</button>';
+      stageAction = '<button class="btn btn-sm btn-success" onclick="markDocPaid(\'' + d.id + '\')">💸 Mark paid</button>';
     }
+    // CP_STAGE === 'paid' → no extra stage action; preview button is enough.
+
+    var actionsCell = '<div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">' +
+        previewBtn + stageAction + '</div>';
 
     // Compose row per stage
     // 2026-06-07 P1.5: Legal Entity column added to awaiting_ceo + awaiting_payment + paid.
