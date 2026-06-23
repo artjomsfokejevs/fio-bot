@@ -6438,14 +6438,24 @@ function markAllNotifsRead() {
 }
 
 // Minimal overlay primitive — appended to <body>, removed on close.
-function showOverlay(innerHtml) {
+function showOverlay(innerHtml, opts) {
+  // opts.size: 'sidebar' (default — top-right slide for bell), 'center' (centered wide modal)
   closeOverlay();
+  var size = (opts && opts.size) || 'sidebar';
   var div = document.createElement('div');
   div.id = '__notif_overlay';
-  div.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:flex-end;padding-top:60px;padding-right:14px;';
+  if (size === 'center') {
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;';
+  } else {
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:flex-end;padding-top:60px;padding-right:14px;';
+  }
   div.onclick = function(e){ if (e.target === div) closeOverlay(); };
   var card = document.createElement('div');
-  card.style.cssText = 'background:#fff;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.25);min-width:380px;max-width:560px;max-height:80vh;overflow-y:auto;';
+  if (size === 'center') {
+    card.style.cssText = 'background:#fff;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.25);max-width:1120px;width:100%;max-height:90vh;overflow-y:auto;';
+  } else {
+    card.style.cssText = 'background:#fff;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.25);min-width:380px;max-width:560px;max-height:80vh;overflow-y:auto;';
+  }
   card.innerHTML = innerHtml;
   div.appendChild(card);
   document.body.appendChild(div);
@@ -6518,7 +6528,11 @@ function loadBankStatementArchives() {
           '<td style="padding:5px 8px;text-align:right;color:#ca8a04;">' + (a.suggested || 0) + '</td>' +
           '<td style="padding:5px 8px;text-align:right;color:#dc2626;">' + (a.unmatched || 0) + '</td>' +
           '<td style="padding:5px 8px;font-size:11px;color:var(--muted);">' + esc(when) + '</td>' +
-          '<td style="padding:5px 8px;"><button class="btn btn-ghost btn-sm" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched and let next reconcile re-evaluate">↻ Re-check</button></td>' +
+          '<td style="padding:5px 8px;white-space:nowrap;">' +
+            '<button class="btn btn-ghost btn-xs" onclick="previewArchiveBatch(\'' + esc(a.batch_id) + '\')" title="Open transactions in this batch (read-only, even after confirmation)">👁 Preview</button> ' +
+            '<button class="btn btn-ghost btn-xs" onclick="reopenArchiveInAudit(\'' + esc(a.batch_id) + '\', \'' + esc(a.period || '') + '\')" title="Jump to Bank Statement Audit tab on this batch period">↗ Open in Audit</button> ' +
+            '<button class="btn btn-ghost btn-xs" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched and let next reconcile re-evaluate">↻ Re-check</button>' +
+          '</td>' +
           '</tr>';
       }).join('') + '</tbody></table>';
   }).catch(function(err){
@@ -6531,6 +6545,68 @@ function recheckArchive(batchId) {
   api('POST', '/api/bank-statements/archives/' + encodeURIComponent(batchId) + '/recheck')
     .then(function(r){ showToast('Reset ' + (r && r.rows_reset_for_recheck || 0) + ' rows — now run reconcile.', 'success'); loadBankStatementArchives(); })
     .catch(function(err){ showToast('Failed: ' + (err && err.message || err), 'error'); });
+}
+
+// 2026-06-22 #89 — reopen a closed/confirmed archive in Bank Statement Audit (read-only-friendly)
+function reopenArchiveInAudit(batchId, period) {
+  switchTab('card-audit');
+  setTimeout(function() {
+    var sel = document.getElementById('ca-period');
+    if (sel && period) {
+      sel.value = period;
+      if (typeof loadCardAudit === 'function') loadCardAudit();
+    }
+    showToast('Opened batch ' + batchId.substring(0, 10) + '… in Bank Statement Audit (period ' + (period || '?') + ')', 'success');
+  }, 200);
+}
+
+// 2026-06-22 #91 — preview every transaction in a past CSV batch (works after confirmation)
+function previewArchiveBatch(batchId) {
+  api('GET', '/api/bank-statements/archives/' + encodeURIComponent(batchId) + '/transactions')
+    .then(function(r) {
+      var b = (r && r.batch) || {};
+      var txs = (r && r.transactions) || [];
+      var when = (b.last_at || b.first_at || '').substring(0, 16).replace('T', ' ');
+      var html = '<div style="padding:14px 18px;max-width:1080px;">';
+      html += '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">';
+      html += '<h3 style="margin:0;font-size:16px;">🏦 Batch ' + esc(batchId.substring(0, 12)) + '…</h3>';
+      html += '<span style="font-size:12px;color:var(--muted);">' + esc(b.source || '—') + ' · ' + esc(b.period || '—') + ' · imported ' + esc(when) + ' · ' + (b.tx_count || 0) + ' tx</span>';
+      html += '</div>';
+      html += '<p style="margin:0 0 10px;font-size:11px;color:var(--muted);">Snapshot of every transaction in this CSV import. Read-only preview — to re-evaluate matches use ↻ Re-check, then reconcile from the Bank Statement Audit tab.</p>';
+
+      if (!txs.length) {
+        html += '<div style="padding:20px;color:var(--muted);font-size:13px;text-align:center;">No transactions in this batch.</div>';
+      } else {
+        html += '<div style="max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:6px;">';
+        html += '<table class="bt-table" style="min-width:980px;font-size:12px;">';
+        html += '<thead><tr><th>Date</th><th>Counterparty / Description</th><th>Ref</th><th class="ta-right">Amount</th><th>Holder</th><th>PC</th><th>Match</th></tr></thead><tbody>';
+        txs.forEach(function(t) {
+          var dt = (t.posted_at || '').substring(0, 16).replace('T', ' ');
+          var amt = (t.currency || 'EUR') + ' ' + Number(t.amount || 0).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+          var ccyExtra = (t.currency && t.currency !== 'EUR' && t.amount_eur) ? '<br><span class="bt-meta-cell">€ ' + Number(t.amount_eur).toLocaleString('en', {minimumFractionDigits: 2}) + '</span>' : '';
+          var statusColor = t.match_status === 'matched' ? '#16a34a' : (t.match_status === 'suggested' ? '#ca8a04' : '#dc2626');
+          html += '<tr>' +
+            '<td>' + esc(dt) + '</td>' +
+            '<td><strong>' + esc(t.counterparty || '—') + '</strong>' +
+              (t.description ? '<div class="bt-meta-cell">' + esc((t.description || '').substring(0, 80)) + '</div>' : '') + '</td>' +
+            '<td class="bt-mono bt-meta-cell">' + esc((t.reference || '—').substring(0, 24)) + '</td>' +
+            '<td class="ta-right">' + amt + ccyExtra + '</td>' +
+            '<td>' + esc(t.card_holder || '—') + '</td>' +
+            '<td>' + esc(t.profit_center || '—') + '</td>' +
+            '<td style="color:' + statusColor + ';font-weight:600;">' + esc(t.match_status || '—') + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+      html += '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">';
+      html += '<button class="btn btn-ghost btn-sm" onclick="reopenArchiveInAudit(\'' + esc(batchId) + '\', \'' + esc(b.period || '') + '\'); closeOverlay();">↗ Open in Audit</button>';
+      html += '<button class="btn btn-ghost btn-sm" onclick="closeOverlay()">Close</button>';
+      html += '</div></div>';
+      showOverlay(html, { size: 'center' });
+    })
+    .catch(function(err) {
+      showToast('Failed to load batch: ' + (err && err.message || err), 'error');
+    });
 }
 
 // ───────────────────────────────────────────────────────────────────

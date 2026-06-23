@@ -188,6 +188,37 @@ def bank_statement_archives() -> Any:
         conn.close()
 
 
+@notify_bp.route("/bank-statements/archives/<batch_id>/transactions", methods=["GET"])
+def archive_transactions(batch_id: str) -> Any:
+    """List every transaction in a past CSV batch — feeds the Preview modal (#91).
+    Also returns the batch metadata so the modal can show "this is a closed/
+    confirmed batch, here is the snapshot at confirmation" — re-opens read-only (#89)."""
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, source, posted_at, period, amount, currency, amount_eur, "
+            "       description, counterparty, reference, card_holder, profit_center, "
+            "       match_status, match_confidence, matched_invoice_id, notes "
+            "FROM card_transactions WHERE batch_id = ? "
+            "ORDER BY posted_at DESC, id ASC LIMIT 1000",
+            (batch_id,),
+        ).fetchall()
+        meta = conn.execute(
+            "SELECT batch_id, MIN(imported_at) AS first_at, MAX(imported_at) AS last_at, "
+            "       COUNT(*) AS tx_count, MAX(period) AS period, MAX(source) AS source "
+            "FROM card_transactions WHERE batch_id = ?",
+            (batch_id,),
+        ).fetchone()
+        if not meta or meta["tx_count"] == 0:
+            return jsonify({"error": "batch not found"}), 404
+        return jsonify({
+            "batch": dict(meta),
+            "transactions": [dict(r) for r in rows],
+        })
+    finally:
+        conn.close()
+
+
 @notify_bp.route("/bank-statements/archives/<batch_id>/recheck", methods=["POST"])
 def recheck_archive(batch_id: str) -> Any:
     """Re-run the matcher against the archived batch — useful after Rita
