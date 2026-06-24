@@ -3,6 +3,18 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-24-supervision",
+      "date": "2026-06-24",
+      "title": "🛡 Chase Task Supervision dashboard + fixed Asana dropdowns (timeout + cache)",
+      "summary": "Fixed the Project / Assignee dropdowns in the Create Asana task modal — they were timing out on /users (BT4YOU workspace has 150+ users × pagination). Bumped HTTP timeout 12s → 30s and added a 10-minute in-process cache so subsequent modal opens are instant. New 'Chase Task Supervision' dashboard on Bank Statement Audit shows every chase task ever created with done/pending split, by-stream and by-assignee breakdowns, completion %, and one-click refresh-from-Asana. Mirrors BT4YOU Executive Bot's Supervision Manager pattern.",
+      "highlights": [
+        "🛠 Asana /projects + /users no longer 500 — timeout bumped from 12s to 30s; results memoised for 10 min per workspace so the next modal opens instantly.",
+        "🛡 Chase Task Supervision dashboard (Bank Statement Audit tab) — KPI tiles (Done · Pending · Completion % · Total chased €), by-stream + by-assignee breakdowns, full task list with Asana deeplink.",
+        "🔄 'Refresh from Asana' button — hits /tasks/<gid> for every pending chase task and updates status to 'done' if the bookkeeper / stakeholder marked it complete in Asana.",
+        "💾 chase_tasks table — every task created via the chase modal is persisted with title, PC, assignee, due, tx_ids, attachments. Auditable from day one."
+      ]
+    },
+    {
       "version": "2026-06-23-ux-sweep",
       "date": "2026-06-23",
       "title": "🎨 UX sweep — canonical stream pills · fixed Actions column · bulk chase tasks · Release history dropdown · Revenue tab in Legend",

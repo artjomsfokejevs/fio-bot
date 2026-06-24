@@ -10428,6 +10428,131 @@ async function deleteRevReceipt(receiptId, docId) {
   openRevenueDetail(docId);
   loadRevenue();
 }
+
+// 2026-06-24 — Chase Task Supervision dashboard
+// Mirrors BT4YOU Supervision Manager: KPI tiles + by-stream + by-assignee tables
+// + per-task list with "Open in Asana" + "Refresh status" actions.
+async function renderChaseSupervision() {
+  var box = document.getElementById('ca-chase-supervision');
+  if (!box) return;
+  try {
+    var d = await fetch('/api/card-audit/chase-tasks',
+                        {headers: {'X-FIO-User': (window.currentUser || '')}})
+                  .then(function(r){ return r.json(); });
+    if (d.error) { box.innerHTML = ''; return; }
+    var tasks = d.tasks || [];
+    if (!tasks.length) { box.innerHTML = ''; return; }   // hide when empty
+    var stats = d.stats || {};
+    var done    = (stats.done    && stats.done.n)    || 0;
+    var pending = (stats.pending && stats.pending.n) || 0;
+    var cancelled = (stats.cancelled && stats.cancelled.n) || 0;
+    var sumEur  = ((stats.done && stats.done.sum_eur) || 0) +
+                  ((stats.pending && stats.pending.sum_eur) || 0);
+    var completion = (done + pending) > 0 ? Math.round(100 * done / (done + pending)) : 0;
+
+    var html =
+      '<div class="section-card">' +
+        '<div class="section-card-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+          '<span>🛡 Chase task supervision <span class="bt-pill" style="margin-left:6px;background:#e0e7ff;color:#3730a3;">' + tasks.length + ' tasks</span></span>' +
+          '<button class="btn btn-secondary btn-sm" onclick="refreshChaseSupervision()" style="font-size:11px;">🔄 Refresh from Asana</button>' +
+        '</div>' +
+        '<div style="padding:14px;">' +
+          // KPI strip
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">' +
+            '<div style="padding:10px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:6px;">' +
+              '<div style="font-size:10px;color:#166534;text-transform:uppercase;font-weight:700;">✓ Done</div>' +
+              '<div style="font-size:20px;font-weight:700;color:#166534;margin-top:2px;">' + done + '</div>' +
+            '</div>' +
+            '<div style="padding:10px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;">' +
+              '<div style="font-size:10px;color:#92400e;text-transform:uppercase;font-weight:700;">⏳ Pending</div>' +
+              '<div style="font-size:20px;font-weight:700;color:#92400e;margin-top:2px;">' + pending + '</div>' +
+            '</div>' +
+            '<div style="padding:10px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:6px;">' +
+              '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Completion</div>' +
+              '<div style="font-size:20px;font-weight:700;margin-top:2px;color:' + (completion >= 80 ? '#166534' : (completion >= 50 ? '#92400e' : '#991b1b')) + ';">' + completion + '%</div>' +
+            '</div>' +
+            '<div style="padding:10px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:6px;">' +
+              '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Total chased</div>' +
+              '<div style="font-size:20px;font-weight:700;margin-top:2px;">€' + Number(sumEur).toLocaleString('en', {maximumFractionDigits:0}) + '</div>' +
+            '</div>' +
+          '</div>' +
+          // Two-column: by-stream + by-assignee
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">' +
+            _renderSuperviseGroup('By stream',    d.by_stream    || [], 'profit_center') +
+            _renderSuperviseGroup('By assignee',  d.by_assignee  || [], 'who') +
+          '</div>' +
+          // Task list
+          '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Recent chase tasks</div>' +
+          '<table class="bt-table" style="font-size:12px;width:100%;">' +
+            '<thead><tr>' +
+              '<th>Created</th><th>Title</th><th>Stream</th><th>Assignee</th>' +
+              '<th>Due</th><th class="ta-right">€</th><th>Tx</th><th>Status</th><th></th>' +
+            '</tr></thead><tbody>' +
+            tasks.map(function(t) {
+              var pillBg = t.status === 'done' ? '#22c55e' :
+                           (t.status === 'pending' ? '#eab308' : '#94a3b8');
+              return '<tr>' +
+                '<td style="white-space:nowrap;font-family:monospace;font-size:11px;">' + esc((t.created_at || '').slice(0,16).replace('T',' ')) + '</td>' +
+                '<td>' + esc((t.title || '').slice(0, 70)) + '</td>' +
+                '<td><b>' + esc(t.profit_center || '—') + '</b></td>' +
+                '<td>' + esc(t.assignee_name || '—') + '</td>' +
+                '<td>' + esc(t.due_on || '—') + '</td>' +
+                '<td class="ta-right">€' + Number(t.total_eur || 0).toFixed(0) + '</td>' +
+                '<td class="ta-right">' + (t.tx_count || 0) + '</td>' +
+                '<td><span class="bt-pill" style="background:' + pillBg + ';color:#fff;font-size:10px;">' + esc(t.status || '?') + '</span></td>' +
+                '<td><a href="' + esc(t.permalink_url || '#') + '" target="_blank" class="btn btn-ghost btn-sm" style="font-size:11px;text-decoration:none;">↗ Open</a></td>' +
+              '</tr>';
+            }).join('') +
+            '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>';
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '';
+    console.error('chase supervision load failed:', e);
+  }
+}
+
+function _renderSuperviseGroup(title, rows, labelKey) {
+  if (!rows.length) return '';
+  return '<div style="background:#f8fafc;padding:10px;border:1px solid var(--border);border-radius:6px;">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">' + esc(title) + '</div>' +
+    '<table style="width:100%;font-size:12px;border-collapse:collapse;">' +
+      '<thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;">' +
+        '<th style="padding:3px 4px;">' + (labelKey === 'who' ? 'Assignee' : 'Stream') + '</th>' +
+        '<th style="padding:3px 4px;text-align:right;">Total</th>' +
+        '<th style="padding:3px 4px;text-align:right;color:#166534;">Done</th>' +
+        '<th style="padding:3px 4px;text-align:right;color:#92400e;">Pending</th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function(r) {
+        var label = r[labelKey] || '—';
+        return '<tr>' +
+          '<td style="padding:3px 4px;">' + esc(String(label).slice(0, 40)) + '</td>' +
+          '<td style="padding:3px 4px;text-align:right;font-weight:600;">' + (r.total || 0) + '</td>' +
+          '<td style="padding:3px 4px;text-align:right;color:#166534;font-weight:600;">' + (r.done || 0) + '</td>' +
+          '<td style="padding:3px 4px;text-align:right;color:#92400e;font-weight:600;">' + (r.pending || 0) + '</td>' +
+        '</tr>';
+      }).join('') +
+    '</tbody></table>' +
+  '</div>';
+}
+
+async function refreshChaseSupervision() {
+  showToast('🔄 Re-checking pending tasks in Asana…', 'info');
+  try {
+    var r = await fetch('/api/card-audit/chase-tasks/refresh', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+      body: JSON.stringify({})
+    }).then(function(r){ return r.json(); });
+    var done = (r.refreshed || []).filter(function(x){ return x.status === 'done'; }).length;
+    showToast('✓ Refreshed ' + (r.count || 0) + ' tasks · ' + done + ' completed', 'success');
+    renderChaseSupervision();
+  } catch (e) {
+    showToast('Refresh failed: ' + e.message, 'error');
+  }
+}
 </script>
 
 <footer class="bt-footer">
