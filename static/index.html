@@ -9258,13 +9258,17 @@ async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) 
       '</div>' +
       '<div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;background:#f8fafc;">' +
         '<button class="btn btn-ghost" onclick="document.getElementById(\'ca-chase-create-overlay\').classList.remove(\'active\')">Cancel</button>' +
-        '<button class="btn btn-primary" id="chase-create-submit" onclick="submitChaseBulkTask(\'' + esc(pc) + '\')">✓ Create in Asana</button>' +
+        '<button class="btn btn-primary" id="chase-create-submit" onclick="submitChaseBulkTask()">✓ Create in Asana</button>' +
       '</div>' +
     '</div>';
   overlay.classList.add('active');
 
   // Stash selection for the submit handler
-  window._FIO_CHASE_SELECTION = { pc: pc, tx_ids: selected, workspace_id: workspaceId };
+  window._FIO_CHASE_SELECTION = { pc: pc, tx_ids: txIds, workspace_id: workspaceId };
+  if (overrideBody) {
+    var bodyEl = document.getElementById('chase-create-body');
+    if (bodyEl) bodyEl.value = overrideBody;
+  }
 
   // Async: load projects + users in parallel (graceful 503)
   fetch('/api/card-audit/asana/projects?workspace_id=' + encodeURIComponent(workspaceId),
@@ -9314,7 +9318,7 @@ async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) 
     });
 }
 
-async function submitChaseBulkTask(pc) {
+async function submitChaseBulkTask() {
   var sel = window._FIO_CHASE_SELECTION;
   if (!sel || !sel.tx_ids.length) { showToast('No selection', 'error'); return; }
   var btn = document.getElementById('chase-create-submit');
