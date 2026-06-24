@@ -33,7 +33,15 @@ logger = logging.getLogger(__name__)
 __all__ = ["fetch_users_from_asana", "load_asana_users", "asana_users_path"]
 
 _ASANA_BASE = "https://app.asana.com/api/1.0"
-_TIMEOUT = 12.0
+_TIMEOUT = 30.0   # 2026-06-24 — bumped from 12s (was timing out on /users
+                  # with 150+ entries × 20 pages of pagination)
+
+# 2026-06-24 — in-process memo cache for projects + users.
+# TTL 10 min — these change rarely, but a stale 10-min snapshot is fine.
+# Keyed by (workspace_id, "projects"|"users"). Reset on process restart.
+_CACHE: Dict[str, Any] = {}
+_CACHE_TTL_SECONDS = 600
+_CACHE_TS: Dict[str, float] = {}
 
 
 def asana_users_path() -> str:
@@ -184,14 +192,41 @@ def resolve_workspace_id() -> str:
 
 # ── 2026-06-23 — listing helpers for the rich chase-task creator UI ───────
 
-def list_projects(workspace_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+def _cache_get(key: str) -> Optional[Any]:
+    """Return cached value if still fresh, else None."""
+    import time
+    ts = _CACHE_TS.get(key)
+    if ts is None:
+        return None
+    if (time.time() - ts) > _CACHE_TTL_SECONDS:
+        _CACHE.pop(key, None)
+        _CACHE_TS.pop(key, None)
+        return None
+    return _CACHE.get(key)
+
+
+def _cache_put(key: str, value: Any) -> None:
+    import time
+    _CACHE[key] = value
+    _CACHE_TS[key] = time.time()
+
+
+def list_projects(workspace_id: str, limit: int = 100,
+                  force_refresh: bool = False) -> List[Dict[str, Any]]:
     """Return projects in a workspace as [{gid, name, team}, ...].
 
+    Cached for 10 minutes per workspace_id (P85 — graceful + fast).
+    Pass force_refresh=True from a refresh button to bypass cache.
     Paginated up to 10 pages × `limit` (default 1000 projects).
     """
-    token = _resolve_token()
     if not workspace_id:
         raise RuntimeError("workspace_id required")
+    cache_key = f"projects:{workspace_id}"
+    if not force_refresh:
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+    token = _resolve_token()
     out: List[Dict[str, Any]] = []
     offset: Optional[str] = None
     for _ in range(10):
@@ -215,14 +250,24 @@ def list_projects(workspace_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         if not offset:
             break
     out.sort(key=lambda r: (r.get("team") or "", r.get("name") or ""))
+    _cache_put(cache_key, out)
     return out
 
 
-def list_users_for_workspace(workspace_id: str, limit: int = 100) -> List[Dict[str, Any]]:
-    """Return assignable users for the workspace as [{gid, name, email}, ...]."""
-    token = _resolve_token()
+def list_users_for_workspace(workspace_id: str, limit: int = 100,
+                             force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Return assignable users for the workspace as [{gid, name, email}, ...].
+
+    Cached for 10 minutes per workspace_id. force_refresh=True bypasses cache.
+    """
     if not workspace_id:
         raise RuntimeError("workspace_id required")
+    cache_key = f"users:{workspace_id}"
+    if not force_refresh:
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+    token = _resolve_token()
     out: List[Dict[str, Any]] = []
     offset: Optional[str] = None
     for _ in range(20):  # cap: 20 × 100 = 2000 users
@@ -247,7 +292,30 @@ def list_users_for_workspace(workspace_id: str, limit: int = 100) -> List[Dict[s
         if not offset:
             break
     out.sort(key=lambda r: (r.get("name") or "").lower())
+    _cache_put(cache_key, out)
     return out
+
+
+def get_task_status(task_gid: str) -> Dict[str, Any]:
+    """Fetch one task's current status (completed flag, due date, assignee).
+
+    Used by the chase-task supervision dashboard to refresh state from Asana.
+    Returns {gid, completed, completed_at, due_on, assignee_name, name, permalink_url}.
+    """
+    token = _resolve_token()
+    page = _asana_get("/tasks/" + task_gid, token, params={
+        "opt_fields": "name,completed,completed_at,due_on,assignee.name,permalink_url"
+    })
+    d = page.get("data") or {}
+    return {
+        "gid": d.get("gid"),
+        "name": d.get("name"),
+        "completed": bool(d.get("completed")),
+        "completed_at": d.get("completed_at"),
+        "due_on": d.get("due_on"),
+        "assignee_name": (d.get("assignee") or {}).get("name"),
+        "permalink_url": d.get("permalink_url"),
+    }
 
 
 def _asana_get(path: str, token: str, params: Optional[Dict[str, str]] = None) -> Dict[str, Any]:

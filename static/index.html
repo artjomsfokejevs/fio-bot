@@ -2041,6 +2041,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     <!-- 2026-06-11 Top-9 P3.1 — Monthly dashboard (KPIs + by-stream) -->
     <div id="ca-monthly-dashboard" style="margin-bottom:18px;"></div>
 
+    <!-- 2026-06-24 — Chase Task Supervision (mirrors BT4YOU Supervision Manager) -->
+    <div id="ca-chase-supervision" style="margin-bottom:18px;"></div>
+
     <div id="ca-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;"></div>
 
     <!-- By-department breakdown -->
@@ -8991,6 +8994,7 @@ async function loadCardAudit() {
     }
     renderCaMonthClose(mcStatus, period);
     renderCaMonthlyDashboard(dashboard);
+    try { renderChaseSupervision(); } catch (e) { console.error('chase supervision failed', e); }
     renderCaKpis(summary);
     renderCaByDept(summary);
     renderCaLists(allTx);

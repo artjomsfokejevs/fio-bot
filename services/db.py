@@ -355,6 +355,35 @@ CREATE TABLE IF NOT EXISTS revenue_audit (
 );
 CREATE INDEX IF NOT EXISTS ix_ra_doc ON revenue_audit(revenue_doc_id);
 
+-- 2026-06-24 — Chase-task supervision log (mirrors BT4YOU Supervision Manager).
+-- One row per Asana task created via the chase flow. Status is refreshed on
+-- demand via /api/card-audit/chase-tasks/refresh which calls Asana GET /tasks/<gid>.
+CREATE TABLE IF NOT EXISTS chase_tasks (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_gid          TEXT NOT NULL UNIQUE,            -- Asana task gid
+    permalink_url     TEXT,
+    title             TEXT,
+    profit_center     TEXT,                            -- canonical PC for the chased stream
+    tx_count          INTEGER NOT NULL DEFAULT 1,
+    total_eur         REAL,
+    project_gid       TEXT,
+    project_name      TEXT,
+    assignee_gid      TEXT,
+    assignee_name     TEXT,
+    due_on            TEXT,                            -- YYYY-MM-DD
+    created_by        TEXT,                            -- FIO user who pressed Create
+    created_at        TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'pending', -- pending | done | cancelled
+    completed_at      TEXT,
+    last_synced_at    TEXT,
+    tx_ids_json       TEXT,                            -- JSON array of card_transactions.id
+    attachments_json  TEXT                             -- JSON array of {doc_id, filename, attachment_gid}
+);
+CREATE INDEX IF NOT EXISTS ix_chase_status   ON chase_tasks(status);
+CREATE INDEX IF NOT EXISTS ix_chase_pc       ON chase_tasks(profit_center);
+CREATE INDEX IF NOT EXISTS ix_chase_assignee ON chase_tasks(assignee_gid);
+CREATE INDEX IF NOT EXISTS ix_chase_created  ON chase_tasks(created_at);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,

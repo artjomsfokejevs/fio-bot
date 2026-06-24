@@ -566,6 +566,54 @@ def card_audit_chase_asana_bulk() -> Any:
             except RuntimeError as exc:
                 attachments_failed.append({"doc_id": d["id"], "error": str(exc)})
 
+    # 2026-06-24 — persist to chase_tasks for the Supervision dashboard.
+    import json as _json
+    pc_for_task = ""
+    pc_counter: Dict[str, int] = {}
+    for r in rows:
+        pc = r.get("profit_center") or ""
+        if pc:
+            pc_counter[pc] = pc_counter.get(pc, 0) + 1
+    if pc_counter:
+        pc_for_task = max(pc_counter, key=pc_counter.get)
+    # Pull project_name / assignee_name back from the cached Asana lookups so
+    # the log shows readable values, not GIDs.
+    project_name = ""
+    assignee_name = ""
+    try:
+        if project_id:
+            for p in _asana_svc_bulk.list_projects(workspace_id):
+                if p.get("gid") == project_id:
+                    project_name = (p.get("team") + " · " + p.get("name")) if p.get("team") else p.get("name") or ""
+                    break
+        if assignee_gid:
+            for u in _asana_svc_bulk.list_users_for_workspace(workspace_id):
+                if u.get("gid") == assignee_gid:
+                    assignee_name = u.get("name") or ""
+                    break
+    except Exception:
+        pass
+    actor = (request.headers.get("X-FIO-User") or "").strip() or None
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO chase_tasks (task_gid, permalink_url, title, profit_center, "
+            " tx_count, total_eur, project_gid, project_name, assignee_gid, assignee_name, "
+            " due_on, created_by, created_at, status, last_synced_at, "
+            " tx_ids_json, attachments_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
+            (
+                task.get("gid"), task.get("permalink_url"), title, pc_for_task,
+                len(rows), total_eur, project_id, project_name, assignee_gid, assignee_name,
+                due_on, actor, datetime.utcnow().isoformat(), datetime.utcnow().isoformat(),
+                _json.dumps([r["id"] for r in rows]),
+                _json.dumps(attachments_attached) if attachments_attached else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
     return jsonify({
         "status": "created", "tx_count": len(rows), "total_eur": total_eur,
         "task_gid": task.get("gid"),
@@ -573,6 +621,101 @@ def card_audit_chase_asana_bulk() -> Any:
         "attachments_attached": attachments_attached,
         "attachments_failed": attachments_failed,
     }), 201
+
+
+# 2026-06-24 — chase-task supervision log + Asana status refresh.
+@card_audit_bp.route("/chase-tasks", methods=["GET"])
+def chase_tasks_list() -> Any:
+    """List every chase task generated. Supports filter: status, pc, assignee."""
+    where: list = []
+    params: list = []
+    status = (request.args.get("status") or "").strip()
+    pc = (request.args.get("pc") or "").strip()
+    assignee = (request.args.get("assignee") or "").strip()
+    if status:
+        where.append("status = ?"); params.append(status)
+    if pc:
+        where.append("profit_center = ?"); params.append(pc)
+    if assignee:
+        where.append("assignee_name LIKE ?"); params.append("%" + assignee + "%")
+    sql = "SELECT * FROM chase_tasks"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC LIMIT 500"
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+        # Aggregate stats for the dashboard tiles
+        stats = conn.execute(
+            "SELECT status, COUNT(*) AS n, SUM(total_eur) AS sum_eur "
+            "FROM chase_tasks GROUP BY status"
+        ).fetchall()
+        by_pc = conn.execute(
+            "SELECT profit_center, COUNT(*) AS total, "
+            "  SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done, "
+            "  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending "
+            "FROM chase_tasks GROUP BY profit_center "
+            "ORDER BY total DESC LIMIT 20"
+        ).fetchall()
+        by_assignee = conn.execute(
+            "SELECT COALESCE(NULLIF(assignee_name,''), '— Unassigned') AS who, "
+            "  COUNT(*) AS total, "
+            "  SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done, "
+            "  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending "
+            "FROM chase_tasks GROUP BY who ORDER BY total DESC LIMIT 20"
+        ).fetchall()
+    finally:
+        conn.close()
+    return jsonify({
+        "tasks":       [dict(r) for r in rows],
+        "stats":       {r["status"]: {"n": r["n"], "sum_eur": r["sum_eur"]} for r in stats},
+        "by_stream":   [dict(r) for r in by_pc],
+        "by_assignee": [dict(r) for r in by_assignee],
+        "count":       len(rows),
+    })
+
+
+@card_audit_bp.route("/chase-tasks/refresh", methods=["POST"])
+def chase_tasks_refresh() -> Any:
+    """Re-fetch each pending chase task from Asana, update status if completed.
+
+    Body (optional): {ids: [1, 2, 3]} to refresh just a subset; default = all pending.
+    """
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids") or []
+    from services import asana_sync as asana_svc
+    conn = db.get_connection()
+    try:
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            rows = conn.execute(
+                f"SELECT id, task_gid FROM chase_tasks WHERE id IN ({placeholders})",
+                tuple(ids),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, task_gid FROM chase_tasks WHERE status = 'pending'"
+            ).fetchall()
+        refreshed: list = []
+        for r in rows:
+            try:
+                info = asana_svc.get_task_status(r["task_gid"])
+            except RuntimeError as exc:
+                refreshed.append({"id": r["id"], "error": str(exc)})
+                continue
+            new_status = "done" if info.get("completed") else "pending"
+            conn.execute(
+                "UPDATE chase_tasks SET status = ?, completed_at = ?, "
+                " last_synced_at = ? WHERE id = ?",
+                (new_status, info.get("completed_at"),
+                 datetime.utcnow().isoformat(), r["id"]),
+            )
+            refreshed.append({"id": r["id"], "status": new_status,
+                              "completed_at": info.get("completed_at")})
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"refreshed": refreshed, "count": len(refreshed)})
 
 
 # 2026-06-23 — Asana directory lookups for the chase-task creator UI.
