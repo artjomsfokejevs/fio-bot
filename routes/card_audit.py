@@ -16,11 +16,13 @@ from __future__ import annotations
 import csv as _csv
 import io as _io
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict
 
 from flask import Blueprint, Response, jsonify, request
 
+import config as _cfg
 from services import db, card_audit, bt4you_sync as bts
 
 logger = logging.getLogger(__name__)
@@ -420,16 +422,17 @@ def card_audit_chase_asana(tx_id: str) -> Any:
     notes = (body.get("task_body") or "").strip()
     if not title or not notes:
         return jsonify({"error": "task_title and task_body are required"}), 400
-    workspace_id = (body.get("workspace_id") or "").strip() or None
+    from services import asana_sync as asana_svc
+    workspace_id = (body.get("workspace_id") or "").strip() or asana_svc.resolve_workspace_id()
     project_id   = (body.get("project_id") or "").strip() or None
     assignee_gid = (body.get("assignee_gid") or "").strip() or None
+    due_on       = (body.get("due_on") or "").strip() or None
 
-    from services import asana_sync as asana_svc
     try:
         task = asana_svc.create_task(
             name=title, notes=notes,
             workspace_id=workspace_id, project_id=project_id,
-            assignee_gid=assignee_gid,
+            assignee_gid=assignee_gid, due_on=due_on,
         )
     except RuntimeError as exc:
         msg = str(exc)
@@ -473,7 +476,8 @@ def card_audit_chase_asana_bulk() -> Any:
     if not title:
         return jsonify({"error": "task_title required"}), 400
     intro = (body.get("task_body") or "").strip()
-    workspace_id = (body.get("workspace_id") or "").strip() or None
+    from services import asana_sync as _asana_svc_bulk
+    workspace_id = (body.get("workspace_id") or "").strip() or _asana_svc_bulk.resolve_workspace_id()
     project_id   = (body.get("project_id") or "").strip() or None
     assignee_gid = (body.get("assignee_gid") or "").strip() or None
     due_on       = (body.get("due_on") or "").strip() or None
@@ -539,12 +543,21 @@ def card_audit_chase_asana_bulk() -> Any:
 
 
 # 2026-06-23 — Asana directory lookups for the chase-task creator UI.
+# 2026-06-23 — workspace ID lookup so the UI never has to prompt the user.
+# Mirrors BT4YOU Executive Bot's ASANA_WORKSPACE config pattern.
+@card_audit_bp.route("/asana/config", methods=["GET"])
+def asana_config() -> Any:
+    from services import asana_sync as asana_svc
+    return jsonify({
+        "workspace_id": asana_svc.resolve_workspace_id(),
+        "configured": bool(getattr(_cfg, "ASANA_PAT", "") or os.environ.get("ASANA_PAT")),
+    })
+
+
 @card_audit_bp.route("/asana/projects", methods=["GET"])
 def asana_projects() -> Any:
-    workspace_id = (request.args.get("workspace_id") or "").strip()
-    if not workspace_id:
-        return jsonify({"error": "workspace_id query param required"}), 400
     from services import asana_sync as asana_svc
+    workspace_id = (request.args.get("workspace_id") or "").strip() or asana_svc.resolve_workspace_id()
     try:
         projects = asana_svc.list_projects(workspace_id)
     except RuntimeError as exc:
@@ -558,10 +571,8 @@ def asana_projects() -> Any:
 
 @card_audit_bp.route("/asana/users", methods=["GET"])
 def asana_users() -> Any:
-    workspace_id = (request.args.get("workspace_id") or "").strip()
-    if not workspace_id:
-        return jsonify({"error": "workspace_id query param required"}), 400
     from services import asana_sync as asana_svc
+    workspace_id = (request.args.get("workspace_id") or "").strip() or asana_svc.resolve_workspace_id()
     try:
         users = asana_svc.list_users_for_workspace(workspace_id)
     except RuntimeError as exc:

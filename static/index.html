@@ -9166,7 +9166,8 @@ function updateChaseSelectionCount() {
   if (lbl) lbl.textContent = n + ' selected';
 }
 
-// 2026-06-23 — Rich bulk Asana task creator with project / assignee / due-date pickers
+// 2026-06-23 — Rich Asana task creator (single tx OR bulk).
+// Workspace ID resolved server-side; no prompt() ever.
 async function openChaseTaskCreator(pc) {
   // Default to current selection in this PC; if none, select ALL in PC
   var cbs = document.querySelectorAll('.ca-chase-tx[data-pc="' + pc + '"]');
@@ -9177,23 +9178,33 @@ async function openChaseTaskCreator(pc) {
     updateChaseSelectionCount();
   }
   if (!selected.length) { showToast('No transactions in this stream', 'info'); return; }
+  return openChaseTaskCreatorForTxIds(selected);
+}
 
-  // Workspace ID — same flow as the single-task path
-  var workspaceId = localStorage.getItem('fio_asana_workspace_id') || '';
-  if (!workspaceId) {
-    workspaceId = (prompt(
-      'Asana Workspace ID (find in the URL: app.asana.com/0/<wsid>/...)\nSaved locally for future tasks.'
-    ) || '').trim();
-    if (!workspaceId) { showToast('Cancelled', 'info'); return; }
-    localStorage.setItem('fio_asana_workspace_id', workspaceId);
-  }
+// Open the rich task creator for a specific tx-id list.
+// Used by both bulk (per-stream) and single-row "Create in Asana" paths.
+async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) {
+  if (!txIds || !txIds.length) { showToast('No transactions', 'info'); return; }
+  var cfg = await getAsanaConfig();
+  var workspaceId = (cfg && cfg.workspace_id) || '';
+  if (!workspaceId) { showToast('Asana workspace not configured server-side', 'error'); return; }
 
   // Compute aggregate stats from the cached items
-  var items = selected.map(function(id) { return window._FIO_CHASE_ITEMS[id]; }).filter(Boolean);
+  var items = txIds.map(function(id) { return window._FIO_CHASE_ITEMS && window._FIO_CHASE_ITEMS[id]; }).filter(Boolean);
+  if (!items.length) { showToast('Could not locate tx data', 'error'); return; }
   var total = items.reduce(function(s, it) { return s + Number(it.amount_eur || 0); }, 0);
+  // Derive PC from the items (most-common PC if multi-stream selection)
+  var pcCount = {};
+  items.forEach(function(it) {
+    var p = it.suggested_pc || it.profit_center || '?';
+    pcCount[p] = (pcCount[p] || 0) + 1;
+  });
+  var pc = Object.keys(pcCount).sort(function(a,b){ return pcCount[b]-pcCount[a]; })[0] || '?';
   var pcName = (PC_LABELS && PC_LABELS[pc]) || pc;
-  var defaultTitle = '📄 [' + pc + '] Missing invoices · ' + items.length +
-                     ' tx · €' + total.toFixed(2);
+  var defaultTitle = overrideTitle ||
+    (items.length === 1
+      ? items[0].task_title
+      : '📄 [' + pc + '] Missing invoices · ' + items.length + ' tx · €' + total.toFixed(2));
   // Try to pick the most-suggested person as a hint for the assignee dropdown
   var personCounts = {};
   items.forEach(function(it) { if (it.suggested_person) personCounts[it.suggested_person] = (personCounts[it.suggested_person] || 0) + 1; });
@@ -9345,37 +9356,27 @@ function closeCaChase() {
   if (ov) ov.classList.remove('active');
 }
 
-// 2026-06-11 (Top-2 backlog #3) — direct create via Asana API.
-// Bookkeeper gets a workspace_id prompt the first time (cached after).
-// Endpoint surfaces 503 with hint when ASANA_PAT isn't set on Fly.
+// 2026-06-23 — Asana config cached on first need. Workspace ID is baked
+// into the backend (Amitours Holding default, same as BT4YOU). No prompt.
+// `_FIO_ASANA_CONFIG = { workspace_id, configured }` after fetch.
+function getAsanaConfig() {
+  if (window._FIO_ASANA_CONFIG) return Promise.resolve(window._FIO_ASANA_CONFIG);
+  return fetch('/api/card-audit/asana/config',
+               {headers: {'X-FIO-User': (window.currentUser || '')}})
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      window._FIO_ASANA_CONFIG = d || {};
+      return window._FIO_ASANA_CONFIG;
+    });
+}
+
+// 2026-06-23 — "Create single in Asana" now ALSO opens the rich task editor
+// (same modal as bulk-create) so the bookkeeper can pick project / assignee /
+// due-date / edit title and body before sending. No more prompts, no more
+// one-click fire-and-hope.
 function createAsanaTask(txId, title, body) {
-  var workspaceId = localStorage.getItem('fio_asana_workspace_id') || '';
-  if (!workspaceId) {
-    workspaceId = (prompt(
-      'Asana Workspace ID (find it in Asana URL: app.asana.com/0/<wsid>/...)\n' +
-      'Saved locally for future tasks. Cancel to abort.'
-    ) || '').trim();
-    if (!workspaceId) { showToast('Cancelled', 'info'); return; }
-    localStorage.setItem('fio_asana_workspace_id', workspaceId);
-  }
-  api('POST', '/api/card-audit/chase-asana/' + encodeURIComponent(txId), {
-    task_title: title, task_body: body,
-    workspace_id: workspaceId,
-  }).then(function(r) {
-    if (r && r.status === 'created') {
-      showToast('✓ Task created in Asana', 'success');
-      if (r.permalink) window.open(r.permalink, '_blank');
-    } else {
-      showToast('Failed: ' + ((r && r.error) || 'unknown'), 'error');
-    }
-  }).catch(function(err) {
-    var p = err && err.payload;
-    if (p && p.status === 'not_configured') {
-      showToast(p.hint || 'ASANA_PAT not configured — copy the text and create manually', 'error');
-    } else {
-      showToast('Asana create failed: ' + (err && err.message || err), 'error');
-    }
-  });
+  // Just open the rich modal scoped to this one tx. Reuses bulk flow.
+  openChaseTaskCreatorForTxIds([txId], title, body);
 }
 
 // 2026-06-11 (Top-9 P3.1) — End-of-month KPIs.

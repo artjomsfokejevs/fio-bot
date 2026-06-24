@@ -108,6 +108,28 @@ def _resolve_token() -> str:
     return token
 
 
+# 2026-06-23 — bake BT4YOU's default workspace ID so users never see a
+# prompt(). The Holding has one Asana workspace; override only if needed
+# via Fly secret ASANA_WORKSPACE_ID.
+_DEFAULT_WORKSPACE_ID = "145603020643986"   # Amitours Holding workspace (BT4YOU canonical)
+
+
+def resolve_workspace_id() -> str:
+    """Resolve the workspace ID for the holding.
+
+    Lookup order:
+      1. config.ASANA_WORKSPACE_ID  (Fly secret if explicitly set)
+      2. os.environ['ASANA_WORKSPACE_ID']
+      3. baked-in default (`_DEFAULT_WORKSPACE_ID`) — Amitours Holding's
+         workspace shared with BT4YOU Executive Bot.
+    Always returns a non-empty string — never raises.
+    """
+    ws = (getattr(config, "ASANA_WORKSPACE_ID", "") or "").strip()
+    if not ws:
+        ws = (os.environ.get("ASANA_WORKSPACE_ID") or "").strip()
+    return ws or _DEFAULT_WORKSPACE_ID
+
+
 # ── 2026-06-23 — listing helpers for the rich chase-task creator UI ───────
 
 def list_projects(workspace_id: str, limit: int = 100) -> List[Dict[str, Any]]:
