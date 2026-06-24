@@ -114,6 +114,58 @@ def _resolve_token() -> str:
 _DEFAULT_WORKSPACE_ID = "145603020643986"   # Amitours Holding workspace (BT4YOU canonical)
 
 
+def upload_attachment(task_gid: str, file_path: str,
+                      name: Optional[str] = None) -> Dict[str, Any]:
+    """Attach a local file to an existing Asana task via /tasks/<gid>/attachments.
+
+    Asana's attachment endpoint requires multipart/form-data; urllib's stdlib
+    multipart is awkward so we hand-roll the body (small files, stdlib only).
+    Returns the {gid, name, ...} attachment record, or raises RuntimeError.
+
+    Added 2026-06-24 — for chase tasks to ship the original bank statement /
+    matched invoice with the chase, so the stakeholder has the artefact in hand.
+    """
+    import io
+    import mimetypes
+    import uuid
+    token = _resolve_token()
+    if not os.path.isfile(file_path):
+        raise RuntimeError("attachment file not found: " + file_path)
+    base = name or os.path.basename(file_path)
+    ctype, _ = mimetypes.guess_type(file_path)
+    ctype = ctype or "application/octet-stream"
+    boundary = "----FIO" + uuid.uuid4().hex
+    with open(file_path, "rb") as fh:
+        file_bytes = fh.read()
+    body = io.BytesIO()
+    crlf = b"\r\n"
+    body.write(("--" + boundary + "\r\n").encode())
+    body.write(('Content-Disposition: form-data; name="file"; filename="' +
+                base + '"\r\n').encode())
+    body.write(("Content-Type: " + ctype + "\r\n\r\n").encode())
+    body.write(file_bytes)
+    body.write(crlf)
+    body.write(("--" + boundary + "--\r\n").encode())
+    payload = body.getvalue()
+    req = urllib.request.Request(
+        _ASANA_BASE + "/tasks/" + task_gid + "/attachments",
+        data=payload, method="POST",
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "multipart/form-data; boundary=" + boundary,
+            "Accept": "application/json",
+            "User-Agent": "FIO/1.0 (Amitours Holding)",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body_txt = exc.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError("Asana attachment HTTP %d: %s" % (exc.code, body_txt)) from exc
+    return (json.loads(raw) or {}).get("data", {})
+
+
 def resolve_workspace_id() -> str:
     """Resolve the workspace ID for the holding.
 

@@ -535,10 +535,43 @@ def card_audit_chase_asana_bulk() -> Any:
             "bulk_count": len(rows),
             "bulk_total_eur": total_eur,
         })
+
+    # 2026-06-24 — auto-attach any matched-invoice files so the stakeholder
+    # has the artefact in the task. Best-effort: failures don't fail the task.
+    attachments_attached: list = []
+    attachments_failed: list = []
+    matched_ids = {r.get("matched_invoice_id") for r in rows if r.get("matched_invoice_id")}
+    if matched_ids and task.get("gid"):
+        conn = db.get_connection()
+        try:
+            placeholders = ",".join("?" for _ in matched_ids)
+            docs = conn.execute(
+                "SELECT id, filename FROM documents WHERE id IN (" + placeholders + ")",
+                tuple(matched_ids),
+            ).fetchall()
+        finally:
+            conn.close()
+        import config as _config
+        for d in docs:
+            file_path = os.path.join(_config.UPLOAD_FOLDER, d["filename"])
+            try:
+                att = _asana_svc_bulk.upload_attachment(
+                    task["gid"], file_path,
+                    name=d["filename"],
+                )
+                attachments_attached.append({
+                    "doc_id": d["id"], "filename": d["filename"],
+                    "attachment_gid": att.get("gid"),
+                })
+            except RuntimeError as exc:
+                attachments_failed.append({"doc_id": d["id"], "error": str(exc)})
+
     return jsonify({
         "status": "created", "tx_count": len(rows), "total_eur": total_eur,
         "task_gid": task.get("gid"),
         "permalink": task.get("permalink_url"),
+        "attachments_attached": attachments_attached,
+        "attachments_failed": attachments_failed,
     }), 201
 
 

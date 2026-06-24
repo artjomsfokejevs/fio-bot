@@ -9217,48 +9217,90 @@ async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) 
     overlay.className = 'modal-overlay';
     document.body.appendChild(overlay);
   }
+  // 2026-06-24 — full-screen modal (was cramped 640px). 2-column layout:
+  // LEFT  — full transaction list (with link to source file if matched)
+  // RIGHT — task form (title / project / assignee / due / body)
+  var attachedCount = items.filter(function(it){ return it.matched_invoice_id; }).length;
+  var attachBanner = attachedCount > 0
+    ? ('<div style="background:#dbeafe;border:1px solid #93c5fd;padding:8px 12px;border-radius:6px;font-size:12px;color:#1e3a8a;margin-bottom:10px;">' +
+       '📎 <b>' + attachedCount + ' matched invoice file(s)</b> will be auto-attached to the Asana task.</div>')
+    : ('<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:11px;color:#92400e;margin-bottom:10px;">' +
+       '📎 No matched invoice files to attach — these are the unmatched transactions FIO is asking the stakeholder to provide.</div>');
+
+  var txListHtml = items.map(function(it, idx) {
+    var posted = (it.date || '').slice(0, 10) || '—';
+    var amt = Number(it.amount_eur || 0).toFixed(2);
+    var who = it.counterparty || it.description || '?';
+    var hasAttach = !!it.matched_invoice_id;
+    return '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:#fff;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px;">' +
+        '<span style="font-size:12px;font-weight:700;color:var(--text);">' + (idx+1) + '. €' + amt + '</span>' +
+        '<span style="font-size:11px;color:var(--muted);font-family:monospace;">' + esc(posted) + '</span>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text);margin-bottom:4px;line-height:1.4;">' + esc(who) + '</div>' +
+      (it.reference ? '<div style="font-size:10px;color:var(--muted);font-family:monospace;">ref: ' + esc(it.reference) + '</div>' : '') +
+      (it.suggested_person ? '<div style="font-size:10px;color:#1e3a8a;margin-top:4px;">→ suggested: ' + esc(it.suggested_person) + '</div>' : '') +
+      (hasAttach
+        ? '<div style="font-size:10px;color:#166534;margin-top:4px;">📎 Matched invoice will be attached to the Asana task.</div>'
+        : '') +
+    '</div>';
+  }).join('');
+
   overlay.innerHTML =
-    '<div class="modal" style="max-width:640px;">' +
-      '<div class="modal-header" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
-        '<h3 style="margin:0;font-size:15px;font-weight:600;">📨 Create Asana task · ' + esc(pc) + ' · ' + esc(pcName) + '</h3>' +
-        '<button class="modal-close" onclick="document.getElementById(\'ca-chase-create-overlay\').classList.remove(\'active\')">&times;</button>' +
+    '<div class="modal" style="max-width:95vw;width:95vw;max-height:95vh;height:95vh;display:flex;flex-direction:column;">' +
+      '<div class="modal-header" style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+        '<h3 style="margin:0;font-size:16px;font-weight:600;">📨 Create Asana task · <span style="color:var(--brand);">' + esc(pc) + '</span> · ' + esc(pcName) + '</h3>' +
+        '<button class="modal-close" onclick="document.getElementById(\'ca-chase-create-overlay\').classList.remove(\'active\')" style="font-size:24px;">&times;</button>' +
       '</div>' +
-      '<div class="modal-body" style="padding:18px;max-height:75vh;overflow-y:auto;">' +
-        '<div style="background:#f8fafc;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:14px;">' +
-          '<b>' + items.length + ' transaction(s)</b> · total <b>€' + total.toFixed(2) + '</b> · stream <b>' + esc(pc) + '</b>' +
+      '<div style="display:grid;grid-template-columns:minmax(340px, 1fr) 2fr;gap:0;flex:1;min-height:0;overflow:hidden;">' +
+        // LEFT PANEL — transactions list
+        '<div style="border-right:1px solid var(--border);padding:16px;overflow-y:auto;background:#f8fafc;">' +
+          '<div style="background:#fff;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px;border:1px solid var(--border);">' +
+            '<div style="font-weight:700;margin-bottom:2px;">' + items.length + ' transaction(s)</div>' +
+            '<div style="color:var(--muted);">Total: <b style="color:var(--text);">€' + total.toFixed(2) + '</b></div>' +
+            '<div style="color:var(--muted);">Stream: <b style="color:var(--text);">' + esc(pc) + ' — ' + esc(pcName) + '</b></div>' +
+          '</div>' +
+          attachBanner +
+          '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;letter-spacing:.05em;margin-bottom:6px;">Transactions in this chase</div>' +
+          txListHtml +
         '</div>' +
-        '<div class="form-grid" style="display:grid;grid-template-columns:1fr;gap:10px;">' +
-          '<div>' +
-            '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600;">Task title *</label>' +
-            '<input id="chase-create-title" type="text" value="' + esc(defaultTitle) + '" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">' +
-          '</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">' +
+        // RIGHT PANEL — form
+        '<div style="padding:18px 22px;overflow-y:auto;">' +
+          '<div style="display:flex;flex-direction:column;gap:14px;max-width:760px;">' +
             '<div>' +
-              '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600;">Project</label>' +
-              '<select id="chase-create-project" style="width:100%;padding:7px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;">' +
-                '<option value="">Loading…</option>' +
-              '</select>' +
+              '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;">Task title *</label>' +
+              '<input id="chase-create-title" type="text" value="' + esc(defaultTitle) + '" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--border);border-radius:6px;">' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:2fr 2fr 1fr;gap:10px;">' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;">Project</label>' +
+                '<select id="chase-create-project" style="width:100%;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">' +
+                  '<option value="">Loading…</option>' +
+                '</select>' +
+              '</div>' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;">Assignee</label>' +
+                '<select id="chase-create-assignee" style="width:100%;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">' +
+                  '<option value="">Loading…</option>' +
+                '</select>' +
+              '</div>' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;">Due date</label>' +
+                '<input id="chase-create-due" type="date" style="width:100%;padding:9px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">' +
+              '</div>' +
             '</div>' +
             '<div>' +
-              '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600;">Assignee</label>' +
-              '<select id="chase-create-assignee" style="width:100%;padding:7px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;">' +
-                '<option value="">Loading…</option>' +
-              '</select>' +
+              '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;">Intro note <span style="color:var(--muted);font-weight:400;">(transaction list is auto-appended below this)</span></label>' +
+              '<textarea id="chase-create-body" rows="10" style="width:100%;padding:12px;font-size:13px;border:1px solid var(--border);border-radius:6px;font-family:inherit;line-height:1.5;resize:vertical;min-height:200px;">Hi,\n\nFIO Bank Statement Audit flagged ' + items.length + ' transaction(s) in your stream (' + pc + ' — ' + pcName + ') with no matching invoice.\n\nPlease find the invoice(s) for these charges and upload them to FIO (https://fio-amitours.fly.dev/) under Upload → mark as "already paid".\n\nIf any of these belong to a different stream, reply with the correct profit-center code so Rita can re-route.\n\n— FIO Accounting Bot</textarea>' +
             '</div>' +
-            '<div>' +
-              '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600;">Due date</label>' +
-              '<input id="chase-create-due" type="date" style="width:100%;padding:7px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;">' +
-            '</div>' +
-          '</div>' +
-          '<div>' +
-            '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600;">Intro note (transactions appended automatically)</label>' +
-            '<textarea id="chase-create-body" rows="4" style="width:100%;padding:8px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;font-family:inherit;">Hi,\n\nFIO Bank Statement Audit flagged ' + items.length + ' transaction(s) in your stream (' + pc + ' — ' + pcName + ') with no matching invoice. Please find and upload them to FIO under Upload → "already paid", or reply with the correct profit-center code if mis-routed.\n\n— FIO Accounting Bot</textarea>' +
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;background:#f8fafc;">' +
+      '<div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;background:#f8fafc;flex-shrink:0;">' +
         '<button class="btn btn-ghost" onclick="document.getElementById(\'ca-chase-create-overlay\').classList.remove(\'active\')">Cancel</button>' +
-        '<button class="btn btn-primary" id="chase-create-submit" onclick="submitChaseBulkTask()">✓ Create in Asana</button>' +
+        '<button class="btn btn-primary" id="chase-create-submit" onclick="submitChaseBulkTask()" style="padding:10px 24px;font-size:14px;">✓ Create in Asana' +
+          (attachedCount > 0 ? ' (+' + attachedCount + ' attachment' + (attachedCount>1?'s':'') + ')' : '') +
+        '</button>' +
       '</div>' +
     '</div>';
   overlay.classList.add('active');
