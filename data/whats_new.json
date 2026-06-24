@@ -3,6 +3,47 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-23-ux-sweep",
+      "date": "2026-06-23",
+      "title": "🎨 UX sweep — canonical stream pills · fixed Actions column · bulk chase tasks · Release history dropdown · Revenue tab in Legend",
+      "summary": "Pure UX polish: Analytics stream-filter pills now use canonical PC codes (SP / MN, plus the missing MT and RR — no more SR / AH-as-Mountly legacy labels). FIO Managed Users + Paying Accounts Actions column now stays inside the column (was collapsing into floating chips due to a CSS conflict). Chase Missing Invoices gets bulk-select checkboxes + a rich task creator with project / assignee / due-date dropdowns pulled live from Asana. What's New modal gets a 'Jump to version' dropdown so the team can re-read any past iteration. FIO Legend → Tabs at a glance now lists the new 💵 Revenue tab.",
+      "highlights": [
+        "🏷 Analytics stream-filter pills use canonical PC codes — SP (Skipasser, was SR), MN (Mountly, was AH), plus added MT (Medical Travel), AH (Amitours Holding), RR (Rock2Rock). Legacy SR / Mountly-AH rows still match via read-time translation.",
+        "🔧 Actions column floating-header bug — `.actions { display: inline-flex }` was breaking <th> layout on FIO Managed Users + Paying Accounts. Scoped flex to non-cell wrappers only.",
+        "☑ Bulk Chase Missing Invoices — checkbox on every unmatched transaction + 'select all in stream' header checkbox + 📨 Create bulk task button per stream. Rich modal: project + assignee + due-date dropdowns loaded live from Asana, auto-aggregated body with all selected tx.",
+        "📜 Release history dropdown in What's New modal — pick any past version to re-read the highlights. Also accessible from FIO Legend → 📜 Open release history.",
+        "📖 FIO Legend → 'Tabs at a glance' now lists 💵 Revenue + has updated descriptions for Confirm for Payment (preview-everywhere, multi-select ledger), FIO Legend (now includes Revenue glossary)."
+      ]
+    },
+    {
+      "version": "2026-06-23-revenue",
+      "date": "2026-06-23",
+      "title": "💵 NEW MODULE — Revenue / Accounts Receivable + 💸 Cashflow analytics + 🏦 Bank-match",
+      "summary": "Full inversion of the expense flow: FIO now tracks money coming IN as well as money going OUT. Issue proformas → convert to invoices → log receipts → status auto-advances. Phase 3 ships bank-statement auto-match: bank credits are scored against open receivables (amount + invoice# + customer name + PC + date proximity) and applied one-by-one or batch ≥80 score. New Cashflow chart in Analytics (revenue green / expense red per month). 18 new tests, full suite 140/140 green.",
+      "highlights": [
+        "💵 New 💵 Revenue tab — Proforma / Invoice / Credit-note workflow with status machine (Draft → Sent → Partially paid → Paid → Cancelled). Auto-status: receipts sum ≥ amount → flips to Paid.",
+        "🔁 Convert Proforma → Invoice in one click — proforma cancelled, invoice created with full back-reference + audit trail.",
+        "💸 Cashflow by stream card on Analytics tab — 4-KPI strip (Revenue / Expense / Net / Months), monthly bar chart, breakdown table per stream. Respects existing Analytics date-range + stream filter.",
+        "🏦 💵 Match revenue button on Bank Statement Audit archives — opens a modal with scored candidates per inflow + ⚡ Auto-apply ≥ 80 score for batch processing.",
+        "📖 FIO Legend updated — new Revenue / AR / AP / Cashflow glossary card explaining the proforma → invoice workflow and the bank-match flow."
+      ]
+    },
+    {
+      "version": "2026-06-23-feedback",
+      "date": "2026-06-23",
+      "title": "🔧 Feedback sweep — PC codes canonical · header arrows · preview-everywhere · chase routing · multi-select ledger",
+      "summary": "13 feedback items closed in one sweep (#85–#93). P0 fix for the LLM parser model (claude-sonnet-4-20250514 → claude-sonnet-4-6), PC codes synced with BT4YOU Executive Bot canonical ledger (read-time legacy translation, no destructive migration), header tab horizontal scroller with arrows, Preview button across ALL Confirm-for-Payment stages, Bank Statement preview after confirmation, chase tasks now routed to the correct stakeholder by stream, multi-select ledger codes filter with per-code EUR breakdown.",
+      "highlights": [
+        "🔧 [P0] Parser model migration — claude-sonnet-4-20250514 → claude-sonnet-4-6. Pure Peaks / Rēķini / Amitours invoices were 404-ing, now parsing again.",
+        "🏷 PC codes canonical sync with BT4YOU — services/pc_codes.py is single source of truth (AA / AH / AG / AL / CF / MN / MT / SP / RR). Legacy codes SR → SP, PK → CF auto-translated at read-time. Mountly = MN confirmed.",
+        "↔ Header tab horizontal scroller with ‹ › arrows — no more clipping on narrow screens. Active tab auto-scrolls into view on tab switch.",
+        "👁 Preview button now on ALL Confirm-for-Payment stages (Budget Check, Awaiting CEO, Awaiting Payment) — was previously only on some stages.",
+        "🔍 Bank Statement preview after confirmation — view the original CSV / XML even after the batch is archived. CSV viewer rendered in-app.",
+        "📨 Chase Missing Invoices — Asana task routed to the correct stakeholder (Holding CEO for AH, ALVEDA BO for AL, etc.) via chase_routing.stakeholder_for() reading holding_config.json.",
+        "☑ Multi-select ledger codes on Confirm-for-Payment — pick multiple codes at once, EUR breakdown strip shows totals per selected code. Codes grouped by statement (REVENUE / COGS / MARKETING / ADMIN / OPERATIONAL)."
+      ]
+    },
+    {
       "version": "2026-06-16-phase3",
       "date": "2026-06-16",
       "title": "💰 Stream Budgets + 🚨 X-alarm wiring (CEO-agreed monthly caps with auto-overrun email)",

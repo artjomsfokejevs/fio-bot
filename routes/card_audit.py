@@ -450,6 +450,129 @@ def card_audit_chase_asana(tx_id: str) -> Any:
                     "permalink": task.get("permalink_url")})
 
 
+# 2026-06-23 — Bulk chase: one Asana task covering N selected transactions.
+# Matches the BT4YOU rich task-creator UX: project / assignee / due-date pickers.
+@card_audit_bp.route("/chase-asana-bulk", methods=["POST"])
+def card_audit_chase_asana_bulk() -> Any:
+    """Create ONE Asana task that references multiple unmatched transactions.
+
+    Body:
+      tx_ids        — list of transaction IDs to bundle (required, ≥ 1)
+      task_title    — task title (required)
+      task_body     — base body; tx summary appended automatically
+      workspace_id  — Asana workspace (required if no project_id)
+      project_id    — Asana project gid (preferred over workspace_id)
+      assignee_gid  — Asana user gid (optional)
+      due_on        — YYYY-MM-DD (optional)
+    """
+    body = request.get_json(silent=True) or {}
+    tx_ids = body.get("tx_ids") or []
+    if not isinstance(tx_ids, list) or not tx_ids:
+        return jsonify({"error": "tx_ids must be a non-empty list"}), 400
+    title = (body.get("task_title") or "").strip()
+    if not title:
+        return jsonify({"error": "task_title required"}), 400
+    intro = (body.get("task_body") or "").strip()
+    workspace_id = (body.get("workspace_id") or "").strip() or None
+    project_id   = (body.get("project_id") or "").strip() or None
+    assignee_gid = (body.get("assignee_gid") or "").strip() or None
+    due_on       = (body.get("due_on") or "").strip() or None
+
+    # Load each tx so we can build a deterministic summary block + verify
+    # they all exist before hitting Asana.
+    rows: list = []
+    missing: list = []
+    for tx_id in tx_ids:
+        tx = card_audit.get_card_tx(tx_id)
+        if not tx:
+            missing.append(tx_id)
+        else:
+            rows.append(tx)
+    if missing:
+        return jsonify({"error": "not_found", "missing": missing}), 404
+
+    total_eur = sum(float(r.get("amount_eur") or 0) for r in rows)
+    summary_lines = [
+        "{date} · €{amt:.2f} · {desc} ({ref})".format(
+            date=(r.get("posted_at") or "")[:10],
+            amt=float(r.get("amount_eur") or 0),
+            desc=(r.get("description") or r.get("counterparty") or "?")[:80],
+            ref=(r.get("reference") or r.get("id") or "")[:30],
+        ) for r in rows
+    ]
+    notes = (
+        (intro + "\n\n" if intro else "")
+        + "Transactions ({n}, total €{t:.2f}):\n".format(n=len(rows), t=total_eur)
+        + "\n".join(["  • " + ln for ln in summary_lines])
+        + "\n\n— FIO Accounting Bot (bulk chase, {n} tx)".format(n=len(rows))
+    )
+
+    from services import asana_sync as asana_svc
+    try:
+        task = asana_svc.create_task(
+            name=title, notes=notes,
+            workspace_id=workspace_id, project_id=project_id,
+            assignee_gid=assignee_gid, due_on=due_on,
+        )
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "ASANA_PAT not configured" in msg:
+            return jsonify({
+                "status": "not_configured", "error": msg,
+                "hint": "Set ASANA_PAT secret on the Fly app to enable auto-create.",
+            }), 503
+        return jsonify({"status": "asana_error", "error": msg}), 502
+
+    # Audit-log per tx so it's discoverable from any single tx's history.
+    for r in rows:
+        db.insert_audit_log("card_tx_" + r["id"], "asana_task_created", {
+            "task_gid": task.get("gid"),
+            "permalink": task.get("permalink_url"),
+            "bulk_count": len(rows),
+            "bulk_total_eur": total_eur,
+        })
+    return jsonify({
+        "status": "created", "tx_count": len(rows), "total_eur": total_eur,
+        "task_gid": task.get("gid"),
+        "permalink": task.get("permalink_url"),
+    }), 201
+
+
+# 2026-06-23 — Asana directory lookups for the chase-task creator UI.
+@card_audit_bp.route("/asana/projects", methods=["GET"])
+def asana_projects() -> Any:
+    workspace_id = (request.args.get("workspace_id") or "").strip()
+    if not workspace_id:
+        return jsonify({"error": "workspace_id query param required"}), 400
+    from services import asana_sync as asana_svc
+    try:
+        projects = asana_svc.list_projects(workspace_id)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "ASANA_PAT not configured" in msg:
+            return jsonify({"status": "not_configured", "error": msg,
+                            "hint": "Set ASANA_PAT secret on Fly to enable Asana lookups."}), 503
+        return jsonify({"status": "asana_error", "error": msg}), 502
+    return jsonify({"projects": projects, "count": len(projects)})
+
+
+@card_audit_bp.route("/asana/users", methods=["GET"])
+def asana_users() -> Any:
+    workspace_id = (request.args.get("workspace_id") or "").strip()
+    if not workspace_id:
+        return jsonify({"error": "workspace_id query param required"}), 400
+    from services import asana_sync as asana_svc
+    try:
+        users = asana_svc.list_users_for_workspace(workspace_id)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "ASANA_PAT not configured" in msg:
+            return jsonify({"status": "not_configured", "error": msg,
+                            "hint": "Set ASANA_PAT secret on Fly to enable Asana lookups."}), 503
+        return jsonify({"status": "asana_error", "error": msg}), 502
+    return jsonify({"users": users, "count": len(users)})
+
+
 @card_audit_bp.route("/chase-missing", methods=["POST"])
 def card_audit_chase_missing() -> Any:
     """Generate chase tasks for every unmatched tx in the period.

@@ -69,19 +69,18 @@ def create_task(
     workspace_id: Optional[str] = None,
     project_id: Optional[str] = None,
     assignee_gid: Optional[str] = None,
+    due_on: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a single task in Asana. Returns {gid, permalink_url, ...}.
 
     Requires either workspace_id (creates a "My Tasks" task) OR project_id.
+    `due_on` is a YYYY-MM-DD date string (Asana 'due_on' field).
     Raises RuntimeError on Asana error so the caller can surface to UI.
 
     Added 2026-06-11 for the month-close chase-task auto-create flow.
+    2026-06-23 — extended for the bulk-chase flow: `due_on` parameter.
     """
-    token = (config.ASANA_PAT or "").strip() if hasattr(config, "ASANA_PAT") else ""
-    if not token:
-        token = (os.environ.get("ASANA_PAT") or "").strip()
-    if not token:
-        raise RuntimeError("ASANA_PAT not configured")
+    token = _resolve_token()
     if not (workspace_id or project_id):
         raise RuntimeError("either workspace_id or project_id is required")
 
@@ -92,9 +91,89 @@ def create_task(
         payload["projects"] = [project_id]
     if assignee_gid:
         payload["assignee"] = assignee_gid
+    if due_on:
+        payload["due_on"] = due_on
 
     resp = _asana_post("/tasks", token, payload)
     return resp.get("data", {})
+
+
+def _resolve_token() -> str:
+    """Single token-lookup helper used by every Asana caller."""
+    token = (config.ASANA_PAT or "").strip() if hasattr(config, "ASANA_PAT") else ""
+    if not token:
+        token = (os.environ.get("ASANA_PAT") or "").strip()
+    if not token:
+        raise RuntimeError("ASANA_PAT not configured")
+    return token
+
+
+# ── 2026-06-23 — listing helpers for the rich chase-task creator UI ───────
+
+def list_projects(workspace_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """Return projects in a workspace as [{gid, name, team}, ...].
+
+    Paginated up to 10 pages × `limit` (default 1000 projects).
+    """
+    token = _resolve_token()
+    if not workspace_id:
+        raise RuntimeError("workspace_id required")
+    out: List[Dict[str, Any]] = []
+    offset: Optional[str] = None
+    for _ in range(10):
+        params = {
+            "limit": str(limit),
+            "workspace": workspace_id,
+            "opt_fields": "name,team.name,archived",
+        }
+        if offset:
+            params["offset"] = offset
+        page = _asana_get("/projects", token, params=params)
+        for p in page.get("data") or []:
+            if p.get("archived"):
+                continue
+            out.append({
+                "gid": p.get("gid"),
+                "name": p.get("name") or "",
+                "team": (p.get("team") or {}).get("name") or "",
+            })
+        offset = (page.get("next_page") or {}).get("offset")
+        if not offset:
+            break
+    out.sort(key=lambda r: (r.get("team") or "", r.get("name") or ""))
+    return out
+
+
+def list_users_for_workspace(workspace_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """Return assignable users for the workspace as [{gid, name, email}, ...]."""
+    token = _resolve_token()
+    if not workspace_id:
+        raise RuntimeError("workspace_id required")
+    out: List[Dict[str, Any]] = []
+    offset: Optional[str] = None
+    for _ in range(20):  # cap: 20 × 100 = 2000 users
+        params = {
+            "limit": str(limit),
+            "workspace": workspace_id,
+            "opt_fields": "name,email,photo",
+        }
+        if offset:
+            params["offset"] = offset
+        page = _asana_get("/users", token, params=params)
+        for u in page.get("data") or []:
+            if not u.get("gid"):
+                continue
+            out.append({
+                "gid": u["gid"],
+                "name": u.get("name") or "",
+                "email": u.get("email") or None,
+                "photo": (u.get("photo") or {}).get("image_60x60"),
+            })
+        offset = (page.get("next_page") or {}).get("offset")
+        if not offset:
+            break
+    out.sort(key=lambda r: (r.get("name") or "").lower())
+    return out
 
 
 def _asana_get(path: str, token: str, params: Optional[Dict[str, str]] = None) -> Dict[str, Any]:

@@ -3,6 +3,19 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-23-ux-sweep",
+      "date": "2026-06-23",
+      "title": "🎨 UX sweep — canonical stream pills · fixed Actions column · bulk chase tasks · Release history dropdown · Revenue tab in Legend",
+      "summary": "Pure UX polish: Analytics stream-filter pills now use canonical PC codes (SP / MN, plus the missing MT and RR — no more SR / AH-as-Mountly legacy labels). FIO Managed Users + Paying Accounts Actions column now stays inside the column (was collapsing into floating chips due to a CSS conflict). Chase Missing Invoices gets bulk-select checkboxes + a rich task creator with project / assignee / due-date dropdowns pulled live from Asana. What's New modal gets a 'Jump to version' dropdown so the team can re-read any past iteration. FIO Legend → Tabs at a glance now lists the new 💵 Revenue tab.",
+      "highlights": [
+        "🏷 Analytics stream-filter pills use canonical PC codes — SP (Skipasser, was SR), MN (Mountly, was AH), plus added MT (Medical Travel), AH (Amitours Holding), RR (Rock2Rock). Legacy SR / Mountly-AH rows still match via read-time translation.",
+        "🔧 Actions column floating-header bug — `.actions { display: inline-flex }` was breaking <th> layout on FIO Managed Users + Paying Accounts. Scoped flex to non-cell wrappers only.",
+        "☑ Bulk Chase Missing Invoices — checkbox on every unmatched transaction + 'select all in stream' header checkbox + 📨 Create bulk task button per stream. Rich modal: project + assignee + due-date dropdowns loaded live from Asana, auto-aggregated body with all selected tx.",
+        "📜 Release history dropdown in What's New modal — pick any past version to re-read the highlights. Also accessible from FIO Legend → 📜 Open release history.",
+        "📖 FIO Legend → 'Tabs at a glance' now lists 💵 Revenue + has updated descriptions for Confirm for Payment (preview-everywhere, multi-select ledger), FIO Legend (now includes Revenue glossary)."
+      ]
+    },
+    {
       "version": "2026-06-23-revenue",
       "date": "2026-06-23",
       "title": "💵 NEW MODULE — Revenue / Accounts Receivable + 💸 Cashflow analytics + 🏦 Bank-match",
