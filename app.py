@@ -2334,6 +2334,18 @@ def _enrich_document(doc: Dict[str, Any]) -> None:
     if not isinstance(classification, dict):
         classification = {}
 
+    # 2026-06-24 FB-1 — surface partial-payment progress so the
+    # Confirm-for-Payment table shows REMAINING instead of total when
+    # the bookkeeper has logged any partial instalments.
+    try:
+        from services import partial_payments as _pp_svc
+        total_paid = _pp_svc.total_paid(doc["id"])
+        if total_paid > 0:
+            doc["partial_total_paid"] = float(total_paid)
+            doc["partial_remaining"] = max(0.0, float(doc.get("amount") or 0.0) - float(total_paid))
+    except Exception:
+        pass
+
     # Extract VAT number
     vendor_data = parsed.get("vendor") or {}
     if isinstance(vendor_data, dict):
@@ -2858,12 +2870,23 @@ def analytics_month_breakdown():
     for c in schema.get("codes", []):
         code_to_group[c["code"]] = c.get("group", c.get("statement", "Other"))
 
+    # 2026-06-24 FB-2b — group by CANONICAL PC so legacy AH/MT-as-Mountly
+    # rows fold into the right canonical bucket (was showing 2× "Mountly"
+    # for AH legacy + MT legacy on the same screen).
+    try:
+        from services import pc_codes as _pc_codes
+    except ImportError:
+        _pc_codes = None
+
     by_stream: Dict[str, Dict[str, Any]] = {}
     by_group:  Dict[str, Dict[str, Any]] = {}
     total = 0.0
 
     for d in docs:
-        pc = (d.get("profit_center") or "—").upper()
+        raw_pc = (d.get("profit_center") or "—").upper()
+        # Translate legacy codes (SR→SP, PK→CF) to canonical; AH/MT stay as-is
+        # because their canonical meaning collides with legacy Mountly.
+        pc = (_pc_codes.to_canonical(raw_pc) if _pc_codes else raw_pc) or raw_pc
         amount = float(d.get("amount") or 0)
         code = d.get("ledger_code") or "?"
         group = code_to_group.get(code, "Other")

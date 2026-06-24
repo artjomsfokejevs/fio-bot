@@ -403,6 +403,10 @@ def import_csv(
     skipped = 0
     errors: List[Dict[str, Any]] = []
     sample_rows: List[Dict[str, Any]] = []
+    # 2026-06-24 FB-2a — track WHY rows are skipped so the UI can show
+    # "your CSV format wasn't recognised" instead of silently importing 0 rows
+    skip_reasons: Dict[str, int] = {"no_date": 0, "no_amount": 0, "zero_amount": 0,
+                                     "duplicate": 0, "other": 0}
 
     conn = db.get_connection()
     try:
@@ -417,9 +421,12 @@ def import_csv(
 
                 posted = _parse_date(date_s)
                 amount = _parse_amount(amount_s)
-                if posted is None or amount is None or amount == 0:
-                    skipped += 1
-                    continue
+                if posted is None:
+                    skipped += 1; skip_reasons["no_date"] += 1; continue
+                if amount is None:
+                    skipped += 1; skip_reasons["no_amount"] += 1; continue
+                if amount == 0:
+                    skipped += 1; skip_reasons["zero_amount"] += 1; continue
 
                 # FX → EUR
                 fx_data = fx.convert_to_eur(amount, ccy.upper(), posted)
@@ -475,9 +482,10 @@ def import_csv(
                             "description": row["description"][:60], "counterparty": row["counterparty"][:40],
                         })
                 except sqlite3.IntegrityError:
-                    skipped += 1
-            except Exception as exc:  # noqa: BLE001 — per-row defensive boundary: one malformed row must not abort the whole CSV import; errors are surfaced to the user via the result payload
+                    skipped += 1; skip_reasons["duplicate"] += 1
+            except Exception as exc:  # noqa: BLE001 — per-row defensive boundary
                 errors.append({"row": row_idx, "error": str(exc)[:120]})
+                skip_reasons["other"] += 1
         conn.commit()
     finally:
         conn.close()
@@ -486,6 +494,21 @@ def import_csv(
         "card_audit import %s: source=%s inserted=%d skipped=%d errors=%d",
         filename, spec["id"], inserted, skipped, len(errors),
     )
+    # FB-2a — if NOTHING was inserted, build a loud diagnostic so the UI can
+    # tell the user exactly why instead of looking like it succeeded silently.
+    diagnosis = None
+    if inserted == 0:
+        if skipped == 0 and not errors:
+            diagnosis = "no_rows_parsed"   # empty or completely-broken CSV
+        elif skip_reasons["no_date"] == skipped and skipped > 0:
+            diagnosis = "date_column_not_found"
+        elif skip_reasons["no_amount"] == skipped and skipped > 0:
+            diagnosis = "amount_column_not_found"
+        elif skip_reasons["duplicate"] == skipped:
+            diagnosis = "all_duplicate"
+        else:
+            diagnosis = "format_mismatch"   # mix of reasons → format spec wrong
+
     return {
         "batch_id":    batch_id,
         "source":      spec["id"],
@@ -494,9 +517,11 @@ def import_csv(
         "total_rows":  inserted + skipped,
         "inserted":    inserted,
         "skipped":     skipped,
+        "skip_reasons": skip_reasons,
         "errors":      errors[:10],
         "sample":      sample_rows,
         "headers_seen": headers,
+        "diagnosis":   diagnosis,
     }
 
 

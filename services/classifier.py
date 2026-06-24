@@ -90,6 +90,15 @@ def classify_document(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 top["profit_center"] = line["profit_center"]
                 break
 
+    # 2026-06-24 — FB-5: NEVER auto-post when profit_center is unknown.
+    # Real bug from team: Hetzner invoice auto-posted with "— unassigned" PC.
+    # PC is required to allocate to a stream's P&L; auto-post without it would
+    # silently bury the cost under no owner. Force human review instead.
+    if result.get("auto_post") and not (top and top.get("profit_center")):
+        result["auto_post"] = False
+        result["auto_post_blocked_reason"] = "no_profit_center"
+        logger.warning("auto_post blocked: top code has no profit_center (vendor=%r)", vendor)
+
     return result
 
 

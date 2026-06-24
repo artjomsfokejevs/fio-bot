@@ -74,13 +74,10 @@ def add_partial_payment(doc_id: str) -> Any:
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "doc not found"}), 404
-    if not doc.get("is_internal"):
-        return jsonify({
-            "error": "not_internal",
-            "hint": "Partial payments are only supported on internal "
-                    "invoices. Toggle 'Internal invoice' on the doc first "
-                    "via PATCH /api/documents/<id>/is-internal.",
-        }), 400
+    # 2026-06-24 (FB-1) — dropped the is_internal restriction. Real bug:
+    # MyPeak Finance (CNSe) invoice was partial-paid 19/06 + rest 22/06,
+    # bookkeeper could only write a comment because the invoice wasn't
+    # flagged as internal. Partial payments now work for ANY invoice.
     try:
         rec = pp_svc.add(
             doc_id=doc_id,

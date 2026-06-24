@@ -114,14 +114,20 @@ def load_departments() -> List[Dict[str, Any]]:
             })
         return out
 
-    # Fallback when BT4YOU unreachable
+    # 2026-06-24 FB-3 — Fallback synced with ledger DIVISION column.
+    # Team feedback: ledger has 8 divisions (HR/MR/SL/PR/FA/OP/IT/AD/DV),
+    # FIO was showing only 6. Added SALES, IT, ADMIN, DEVELOPMENT.
     return [
-        {"id": "pm",  "name": "Product",              "color": "#7c3aed", "icon": "\U0001F6E0"},
-        {"id": "bd",  "name": "Business Development", "color": "#0ea5e9", "icon": "\U0001F91D"},
-        {"id": "fa",  "name": "Finance & Accounting", "color": "#10b981", "icon": "\U0001F4BC"},
-        {"id": "ops", "name": "Operations",           "color": "#f59e0b", "icon": "\U0001F680"},
-        {"id": "mkt", "name": "Marketing",            "color": "#ec4899", "icon": "\U0001F4E3"},
-        {"id": "hr",  "name": "HR",                   "color": "#14b8a6", "icon": "\U0001F465"},
+        {"id": "pm",   "name": "Product",              "color": "#7c3aed", "icon": "\U0001F6E0"},  # PR
+        {"id": "bd",   "name": "Business Development", "color": "#0ea5e9", "icon": "\U0001F91D"},  # (BD per FIO; SL per ledger)
+        {"id": "sl",   "name": "Sales",                "color": "#22c55e", "icon": "\U0001F4B0"},  # SL (new — FB-3)
+        {"id": "fa",   "name": "Finance & Accounting", "color": "#10b981", "icon": "\U0001F4BC"},  # FA
+        {"id": "ops",  "name": "Operations",           "color": "#f59e0b", "icon": "\U0001F680"},  # OP
+        {"id": "mkt",  "name": "Marketing",            "color": "#ec4899", "icon": "\U0001F4E3"},  # MR
+        {"id": "hr",   "name": "HR",                   "color": "#14b8a6", "icon": "\U0001F465"},  # HR
+        {"id": "it",   "name": "IT",                   "color": "#6366f1", "icon": "\U0001F4BB"},  # IT (new — FB-3)
+        {"id": "adm",  "name": "Admin",                "color": "#94a3b8", "icon": "\U0001F4DD"},  # AD (new — FB-3)
+        {"id": "dev",  "name": "Development",          "color": "#a16207", "icon": "\U0001F527"},  # DV (new — FB-3)
     ]
 
 

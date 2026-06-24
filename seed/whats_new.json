@@ -3,6 +3,21 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-24-fb-sweep",
+      "date": "2026-06-24",
+      "title": "🔧 Team feedback sweep — 7 issues closed (auto-post, partial payments, PC dedup, departments, parser errors, Revenue UX)",
+      "summary": "Seven issues from the team's MVP walkthrough closed in one sweep. Biggest win: Hetzner-style auto-post without profit-center is now forbidden — invoices land in human review instead of going to /dev/null. Partial payments now work on ANY invoice (was internal-only), with quick mini-modal from Confirm-for-Payment row and remaining-amount badge on the Amount column. Confirm-for-Payment groups by CANONICAL PC so 'Mountly' no longer appears twice. Department list synced with ledger (8 values, was 6). Bank Statement parser shows loud diagnosis when 0 rows imported. Revenue tab shows friendly explainer instead of bare 'forbidden' + first-time walkthrough banner.",
+      "highlights": [
+        "🚫 Auto-post BLOCKED when classifier can't resolve a profit center — fixes the Hetzner bug where invoices went POSTED with 'unassigned' PC.",
+        "💳 Upload 'I already paid this' banner now hard to miss — yellow border, bold label, plain-language hint that it's for the uploader, not the bookkeeper.",
+        "💰 Partial payment — quick mini-modal on each Awaiting-Payment row + Amount column shows €remaining / €total / €paid breakdown automatically when any partial instalment is logged. Internal-only restriction lifted.",
+        "🏷 Confirm-for-Payment 'To allocate' panel groups by CANONICAL PC — no more 2 'Mountly' rows (was AH + MT legacy). Canonical labels updated: AH = Amitours Holding, MN = Mountly, MT = Medical Travel.",
+        "🏢 Department list now 10 values (was 6): added Sales, IT, Admin, Development. Synced with ledger DIVISION column.",
+        "⚠ Bank Statement upload: when 0 rows imported, UI shows loud red diagnosis (date column not found / amount column not found / all duplicates / format mismatch) + headers seen — instead of silently 'succeeding'.",
+        "🔒 Revenue tab — 'forbidden' replaced with friendly 'your role X doesn't have access, required roles: ...' + first-time walkthrough banner explaining the proforma → invoice → receipt workflow."
+      ]
+    },
+    {
       "version": "2026-06-24-supervision",
       "date": "2026-06-24",
       "title": "🛡 Chase Task Supervision dashboard + fixed Asana dropdowns (timeout + cache)",

@@ -1731,12 +1731,19 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 
     <!-- 2026-06-09 (Top-10 P2.2) — pre-upload "already paid" checkbox.
          2026-06-11 (Top-10 self-review P2.2 fix) — added payment method
-         radio so we don't lie about card payments / cardholder. -->
-    <div style="max-width:560px;margin:0 auto 8px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:13px;">
-      <label for="upload-already-paid" style="display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="upload-already-paid" style="width:16px;height:16px;cursor:pointer;" onchange="document.getElementById('upload-paid-method').style.display = this.checked ? 'flex' : 'none';">
-        <span><b>📋 Already paid</b> — skip approval flow (uploaded as historical receipt)</span>
+         radio so we don't lie about card payments / cardholder.
+         2026-06-24 (FB-5) — made banner more prominent so uploaders don't
+         miss it. Real bug: Hetzner card payment was uploaded without this
+         check, ended up on bookkeeper's approval queue instead of being
+         auto-marked paid by the person who made the card payment. -->
+    <div style="max-width:560px;margin:0 auto 8px;padding:12px 16px;background:#fffbeb;border:2px solid #f59e0b;border-radius:8px;font-size:13px;">
+      <label for="upload-already-paid" style="display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="upload-already-paid" style="width:18px;height:18px;cursor:pointer;accent-color:#f59e0b;" onchange="document.getElementById('upload-paid-method').style.display = this.checked ? 'flex' : 'none';">
+        <span style="font-size:14px;"><b>💳 I already paid this</b> — skip approval flow (mark as historical receipt)</span>
       </label>
+      <div style="font-size:11px;color:#92400e;text-align:center;margin-top:6px;font-style:italic;">
+        Tick this if YOU paid by corporate card, bank transfer, or cash. Not the bookkeeper.
+      </div>
       <div id="upload-paid-method" style="display:none;justify-content:center;gap:14px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);">
         <span style="font-weight:600;">paid via:</span>
         <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
@@ -3146,6 +3153,32 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         </div>
       </header>
 
+      <!-- 2026-06-24 FB-7 — first-time walkthrough banner so the team knows
+           how to use this tab. Dismissable per-user (localStorage). -->
+      <div id="revenue-howto" style="margin:0 0 14px;padding:14px 16px;background:linear-gradient(135deg,#eff6ff 0%,#f0f9ff 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:var(--text);line-height:1.55;">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:8px;">
+          <div style="font-weight:700;font-size:14px;color:#1e3a8a;">💡 How Revenue / Accounts Receivable works</div>
+          <button onclick="document.getElementById('revenue-howto').style.display='none';localStorage.setItem('fio_revenue_howto_seen','1');" style="background:transparent;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;">×</button>
+        </div>
+        <ol style="margin:0 0 6px 18px;padding:0;">
+          <li><b>+ Add proforma / invoice</b> — pick kind (Proforma / Invoice / Credit-note), stream (PC), customer, amount, due date.</li>
+          <li>For a proforma → click the row → <b>Convert → Invoice</b> when the deal closes (proforma auto-cancels, invoice carries the back-reference).</li>
+          <li>When the customer pays → open the doc → <b>Add receipt</b> (full amount or partial). Status auto-advances: Draft → Sent → Partially paid → Paid.</li>
+          <li>Bank receipts can be auto-matched in <b>Bank Statement Audit → 💵 Match revenue</b> (score ≥ 80 auto-applies in batch).</li>
+        </ol>
+        <div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:4px;">
+          Meet &amp; Greet proformas will be auto-pulled here once the M&amp;G API ships (currently stubbed at <code>/api/mng/pull</code>).
+        </div>
+      </div>
+      <script>
+        (function(){
+          if (localStorage.getItem('fio_revenue_howto_seen') === '1') {
+            var el = document.getElementById('revenue-howto');
+            if (el) el.style.display = 'none';
+          }
+        })();
+      </script>
+
       <div class="bt-filter-bar" id="revenue-filter-bar">
         <input id="rev-q" type="search" placeholder="🔍 customer / invoice # / description" oninput="loadRevenue()" />
         <select id="rev-status" onchange="loadRevenue()">
@@ -4102,15 +4135,30 @@ function formatUploadedBy(name) {
     '<span style="font-size:13px;">' + esc(display) + '</span></span>';
 }
 
+// 2026-06-24 FB-2b — canonical PC label catalog (synced with services/pc_codes.py).
+// AH = Amitours Holding (not legacy "Mountly"). MT = Medical Travel (new).
+// MN = Mountly (canonical). Legacy SR/PK still resolve to canonical names
+// because the backend translates them via pc_codes.legacy_aliases_of().
 var PC_LABELS = {
-  AG: 'Amitours Group', AA: 'Alps2Alps', RR: 'Rock2Rock', BK: 'Skibookers',
-  SR: 'Skipasser', MT: 'Mountly', AH: 'Mountly', PK: 'MyPeak Finance',
-  CF: 'MyPeak Finance', AL: 'ALVEDA'
+  AA: 'Alps2Alps',
+  AH: 'Amitours Holding',
+  AG: 'Amitours Group',
+  AL: 'ALVEDA',
+  CF: 'MyPeak Finance',
+  MN: 'Mountly',
+  MT: 'Medical Travel',
+  SP: 'Skipasser',
+  RR: 'Rock2Rock',
+  // legacy fallbacks for historical rows that haven't been re-tagged yet
+  SR: 'Skipasser',
+  PK: 'MyPeak Finance',
+  BK: 'Skibookers (decommissioned)'
 };
 var PC_COLORS = {
-  AG: '#dc2626', AA: '#0ea5e9', RR: '#7c3aed', BK: '#059669',
-  SR: '#f59e0b', MT: '#14b8a6', AH: '#14b8a6', PK: '#ec4899',
-  CF: '#ec4899', AL: '#6366f1'
+  AA: '#0ea5e9', AH: '#7c3aed', AG: '#dc2626', AL: '#6366f1',
+  CF: '#ec4899', MN: '#14b8a6', MT: '#22c55e', SP: '#f59e0b',
+  RR: '#a16207',
+  SR: '#f59e0b', PK: '#ec4899', BK: '#94a3b8'
 };
 
 function renderProfitCenterBadge(pc, dept) {
@@ -5256,7 +5304,21 @@ function renderCPRows(docs) {
     var vendorCell = '<strong>' + esc(d.vendor || '—') + '</strong>' +
                      (d.vat_number ? '<div style="font-size:10px;color:var(--muted);">' + esc(d.vat_number) + '</div>' : '');
     var streamCell = '<strong>' + esc(pc) + '</strong> · <span style="color:var(--muted);font-size:11px;">' + esc(pcName) + '</span>';
-    var amountCell = '<span style="white-space:nowrap;font-weight:600;">' + amount + '</span>';
+    // 2026-06-24 FB-1 — if backend returns partial-payment progress, show
+    // remaining vs total inline so bookkeeper sees the real "still to pay".
+    var amountCell;
+    var totalPaid = Number(d.partial_total_paid || 0);
+    var remaining = Number(d.partial_remaining != null ? d.partial_remaining : (d.amount || 0));
+    if (totalPaid > 0 && d.amount > 0) {
+      var ccy2 = d.currency || 'EUR';
+      amountCell =
+        '<div style="white-space:nowrap;">' +
+          '<span style="font-weight:700;color:' + (remaining <= 0.01 ? '#10b981' : '#92400e') + ';">' + ccy2 + ' ' + remaining.toFixed(2) + '</span>' +
+          '<div style="font-size:10px;color:var(--muted);">of ' + ccy2 + ' ' + Number(d.amount).toFixed(2) + ' · paid ' + ccy2 + ' ' + totalPaid.toFixed(2) + '</div>' +
+        '</div>';
+    } else {
+      amountCell = '<span style="white-space:nowrap;font-weight:600;">' + amount + '</span>';
+    }
     var dateCell = '<span style="white-space:nowrap;">' + esc(fmtDate(d.uploaded_at || d.posted_at)) + '</span>';
     var ledgerCell = '<span style="font-family:monospace;font-size:11px;">' + esc(d.ledger_code || '—') + '</span>';
     var purposeCell = '<span style="font-size:11px;">' + esc(((d.cost_reason || d.original_name || '') + '').substring(0, 60)) + '</span>';
@@ -5324,7 +5386,15 @@ function renderCPRows(docs) {
     } else if (CP_STAGE === 'awaiting_ceo' && (ME.role === 'admin' || ME.role === 'holding_ceo')) {
       stageAction = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay</button>';
     } else if (CP_STAGE === 'awaiting_payment' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
-      stageAction = '<button class="btn btn-sm btn-success" onclick="markDocPaid(\'' + d.id + '\')">💸 Mark paid</button>';
+      // 2026-06-24 FB-1 — quick Partial payment button alongside Mark paid.
+      // No need to open the full detail modal just to log an instalment.
+      stageAction =
+        '<button class="btn btn-sm btn-success" onclick="markDocPaid(\'' + d.id + '\')">💸 Mark paid</button>' +
+        '<button class="btn btn-sm" style="background:#fef3c7;color:#92400e;border-color:#fcd34d;" ' +
+                'onclick="openQuickPartialPayment(\'' + d.id + '\')" ' +
+                'title="Record a partial payment without marking the whole invoice paid">' +
+          '💰 Partial payment' +
+        '</button>';
     }
     // CP_STAGE === 'paid' → no extra stage action; preview button is enough.
 
@@ -7880,6 +7950,98 @@ function loadPartialPayments(docId) {
   });
 }
 
+// 2026-06-24 FB-1 — Quick Partial-Payment mini-modal callable from
+// Confirm-for-Payment row without opening the full doc detail.
+async function openQuickPartialPayment(docId) {
+  var d;
+  try {
+    d = await api('GET', '/api/documents/' + docId + '/partial-payments');
+  } catch (e) {
+    showToast('Failed to load: ' + (e && e.message || e), 'error');
+    return;
+  }
+  var ccy = d.currency || 'EUR';
+  var overlay = document.getElementById('qpp-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'qpp-overlay';
+    overlay.className = 'modal-overlay';
+    document.body.appendChild(overlay);
+  }
+  var rows = (d.items || []).map(function(p) {
+    return '<tr>' +
+      '<td style="padding:4px 8px;">' + esc(p.paid_at || '—') + '</td>' +
+      '<td style="padding:4px 8px;text-align:right;font-weight:600;">' + ccy + ' ' + Number(p.amount_eur || 0).toFixed(2) + '</td>' +
+      '<td style="padding:4px 8px;font-size:11px;">' + esc(p.method || '—') + '</td>' +
+      '<td style="padding:4px 8px;font-size:11px;font-family:monospace;">' + esc(p.reference || '—') + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm" onclick="deletePartialPayment(' + p.id + ', \'' + esc(docId) + '\')">✕</button></td>' +
+    '</tr>';
+  }).join('');
+  var pct = d.invoice_total > 0 ? Math.min(100, Math.round((d.total_paid / d.invoice_total) * 100)) : 0;
+  overlay.innerHTML =
+    '<div class="modal" style="max-width:640px;">' +
+      '<div class="modal-header" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
+        '<h3 style="margin:0;font-size:16px;font-weight:600;">💰 Partial payment</h3>' +
+        '<button class="modal-close" onclick="document.getElementById(\'qpp-overlay\').classList.remove(\'active\')">&times;</button>' +
+      '</div>' +
+      '<div class="modal-body" style="padding:18px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;">' +
+          '<span><b>' + ccy + ' ' + d.total_paid.toFixed(2) + '</b> paid of <b>' + ccy + ' ' + d.invoice_total.toFixed(2) + '</b></span>' +
+          '<span style="margin-left:auto;font-weight:700;color:' + (pct >= 100 ? '#10b981' : '#f59e0b') + ';">' + ccy + ' ' + d.remaining.toFixed(2) + ' remaining</span>' +
+        '</div>' +
+        '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:12px;">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + (pct >= 100 ? '#10b981' : '#f59e0b') + ';"></div>' +
+        '</div>' +
+        (rows
+          ? '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;"><thead style="background:#f1f5f9;"><tr>' +
+            '<th style="padding:4px 8px;text-align:left;">Paid at</th>' +
+            '<th style="padding:4px 8px;text-align:right;">Amount</th>' +
+            '<th style="padding:4px 8px;text-align:left;">Method</th>' +
+            '<th style="padding:4px 8px;text-align:left;">Reference</th>' +
+            '<th></th></tr></thead><tbody>' + rows + '</tbody></table>'
+          : '<div style="color:var(--muted);font-size:12px;margin-bottom:12px;">No partial payments yet — add the first one below.</div>') +
+        (d.remaining > 0
+          ? '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;">' +
+              '<label style="font-size:11px;">Amount (' + ccy + ')<br><input id="qpp-amount" type="number" step="0.01" min="0.01" max="' + d.remaining + '" value="' + d.remaining.toFixed(2) + '" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;" /></label>' +
+              '<label style="font-size:11px;">Paid at<br><input id="qpp-paid-at" type="date" value="' + (new Date().toISOString().substring(0,10)) + '" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;" /></label>' +
+              '<label style="font-size:11px;">Method<br><select id="qpp-method" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;">' +
+                '<option value="bank_transfer">bank transfer</option>' +
+                '<option value="card">card</option>' +
+                '<option value="cash">cash</option>' +
+                '<option value="netting">netting</option>' +
+                '<option value="other">other</option>' +
+              '</select></label>' +
+              '<label style="font-size:11px;">Reference<br><input id="qpp-reference" placeholder="bank ref / note" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px;" /></label>' +
+            '</div>'
+          : '<div style="padding:8px 12px;background:#dcfce7;color:#15803d;border-radius:6px;font-size:13px;">✓ Fully paid. Doc auto-transitioned to paid.</div>') +
+      '</div>' +
+      '<div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;background:#f8fafc;">' +
+        '<button class="btn btn-ghost" onclick="document.getElementById(\'qpp-overlay\').classList.remove(\'active\')">Close</button>' +
+        (d.remaining > 0 ? '<button class="btn btn-primary" id="qpp-submit" onclick="submitQuickPartial(\'' + esc(docId) + '\')">+ Record payment</button>' : '') +
+      '</div>' +
+    '</div>';
+  overlay.classList.add('active');
+}
+
+async function submitQuickPartial(docId) {
+  var body = {
+    amount_eur: parseFloat(document.getElementById('qpp-amount').value || '0'),
+    paid_at: document.getElementById('qpp-paid-at').value,
+    method: document.getElementById('qpp-method').value,
+    reference: document.getElementById('qpp-reference').value || null
+  };
+  if (!body.amount_eur || body.amount_eur <= 0) { showToast('Amount must be > 0', 'error'); return; }
+  if (!body.paid_at) { showToast('Paid-at date required', 'error'); return; }
+  try {
+    await api('POST', '/api/documents/' + docId + '/partial-payments', body);
+    showToast('Partial payment recorded', 'success');
+    openQuickPartialPayment(docId);   // refresh modal
+    if (typeof loadConfirmPayment === 'function') loadConfirmPayment();
+  } catch (e) {
+    showToast('Failed: ' + (e && e.message || e), 'error');
+  }
+}
+
 function addPartialPayment(docId) {
   var body = {
     amount_eur: parseFloat(document.getElementById('pp-amount').value || '0'),
@@ -8940,8 +9102,37 @@ async function uploadCardCsv(files) {
       resultEl.innerHTML = '<span style="color:var(--red);">Error: ' + esc(r.error) + '</span>';
       return;
     }
+    // 2026-06-24 FB-2a — show loud diagnosis when 0 rows inserted
+    if (r.inserted === 0 && r.diagnosis) {
+      var diagMap = {
+        'no_rows_parsed':         'CSV had no rows we could parse. Is it empty or in an unsupported format?',
+        'date_column_not_found':  'Date column wasn\'t recognised in this CSV. Format detected: ' + esc(r.source_label || r.source) + '. Check the CSV headers vs the expected ones.',
+        'amount_column_not_found':'Amount column wasn\'t recognised. Format detected: ' + esc(r.source_label || r.source) + '. The CSV columns probably don\'t match this bank format.',
+        'all_duplicate':          'Every row was already imported in a previous batch — nothing new to add.',
+        'format_mismatch':        'CSV format mismatch. Detected: ' + esc(r.source_label || r.source) + '. Try the Source override dropdown or re-export.',
+      };
+      var dmsg = diagMap[r.diagnosis] || ('Diagnosis: ' + r.diagnosis);
+      var hdrPreview = (r.headers_seen || []).slice(0, 6).join(', ');
+      resultEl.innerHTML =
+        '<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;">' +
+          '<div style="font-weight:600;margin-bottom:4px;">⚠ 0 rows imported — ' + esc(r.skipped) + ' skipped</div>' +
+          '<div style="font-size:12px;margin-bottom:6px;">' + dmsg + '</div>' +
+          (hdrPreview ? '<div style="font-size:11px;color:#7f1d1d;font-family:monospace;">Headers seen: ' + esc(hdrPreview) + (r.headers_seen.length > 6 ? '…' : '') + '</div>' : '') +
+        '</div>';
+      return;
+    }
     var msg = '<b style="color:var(--green);">✓ Imported ' + r.inserted + ' rows</b> from ' + esc(r.source_label || r.source);
-    if (r.skipped) msg += ' · <span style="color:var(--muted);">' + r.skipped + ' skipped (duplicates / unparseable)</span>';
+    if (r.skipped) {
+      var sr = r.skip_reasons || {};
+      var reasonParts = [];
+      if (sr.duplicate) reasonParts.push(sr.duplicate + ' duplicates');
+      if (sr.no_date) reasonParts.push(sr.no_date + ' no-date');
+      if (sr.no_amount) reasonParts.push(sr.no_amount + ' no-amount');
+      if (sr.zero_amount) reasonParts.push(sr.zero_amount + ' zero-amount');
+      if (sr.other) reasonParts.push(sr.other + ' other');
+      var reason = reasonParts.length ? reasonParts.join(', ') : 'duplicates / unparseable';
+      msg += ' · <span style="color:var(--muted);">' + r.skipped + ' skipped (' + reason + ')</span>';
+    }
     if (r.errors && r.errors.length) msg += ' · <span style="color:var(--yellow);">' + r.errors.length + ' errors</span>';
     if (r.periods_reconciled && r.periods_reconciled.length) {
       msg += '<br>Auto-reconciled periods: ' + r.periods_reconciled.join(', ');
@@ -10006,7 +10197,23 @@ async function loadRevenue() {
                         {headers: {'X-FIO-User': (window.currentUser || '')}})
                     .then(function(r){ return r.json(); });
     if (r.error) {
-      tb.innerHTML = '<tr><td colspan="10" class="empty-state">' + r.error + '</td></tr>';
+      // 2026-06-24 FB-6a — friendly explainer instead of bare "forbidden"
+      var msg;
+      if (r.error === 'forbidden') {
+        var role = (r.your_role || ME.role || 'unknown');
+        var required = (r.required && r.required.length)
+          ? r.required.join(', ')
+          : 'admin, holding_ceo, bookkeeper, stream_owner';
+        msg = '<div style="padding:16px;">' +
+              '<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">🔒 Revenue tab is role-gated</div>' +
+              '<div style="font-size:12px;color:var(--muted);line-height:1.5;">' +
+                'Your role <b>' + esc(role) + '</b> doesn\'t have access. Required roles: <b>' + esc(required) + '</b>.<br>' +
+                'Ask the Admin (Artjoms / Rita) to update your role in <b>Admin → FIO-managed users</b>.' +
+              '</div></div>';
+      } else {
+        msg = '<div class="empty-state">' + esc(r.message || r.error) + '</div>';
+      }
+      tb.innerHTML = '<tr><td colspan="10">' + msg + '</td></tr>';
       return;
     }
     _REV_DOCS = r.docs || [];
