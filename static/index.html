@@ -9382,7 +9382,12 @@ async function submitChaseBulkTask() {
       body: JSON.stringify(payload)
     }).then(function(r){ return r.json(); });
     if (r.status === 'created') {
-      showToast('✓ Task created · ' + r.tx_count + ' tx · €' + r.total_eur.toFixed(2), 'success');
+      var attN = (r.attachments_attached || []).length;
+      var attFail = (r.attachments_failed || []).length;
+      var msg = '✓ Task created · ' + r.tx_count + ' tx · €' + r.total_eur.toFixed(2);
+      if (attN) msg += ' · 📎 ' + attN + ' attachment(s)';
+      if (attFail) msg += ' · ⚠ ' + attFail + ' attach failed';
+      showToast(msg, 'success');
       if (r.permalink) window.open(r.permalink, '_blank');
       document.getElementById('ca-chase-create-overlay').classList.remove('active');
     } else if (r.status === 'not_configured') {
