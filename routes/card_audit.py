@@ -93,15 +93,48 @@ def card_audit_import() -> Any:
 
 @card_audit_bp.route("/transactions", methods=["GET"])
 def card_audit_list() -> Any:
-    return jsonify({
-        "transactions": card_audit.list_card_tx(
-            period=request.args.get("period"),
-            department=request.args.get("department"),
-            card_holder=request.args.get("card_holder"),
-            match_status=request.args.get("status"),
-            limit=int(request.args.get("limit", 500)),
-        ),
-    })
+    rows = card_audit.list_card_tx(
+        period=request.args.get("period"),
+        department=request.args.get("department"),
+        card_holder=request.args.get("card_holder"),
+        match_status=request.args.get("status"),
+        limit=int(request.args.get("limit", 500)),
+    )
+    # 2026-06-24 FB-I — enrich unmatched/suggested rows with suggested_pc
+    # + suggested_person so the Unmatched table can show responsible person
+    # next to the Assign button without N+1 fetches from the frontend.
+    try:
+        people_map = bts.build_people_map()
+    except Exception:  # noqa: BLE001
+        people_map = {}
+    for tx in rows:
+        if tx.get("match_status") not in ("unmatched", "suggested"):
+            continue
+        if tx.get("suggested_pc"):
+            continue
+        # Quick attribution: cardholder → BT4YOU map; else vendor lookup
+        holder = tx.get("card_holder")
+        pc = person = None
+        if holder:
+            try:
+                lk = bts.suggest_pc_for_uploader(holder, people_map)
+                if lk:
+                    pc = lk.get("profit_center")
+                    person = holder
+            except Exception:  # noqa: BLE001
+                pass
+        if not pc:
+            try:
+                desc = ((tx.get("counterparty") or "") + " " + (tx.get("description") or "")).lower()
+                vm = bts.suggest_pc_for_vendor(desc, "")
+                if vm:
+                    pc = vm.get("profit_center")
+                    person = vm.get("primary_contact") or ""
+            except Exception:  # noqa: BLE001
+                pass
+        tx["suggested_pc"] = pc
+        tx["suggested_person"] = person
+    return jsonify({"transactions": rows})
 
 
 @card_audit_bp.route("/summary", methods=["GET"])
@@ -496,20 +529,46 @@ def card_audit_chase_asana_bulk() -> Any:
         return jsonify({"error": "not_found", "missing": missing}), 404
 
     total_eur = sum(float(r.get("amount_eur") or 0) for r in rows)
-    summary_lines = [
-        "{date} · €{amt:.2f} · {desc} ({ref})".format(
-            date=(r.get("posted_at") or "")[:10],
-            amt=float(r.get("amount_eur") or 0),
-            desc=(r.get("description") or r.get("counterparty") or "?")[:80],
-            ref=(r.get("reference") or r.get("id") or "")[:30],
-        ) for r in rows
-    ]
+    # 2026-06-24 FB-G — per-tx line format: date · vendor · €amount · ****last4
+    def _last4_card(tx_row):
+        # Look for last-4 in card_holder, reference, or raw_row
+        for field in ("reference", "card_holder", "description"):
+            val = str(tx_row.get(field) or "")
+            # Match patterns like "**** 1234", "...4321", "x1234", "ending 5678"
+            import re as _re
+            m = _re.search(r"(?:\*+\s*|ending\s+|x|XX)\s*(\d{4})\b", val) or _re.search(r"\b(\d{4})\s*$", val)
+            if m:
+                return m.group(1)
+        return None
+    summary_lines = []
+    for r in rows:
+        date_s = (r.get("posted_at") or "")[:10] or "—"
+        vendor_s = (r.get("counterparty") or r.get("description") or "?")[:60]
+        amt_s = "€{:.2f}".format(float(r.get("amount_eur") or 0))
+        card4 = _last4_card(r)
+        card_s = "card ****" + card4 if card4 else "—"
+        summary_lines.append("{} · {} · {} · {}".format(date_s, vendor_s, amt_s, card_s))
     notes = (
         (intro + "\n\n" if intro else "")
-        + "Transactions ({n}, total €{t:.2f}):\n".format(n=len(rows), t=total_eur)
+        + "Transactions ({n}, total €{t:.2f}) — date · vendor · amount · card:\n".format(n=len(rows), t=total_eur)
         + "\n".join(["  • " + ln for ln in summary_lines])
         + "\n\n— FIO Accounting Bot (bulk chase, {n} tx)".format(n=len(rows))
     )
+
+    # 2026-06-24 FB-H — prefix title with "[PC] ledger" if all rows share
+    # the same stream AND a common ledger code is suggested.
+    if not title.startswith("["):
+        pc_set = {r.get("profit_center") for r in rows if r.get("profit_center")}
+        ledger_set = {r.get("ledger_suggested") or r.get("ledger_code") for r in rows
+                       if r.get("ledger_suggested") or r.get("ledger_code")}
+        if len(pc_set) == 1:
+            pc_one = next(iter(pc_set))
+            ledger_one = next(iter(ledger_set)) if len(ledger_set) == 1 else None
+            prefix = "[" + pc_one + "]"
+            if ledger_one:
+                prefix += " " + ledger_one
+            if not title.startswith(prefix):
+                title = prefix + " " + title
 
     from services import asana_sync as asana_svc
     try:

@@ -80,8 +80,8 @@ def create_user(payload: Dict[str, Any], created_by: str = "admin") -> Dict[str,
         cur = conn.execute(
             """INSERT INTO fio_users
                  (full_name, email, role, profit_center, department,
-                  active, created_at, created_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                  active, created_at, created_by, permissions, pc_scope)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 full_name,
                 (payload.get("email") or "").strip() or None,
@@ -91,6 +91,9 @@ def create_user(payload: Dict[str, Any], created_by: str = "admin") -> Dict[str,
                 1 if payload.get("active", True) else 0,
                 now,
                 created_by,
+                # 2026-06-24 FB-L — granular sub-permissions
+                (payload.get("permissions") or "").strip() or None,
+                (payload.get("pc_scope") or "").strip() or None,
             ),
         )
         conn.commit()
@@ -103,7 +106,8 @@ def create_user(payload: Dict[str, Any], created_by: str = "admin") -> Dict[str,
 
 def update_user(user_id: int, patch: Dict[str, Any], updated_by: str = "admin") -> Optional[Dict[str, Any]]:
     """Partial update. Only known columns are accepted; unknown keys ignored."""
-    allowed = {"full_name", "email", "role", "profit_center", "department", "active"}
+    allowed = {"full_name", "email", "role", "profit_center", "department",
+               "active", "permissions", "pc_scope"}   # FB-L sub-permissions
     fields = {k: v for k, v in patch.items() if k in allowed}
     if not fields:
         return get_user(user_id)

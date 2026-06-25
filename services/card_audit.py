@@ -52,10 +52,15 @@ __all__ = [
 # Each format declares: header signature + column→canonical mapping + sign rule.
 _FORMAT_SPECS: List[Dict[str, Any]] = [
     {
+        # 2026-06-24 FB-C — tightened signature. Was {date, description, amount}
+        # which is so generic that EVERY CSV detected as Mercury (false positives
+        # filled Past Statement Imports archive with "Mercury" labels for files
+        # that were Revolut/etc). Now Mercury REQUIRES Mercury-specific headers
+        # (Reference / Bank Description / Account Number) AND text signature.
         "id": "mercury",
         "label": "Mercury Bank",
-        "signature": {"date", "description", "amount"},
-        "extra_signature_any": {"mercury", "checking"},
+        "signature": {"date", "amount", "bank description"},
+        "extra_signature_any": {"mercury", "mercury technologies"},
         "fields": {
             "date":        ["date", "transaction date", "posting date"],
             "description": ["description", "memo", "name"],
@@ -91,10 +96,33 @@ _FORMAT_SPECS: List[Dict[str, Any]] = [
         "amount_sign": "natural",
     },
     {
+        # 2026-06-24 FB-B — Revolut Personal / Retail export (different from Business).
+        # Real user CSV had headers: Completed date, Time completed, Status, Transaction
+        # type, Counterparty name, Counterparty BIC, Counterparty IBAN, Amount, ...
+        "id": "revolut_personal",
+        "label": "Revolut Personal",
+        "signature": {"completed date", "status", "amount"},
+        "extra_signature_any": {"transaction type", "counterparty bic", "counterparty iban",
+                                "counterparty name", "time completed", "started date"},
+        "fields": {
+            "date":        ["completed date", "started date", "date"],
+            "description": ["counterparty name", "description", "reference"],
+            "amount":      ["amount"],
+            "currency":    ["currency", "payment currency"],
+            "counterparty":["counterparty name", "merchant", "description"],
+            "reference":   ["counterparty iban", "counterparty bic", "reference"],
+        },
+        "default_currency": "EUR",
+        "amount_sign": "natural",
+    },
+    {
+        # 2026-06-24 FB-C — Stripe signature was {description, amount, currency}
+        # which collided with generic bank CSVs. Now requires a Stripe-specific
+        # column to avoid false positives.
         "id": "stripe",
         "label": "Stripe",
-        "signature": {"description", "amount", "currency"},
-        "extra_signature_any": {"stripe", "balance transaction id", "fee"},
+        "signature": {"amount", "currency", "balance transaction id"},
+        "extra_signature_any": {"stripe", "fee", "payment intent id"},
         "fields": {
             "date":        ["created", "available on", "date"],
             "description": ["description"],

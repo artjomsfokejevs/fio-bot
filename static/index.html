@@ -1717,17 +1717,17 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </div>
     </div>
 
-    <!-- Uploader identity -->
-    <div style="max-width:560px;margin:0 auto 16px;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:10px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <span style="font-size:18px;">👤</span>
-        <strong style="font-size:13px;color:var(--text);">Who's uploading?</strong>
-        <span id="upload-user-status" style="margin-left:auto;font-size:11px;color:var(--muted);">Loading roster…</span>
-      </div>
-      <select id="upload-user" class="fio-select" style="width:100%;">
-        <option value="">— Select your name (synced from Asana via BT4YOU) —</option>
-      </select>
+    <!-- 2026-06-24 FB-E — "Who's uploading?" dropdown removed. Uploader is
+         always the logged-in user (header chip). The hidden <select> stays so
+         existing JS that reads upload-user value continues to work; it's
+         pre-populated from window.currentUser on every load. -->
+    <div style="max-width:560px;margin:0 auto 12px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;display:flex;align-items:center;gap:10px;font-size:12px;color:#075985;">
+      <span style="font-size:16px;">👤</span>
+      <span>Uploading as <b id="upload-as-name">…</b> <span style="color:var(--muted);">(automatic — based on your sign-in)</span></span>
     </div>
+    <select id="upload-user" class="fio-select" style="display:none;">
+      <option value="">— auto —</option>
+    </select>
 
     <!-- 2026-06-09 (Top-10 P2.2) — pre-upload "already paid" checkbox.
          2026-06-11 (Top-10 self-review P2.2 fix) — added payment method
@@ -2480,6 +2480,19 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <div>
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Department</label>
             <input id="fu-dept" placeholder="e.g. HR, Sales" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <!-- 2026-06-24 FB-L — granular sub-permissions. PC scope = restrict
+               which streams this user sees (comma list, blank = all in role).
+               Permissions = comma list of capability codes (approve_budget,
+               mark_paid, post_to_pnl, manage_payees, view_revenue). Blank =
+               default role permissions. -->
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;" title="Restrict this user to specific Profit Centers. Comma-separated codes (e.g. CF,SP). Leave blank = role default = all.">PC scope (optional)</label>
+            <input id="fu-pc-scope" placeholder="e.g. CF,SP" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;" title="Capability codes. Comma list: approve_budget, mark_paid, post_to_pnl, manage_payees, view_revenue. Blank = role default = all.">Permissions (optional)</label>
+            <input id="fu-permissions" placeholder="e.g. mark_paid,view_revenue" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
           </div>
           <div>
             <button type="submit" class="btn btn-success" style="white-space:nowrap;">+ Add user</button>
@@ -4366,6 +4379,16 @@ function refreshIdentity() {
     roleEl.textContent = name ? ('· ' + role) : '';
     roleEl.style.color = roleColors[role] || 'var(--muted)';
     applyTabVisibility(ME.allowed_tabs || []);
+    // 2026-06-24 FB-E — auto-fill Upload uploader from signed-in user.
+    window.currentUser = name;
+    var asEl = document.getElementById('upload-as-name');
+    if (asEl) asEl.textContent = name || '— not signed in —';
+    var hiddenSel = document.getElementById('upload-user');
+    if (hiddenSel) {
+      var opts = '<option value="' + (name || '') + '" selected>' + (name || '—') + '</option>';
+      hiddenSel.innerHTML = opts;
+      hiddenSel.value = name || '';
+    }
     // 2026-06-11 Top-2 P2 — show "What's New" modal if a newer version
     // has been published since this user last dismissed.
     maybeShowWhatsNew();
@@ -4733,6 +4756,9 @@ function createFioUser() {
     role:          document.getElementById('fu-role').value,
     profit_center: document.getElementById('fu-pc').value,
     department:    document.getElementById('fu-dept').value.trim(),
+    // 2026-06-24 FB-L — granular sub-permissions (optional)
+    pc_scope:      (document.getElementById('fu-pc-scope') || {}).value || null,
+    permissions:   (document.getElementById('fu-permissions') || {}).value || null,
   };
   if (!body.full_name) { showToast('Full name is required', 'error'); return; }
   api('POST', '/api/fio-users', body).then(function() {
@@ -6043,9 +6069,18 @@ function renderApproveTable(docs) {
       thumbHtml = '<div class="doc-thumb-placeholder" onclick="event.stopPropagation();openModal(\'' + doc.id + '\')" title="View document">&#128462;</div>';
     }
 
+    // 2026-06-24 FB-F — when status is paid, show payment date below the pill
+    var statusCellInner = '<span class="badge badge-' + doc.status + '">' + doc.status + '</span>';
+    if (doc.status === 'paid') {
+      var paidDate = doc.payment_executed_at || doc.paid_at;
+      if (paidDate) {
+        statusCellInner += '<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:3px;white-space:nowrap;">' +
+                          '💸 ' + esc(fmtDate(paidDate)) + '</div>';
+      }
+    }
     return '<tr>' +
       '<td>' + thumbHtml + '</td>' +
-      '<td><span class="badge badge-' + doc.status + '">' + doc.status + '</span></td>' +
+      '<td>' + statusCellInner + '</td>' +
       '<td title="' + esc(doc.original_name || doc.filename) + '">' + esc(truncate(doc.original_name || doc.filename, 30)) + '</td>' +
       '<td>' + esc(doc.vendor || '-') + '</td>' +
       '<td style="font-family:monospace;font-size:12px;">' + esc(vatNr) + '</td>' +
@@ -6805,33 +6840,45 @@ function loadBankStatementArchives() {
       box.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;">No bank-statement imports yet.</div>';
       return;
     }
+    // 2026-06-24 FB-K — enriched archive: uploader, period range, value sums
     box.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
       '<thead style="background:#f1f5f9;"><tr>' +
-      '<th style="padding:6px 8px;text-align:left;">Batch</th>' +
       '<th style="padding:6px 8px;text-align:left;">Source</th>' +
-      '<th style="padding:6px 8px;text-align:left;">Period</th>' +
-      '<th style="padding:6px 8px;text-align:right;">Tx count</th>' +
-      '<th style="padding:6px 8px;text-align:right;">Matched</th>' +
-      '<th style="padding:6px 8px;text-align:right;">Suggested</th>' +
-      '<th style="padding:6px 8px;text-align:right;">Unmatched</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Period covered</th>' +
+      '<th style="padding:6px 8px;text-align:left;">Uploaded by</th>' +
+      '<th style="padding:6px 8px;text-align:right;">Tx</th>' +
+      '<th style="padding:6px 8px;text-align:right;color:#16a34a;">✓</th>' +
+      '<th style="padding:6px 8px;text-align:right;color:#ca8a04;">~</th>' +
+      '<th style="padding:6px 8px;text-align:right;color:#dc2626;">✗</th>' +
+      '<th style="padding:6px 8px;text-align:right;color:#16a34a;">In €</th>' +
+      '<th style="padding:6px 8px;text-align:right;color:#dc2626;">Out €</th>' +
       '<th style="padding:6px 8px;text-align:left;">Imported</th>' +
       '<th></th></tr></thead><tbody>' +
       rows.map(function(a) {
         var when = (a.last_at || '').substring(0,16).replace('T',' ');
+        var ps = (a.period_start || '').slice(0,10);
+        var pe = (a.period_end || '').slice(0,10);
+        var periodLabel = (ps && pe && ps !== pe) ? (ps + ' → ' + pe) : (ps || a.period || '—');
+        var sumIn = Number(a.sum_in_eur || 0);
+        var sumOut = Number(a.sum_out_eur || 0);
         return '<tr>' +
-          '<td style="padding:5px 8px;font-family:monospace;font-size:11px;">' + esc((a.batch_id || '').substring(0,12)) + '…</td>' +
-          '<td style="padding:5px 8px;">' + esc(a.source || '—') + '</td>' +
-          '<td style="padding:5px 8px;">' + esc(a.period || '—') + '</td>' +
-          '<td style="padding:5px 8px;text-align:right;">' + (a.tx_count || 0) + '</td>' +
+          '<td style="padding:5px 8px;"><b>' + esc(a.source || '—') + '</b>' +
+            '<div style="font-size:10px;color:var(--muted);font-family:monospace;">' + esc((a.batch_id || '').substring(0,12)) + '…</div>' +
+          '</td>' +
+          '<td style="padding:5px 8px;font-size:11px;">' + esc(periodLabel) + '</td>' +
+          '<td style="padding:5px 8px;font-size:11px;">' + esc(a.imported_by || '—') + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;font-weight:600;">' + (a.tx_count || 0) + '</td>' +
           '<td style="padding:5px 8px;text-align:right;color:#16a34a;">' + (a.matched || 0) + '</td>' +
           '<td style="padding:5px 8px;text-align:right;color:#ca8a04;">' + (a.suggested || 0) + '</td>' +
-          '<td style="padding:5px 8px;text-align:right;color:#dc2626;">' + (a.unmatched || 0) + '</td>' +
-          '<td style="padding:5px 8px;font-size:11px;color:var(--muted);">' + esc(when) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:600;">' + (a.unmatched || 0) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;font-family:ui-monospace,monospace;color:#16a34a;">' + sumIn.toLocaleString('en',{maximumFractionDigits:0}) + '</td>' +
+          '<td style="padding:5px 8px;text-align:right;font-family:ui-monospace,monospace;color:#dc2626;">' + Math.abs(sumOut).toLocaleString('en',{maximumFractionDigits:0}) + '</td>' +
+          '<td style="padding:5px 8px;font-size:11px;color:var(--muted);white-space:nowrap;">' + esc(when) + '</td>' +
           '<td style="padding:5px 8px;white-space:nowrap;">' +
-            '<button class="btn btn-ghost btn-xs" onclick="previewArchiveBatch(\'' + esc(a.batch_id) + '\')" title="Open transactions in this batch (read-only, even after confirmation)">👁 Preview</button> ' +
-            '<button class="btn btn-ghost btn-xs" onclick="reopenArchiveInAudit(\'' + esc(a.batch_id) + '\', \'' + esc(a.period || '') + '\')" title="Jump to Bank Statement Audit tab on this batch period">↗ Open in Audit</button> ' +
-            '<button class="btn btn-ghost btn-xs" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched and let next reconcile re-evaluate">↻ Re-check</button> ' +
-            '<button class="btn btn-ghost btn-xs" onclick="revenueMatchSuggest(\'' + esc(a.batch_id) + '\')" title="Score inflows in this batch against open receivables in 💵 Revenue">💵 Match revenue</button>' +
+            '<button class="btn btn-ghost btn-xs" onclick="previewArchiveBatch(\'' + esc(a.batch_id) + '\')" title="Open transactions in this batch (read-only)">👁 Preview</button> ' +
+            '<button class="btn btn-ghost btn-xs" onclick="reopenArchiveInAudit(\'' + esc(a.batch_id) + '\', \'' + esc(a.period || '') + '\')" title="Jump to Bank Statement Audit on this batch period">↗ Open</button> ' +
+            '<button class="btn btn-ghost btn-xs" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched for re-evaluation">↻ Re-check</button> ' +
+            '<button class="btn btn-ghost btn-xs" onclick="revenueMatchSuggest(\'' + esc(a.batch_id) + '\')" title="Match inflows against Revenue receivables">💵 Match</button>' +
           '</td>' +
           '</tr>';
       }).join('') + '</tbody></table>';
@@ -8554,7 +8601,10 @@ function loadByLegalEntity() {
         : '<span style="color:var(--muted);">0</span>';
       var rowBg = isUnassigned ? 'background:#fff7ed;' : '';
       var dlBtn = g.doc_count > 0
-        ? '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 10px;" onclick="downloadByLegalEntity(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')">📥 CSV</button>'
+        ? '<div style="display:flex;gap:4px;justify-content:flex-end;">' +
+            '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;" onclick="downloadByLegalEntity(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')" title="CSV with all metadata (no invoice files)">📥 CSV</button>' +
+            '<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:#0ea5e9;color:#fff;border-color:#0ea5e9;" onclick="downloadBulkZip(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')" title="ZIP with all invoice files + specification.csv — for accounting firm handover">📦 Bulk ZIP</button>' +
+          '</div>'
         : '<span style="color:var(--muted);font-size:11px;">—</span>';
       html += '<tr style="' + rowBg + '">' +
         '<td style="padding:8px 12px;border-bottom:1px solid var(--border);"><strong>' + esc(g.name || displayCode) + '</strong>' +
@@ -8581,6 +8631,20 @@ function downloadByLegalEntity(entityCode) {
   var period = document.getElementById('period-filter').value || '';
   var url = '/api/accounting/export-by-legal-entity?legal_entity=' + encodeURIComponent(entityCode);
   if (period) url += '&period=' + encodeURIComponent(period);
+  window.location.href = url;
+}
+
+// 2026-06-24 FB-J — Costpocket-style bulk export. ZIP = all invoice PDFs +
+// specification.csv with full metadata + README. Designed for handover to
+// external accounting firm. Period scope optional.
+function downloadBulkZip(entityCode) {
+  var period = document.getElementById('period-filter').value || '';
+  if (!confirm('Download bulk archive for ' + entityCode + (period ? ' · period ' + period : '') +
+               '?\n\nThe ZIP includes all invoice files + specification.csv with full metadata. ' +
+               'Can be sent directly to the external accounting firm.')) return;
+  var url = '/api/accounting/export-bulk-zip?legal_entity=' + encodeURIComponent(entityCode);
+  if (period) url += '&period=' + encodeURIComponent(period);
+  showToast('📦 Building ZIP — download will start shortly…', 'info');
   window.location.href = url;
 }
 
@@ -9751,9 +9815,22 @@ function renderCaLists(txs) {
     var isOut = amt < 0;
     var ccyOrig = t.currency || 'EUR';
     var date = (t.posted_at || '').slice(0, 10);
-    var holderHtml = t.card_holder
-      ? '<b>' + esc(t.card_holder) + '</b>' + (t.department ? ' <span style="color:var(--muted);">· ' + esc(t.department) + '</span>' : '')
-      : '<span style="color:var(--muted);font-style:italic;">unassigned</span>';
+    // 2026-06-24 FB-I — surface suggested responsible person from AI stream
+    // attribution (suggested_person comes from chase routing / holding_config).
+    var holderHtml;
+    if (t.card_holder) {
+      holderHtml = '<b>' + esc(t.card_holder) + '</b>' +
+        (t.department ? ' <span style="color:var(--muted);">· ' + esc(t.department) + '</span>' : '');
+    } else if (t.suggested_person || t.suggested_pc) {
+      // Use the AI-suggested owner so bookkeeper sees WHO is responsible
+      // before opening the Assign modal.
+      var pcPart = t.suggested_pc ? ('<span class="pill" style="background:#dbeafe;color:#1e3a8a;font-size:10px;margin-right:4px;">→ ' + esc(t.suggested_pc) + '</span>') : '';
+      var perPart = t.suggested_person ? esc(t.suggested_person) : 'TBD';
+      holderHtml = pcPart + '<span style="color:#1e3a8a;font-weight:600;">' + perPart + '</span>' +
+        '<div style="font-size:10px;color:var(--muted);font-style:italic;">suggested · click Assign to confirm</div>';
+    } else {
+      holderHtml = '<span style="color:var(--muted);font-style:italic;">unassigned</span>';
+    }
     // 2026-06-11 (Top-9 P1.3) — confidence pill now has a tooltip
     // explaining the scoring breakdown. Scoring formula (max 98 → clamped
     // to 100): amount exact +50 (≈ ±1.5% gets +35); date ±3d +20 (±14d +8);
@@ -10293,11 +10370,16 @@ function openRevenueAddModal() {
     '  <input id="rev-add-entity" placeholder="Legal entity (issuer)" />' +
     '  <input id="rev-add-desc" placeholder="Description" class="grid-span-3" />' +
     '</div>' +
-    '<div class="modal-footer" style="margin-top:16px;">' +
+    // 2026-06-24 FB-A — attach invoice PDF/file
+    '<div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed var(--border);border-radius:6px;">' +
+    '  <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px;">📎 Attach invoice file (optional — PDF / image / docx)</label>' +
+    '  <input id="rev-add-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" style="font-size:12px;" />' +
+    '</div>' +
+    '<div class="modal-footer" style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;">' +
     '  <button class="btn btn-ghost" onclick="closeRevenueModal()">Cancel</button>' +
     '  <button class="btn btn-primary" onclick="submitRevenueAdd()">Save</button>' +
     '</div>';
-  document.getElementById('revenue-modal-overlay').classList.add('open');
+  document.getElementById('revenue-modal-overlay').classList.add('active');
 }
 
 async function submitRevenueAdd() {
@@ -10316,14 +10398,31 @@ async function submitRevenueAdd() {
     description: document.getElementById('rev-add-desc').value || null,
     status: 'draft'
   };
+  var fileInput = document.getElementById('rev-add-file');
+  var file = fileInput && fileInput.files && fileInput.files[0];
   try {
-    var r = await fetch('/api/revenue', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
-      body: JSON.stringify(payload)
-    }).then(function(r){ return r.json(); });
+    var r;
+    if (file) {
+      // multipart so backend can persist the file alongside the row
+      var fd = new FormData();
+      fd.append('file', file);
+      Object.keys(payload).forEach(function(k) {
+        if (payload[k] !== null && payload[k] !== undefined) fd.append(k, String(payload[k]));
+      });
+      r = await fetch('/api/revenue', {
+        method: 'POST',
+        headers: {'X-FIO-User': (window.currentUser || '')},
+        body: fd
+      }).then(function(r){ return r.json(); });
+    } else {
+      r = await fetch('/api/revenue', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-FIO-User': (window.currentUser || '')},
+        body: JSON.stringify(payload)
+      }).then(function(r){ return r.json(); });
+    }
     if (r.error) { showToast(r.message || r.error, 'error'); return; }
-    showToast('Created ' + r.doc.id, 'success');
+    showToast('Created ' + r.doc.id + (file ? ' · 📎 file attached' : ''), 'success');
     closeRevenueModal();
     loadRevenue();
   } catch (e) { showToast('Create failed: ' + e.message, 'error'); }
@@ -10332,7 +10431,7 @@ async function submitRevenueAdd() {
 async function openRevenueDetail(docId) {
   document.getElementById('revenue-modal-title').textContent = 'Revenue document — ' + docId;
   document.getElementById('revenue-modal-body').innerHTML = '<div class="empty-state">Loading…</div>';
-  document.getElementById('revenue-modal-overlay').classList.add('open');
+  document.getElementById('revenue-modal-overlay').classList.add('active');
   try {
     var r = await fetch('/api/revenue/' + docId,
                         {headers: {'X-FIO-User': (window.currentUser || '')}})
@@ -10401,7 +10500,7 @@ async function openRevenueDetail(docId) {
 }
 
 function closeRevenueModal() {
-  document.getElementById('revenue-modal-overlay').classList.remove('open');
+  document.getElementById('revenue-modal-overlay').classList.remove('active');
 }
 
 async function setRevStatus(docId, newStatus) {
@@ -10459,7 +10558,7 @@ async function revenueMatchSuggest(batchId) {
   // Reuse the revenue modal shell so we don't duplicate markup.
   document.getElementById('revenue-modal-title').textContent = '💵 Match bank inflows to receivables — batch ' + batchId.slice(0,12) + '…';
   document.getElementById('revenue-modal-body').innerHTML = '<div class="empty-state">Scoring…</div>';
-  document.getElementById('revenue-modal-overlay').classList.add('open');
+  document.getElementById('revenue-modal-overlay').classList.add('active');
   try {
     var r = await fetch('/api/revenue/bank-match/suggestions/' + encodeURIComponent(batchId),
                         {headers: {'X-FIO-User': (window.currentUser || '')}}).then(r => r.json());

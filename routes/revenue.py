@@ -96,11 +96,47 @@ def create_revenue() -> Any:
     err = _require(*_WRITE_ROLES)
     if err:
         return err
-    payload = request.get_json(silent=True) or {}
+    # 2026-06-24 FB-A — accept both JSON and multipart (with optional file).
+    # The Revenue tab's Add modal now ships the invoice PDF alongside the form.
+    file_obj = None
+    if request.content_type and request.content_type.startswith("multipart/form-data"):
+        payload = {k: v for k, v in request.form.items()}
+        # Coerce types that were JSON numbers but are now form strings
+        for fld in ("amount", "amount_eur"):
+            if fld in payload and payload[fld]:
+                try:
+                    payload[fld] = float(payload[fld])
+                except (TypeError, ValueError):
+                    pass
+        file_obj = request.files.get("file")
+    else:
+        payload = request.get_json(silent=True) or {}
+
     try:
         doc = rev_svc.create_doc(payload, by=_user())
     except ValueError as exc:
         return jsonify({"error": "invalid_payload", "message": str(exc)}), 400
+
+    # Persist the attached file on the data volume + record path on the doc.
+    if file_obj and file_obj.filename:
+        import os
+        import uuid
+        import config as _cfg
+        ext = os.path.splitext(file_obj.filename)[1].lower()
+        safe = f"rev_{doc['id']}_{uuid.uuid4().hex[:8]}{ext}"
+        target_dir = os.path.join(_cfg.UPLOAD_FOLDER, "revenue")
+        os.makedirs(target_dir, exist_ok=True)
+        file_path = os.path.join(target_dir, safe)
+        file_obj.save(file_path)
+        try:
+            rev_svc.update_doc(doc["id"], {
+                "file_path": file_path,
+                "file_type": ext.lstrip("."),
+            }, by=_user())
+        except Exception:  # noqa: BLE001
+            pass
+        doc = rev_svc.get_doc(doc["id"])
+
     return jsonify({"doc": doc}), 201
 
 

@@ -182,6 +182,7 @@ _EDITABLE_FIELDS = {
     "kind", "profit_center", "customer", "customer_vat", "legal_entity",
     "invoice_number", "issue_date", "due_date", "amount", "amount_eur",
     "currency", "description", "ledger_code", "status", "notes",
+    "file_path", "file_type",   # 2026-06-24 FB-A — attach invoice file
 }
 
 

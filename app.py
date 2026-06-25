@@ -3629,6 +3629,139 @@ def export_by_legal_entity():
                  headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+# 2026-06-24 FB-J — Costpocket-style bulk export. ZIP with:
+#   - all invoice PDFs / images in /documents/
+#   - specification.csv with full metadata (vendor, amount, dates, ledger, status)
+#   - README.txt with summary
+# Filtered by Legal Entity + Period. Designed for handover to external accounting.
+@app.route("/api/accounting/export-bulk-zip", methods=["GET"])
+def export_bulk_zip():
+    le_code = (request.args.get("legal_entity") or "").strip()
+    if not le_code:
+        return jsonify({"error": "legal_entity is required"}), 400
+    period = (request.args.get("period") or "").strip() or None
+
+    conn = db.get_connection()
+    try:
+        sql = ("SELECT * FROM documents WHERE status IN "
+               "('approved','posted','confirmed_to_pay','paid','budget_validated','classified')")
+        params: List[Any] = []
+        if le_code == "unassigned":
+            sql += " AND (legal_entity IS NULL OR legal_entity = '')"
+        else:
+            sql += " AND legal_entity = ?"
+            params.append(le_code)
+        if period:
+            sql += " AND period = ?"
+            params.append(period)
+        sql += " ORDER BY period DESC, approved_at DESC"
+        rows = [db._row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+    import io as _io, zipfile as _zipfile, csv as _csv
+    from flask import Response as _Resp
+
+    zbuf = _io.BytesIO()
+    with _zipfile.ZipFile(zbuf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        # 1. Specification CSV with all metadata
+        spec_buf = _io.StringIO()
+        spec_buf.write(f"# Amitours Holding — Accounting Export Specification\n")
+        spec_buf.write(f"# Legal Entity: {le_code}\n# Period: {period or 'ALL'}\n")
+        spec_buf.write(f"# Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n")
+        spec_buf.write(f"# Total documents: {len(rows)}\n\n")
+        spec_fields = ["row", "document_id", "filename", "vendor", "vat_number",
+                       "invoice_date", "uploaded_at", "approved_at", "paid_at",
+                       "profit_center", "ledger_code", "department",
+                       "currency", "amount_original", "amount_eur",
+                       "legal_entity", "status", "payment_method",
+                       "payment_account", "payment_reference", "approved_by"]
+        spec_writer = _csv.DictWriter(spec_buf, fieldnames=spec_fields, extrasaction="ignore")
+        spec_writer.writeheader()
+
+        # 2. Each invoice file under documents/
+        included_files = 0
+        missing_files = []
+        for i, d in enumerate(rows, start=1):
+            invoice_date = ""
+            parsed = d.get("parsed_json")
+            if isinstance(parsed, str):
+                try:
+                    parsed = json.loads(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = {}
+            if isinstance(parsed, dict):
+                invoice_date = (parsed.get("dates", {}) or {}).get("document_date", "")
+            spec_writer.writerow({
+                "row":            i,
+                "document_id":    d.get("id"),
+                "filename":       d.get("original_name") or d.get("filename"),
+                "vendor":         d.get("vendor"),
+                "vat_number":     d.get("vat_number"),
+                "invoice_date":   invoice_date,
+                "uploaded_at":    d.get("uploaded_at"),
+                "approved_at":    d.get("approved_at"),
+                "paid_at":        d.get("payment_executed_at"),
+                "profit_center":  d.get("profit_center"),
+                "ledger_code":    d.get("ledger_code"),
+                "department":     d.get("department"),
+                "currency":       d.get("currency_orig") or d.get("currency"),
+                "amount_original":d.get("amount_orig") or d.get("amount"),
+                "amount_eur":     d.get("amount"),
+                "legal_entity":   d.get("legal_entity"),
+                "status":         d.get("status"),
+                "payment_method": d.get("payment_method"),
+                "payment_account":d.get("payment_account"),
+                "payment_reference":d.get("payment_reference"),
+                "approved_by":    d.get("approved_by"),
+            })
+            # Add the invoice file
+            fname = d.get("filename")
+            if fname:
+                file_path = os.path.join(config.UPLOAD_FOLDER, fname)
+                if os.path.isfile(file_path):
+                    # Friendly name: vendor + date + amount + original ext
+                    safe_vendor = "".join(c if c.isalnum() else "_" for c in (d.get("vendor") or "unknown"))[:30]
+                    amt = d.get("amount") or 0
+                    ext = os.path.splitext(fname)[1] or ".pdf"
+                    in_zip = f"documents/{i:03d}_{safe_vendor}_EUR{amt:.0f}{ext}"
+                    zf.write(file_path, in_zip)
+                    included_files += 1
+                else:
+                    missing_files.append({"row": i, "id": d.get("id"), "filename": fname})
+
+        zf.writestr("specification.csv", spec_buf.getvalue())
+
+        # 3. README.txt
+        readme = (
+            f"AMITOURS HOLDING — Accounting Bulk Export\n"
+            f"==========================================\n\n"
+            f"Legal Entity: {le_code}\n"
+            f"Period: {period or 'ALL'}\n"
+            f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+            f"Contents:\n"
+            f"  documents/        {included_files} invoice file(s)\n"
+            f"  specification.csv {len(rows)} row(s) with full metadata\n"
+            f"  README.txt        this file\n\n"
+            f"Spec columns: vendor / VAT / invoice date / dates / PC / ledger /\n"
+            f"              department / currency / amounts (orig + EUR) / status /\n"
+            f"              payment method / account / reference / approver.\n\n"
+            + (f"⚠ {len(missing_files)} document(s) have no file on disk — see specification.csv for IDs.\n"
+               if missing_files else "")
+            + "Please route this archive to the accounting firm for "
+              + le_code + ".\n"
+        )
+        zf.writestr("README.txt", readme)
+
+    zbuf.seek(0)
+    fname_parts = ["fio_bulk_export", le_code]
+    if period:
+        fname_parts.append(period)
+    zip_name = "_".join(fname_parts) + ".zip"
+    return _Resp(zbuf.getvalue(), mimetype="application/zip",
+                 headers={"Content-Disposition": f'attachment; filename="{zip_name}"'})
+
+
 # ---------------------------------------------------------------------------
 # Blueprint registration (Phase 7 refactor — see docs/architecture.md)
 # ---------------------------------------------------------------------------

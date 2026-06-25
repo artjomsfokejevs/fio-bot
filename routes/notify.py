@@ -173,13 +173,19 @@ def bank_statement_archives() -> Any:
     reconciliation after new invoices arrive."""
     conn = db.get_connection()
     try:
+        # 2026-06-24 FB-K — surface uploader, period range, value sums, all status counts
         rows = conn.execute(
             "SELECT batch_id, source, MIN(imported_at) AS first_at, "
             "       MAX(imported_at) AS last_at, COUNT(*) AS tx_count, "
+            "       MAX(COALESCE(imported_by, '—')) AS imported_by, "
             "       SUM(CASE WHEN match_status='matched' THEN 1 ELSE 0 END) AS matched, "
             "       SUM(CASE WHEN match_status='unmatched' THEN 1 ELSE 0 END) AS unmatched, "
             "       SUM(CASE WHEN match_status='suggested' THEN 1 ELSE 0 END) AS suggested, "
-            "       MAX(period) AS period "
+            "       SUM(CASE WHEN match_status='excluded' THEN 1 ELSE 0 END) AS excluded, "
+            "       MIN(posted_at) AS period_start, MAX(posted_at) AS period_end, "
+            "       MAX(period) AS period, "
+            "       SUM(CASE WHEN amount > 0 THEN amount_eur ELSE 0 END) AS sum_in_eur, "
+            "       SUM(CASE WHEN amount < 0 THEN amount_eur ELSE 0 END) AS sum_out_eur "
             "FROM card_transactions GROUP BY batch_id "
             "ORDER BY MAX(imported_at) DESC LIMIT 200"
         ).fetchall()

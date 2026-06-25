@@ -517,6 +517,23 @@ def init_db() -> None:
                 conn.execute(ddl)
                 conn.commit()
                 logger.info("Migrated: added %s column", col)
+        # 2026-06-24 FB-L — fio_users sub-permissions. Comma-separated
+        # capability codes that further constrain a role. Example:
+        #   bookkeeper + permissions="approve_budget,mark_paid"  → full
+        #   bookkeeper + permissions="mark_paid"                 → no budget
+        #   bookkeeper + pc_scope="CF,SP"  → only sees CF / SP streams
+        for col, ddl in (
+            ("permissions",
+                "ALTER TABLE fio_users ADD COLUMN permissions TEXT"),
+            ("pc_scope",
+                "ALTER TABLE fio_users ADD COLUMN pc_scope TEXT"),
+        ):
+            try:
+                conn.execute("SELECT %s FROM fio_users LIMIT 1" % col)
+            except sqlite3.OperationalError:
+                conn.execute(ddl)
+                conn.commit()
+                logger.info("Migrated: added fio_users.%s column", col)
         logger.info("Database initialised at %s", config.DB_PATH)
     finally:
         conn.close()
