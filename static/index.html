@@ -2203,6 +2203,29 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </div>
     </div>
 
+    <!-- 2026-06-26 G-ui — Phase 3 13-week rolling cashflow projection -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2>📈 13-week cashflow projection</h2>
+        <span style="font-size:12px;color:var(--muted);">Opening bank balance + future receivables (due dates) − future payables (desired payment dates).
+          Set opening balances via POST /api/cashflow/opening-balance.</span>
+      </div>
+      <div id="cashflow-projection-body" style="padding:16px;">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
+    <!-- 2026-06-26 G2 — Consolidated P&L with intercompany elimination -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2>📊 Consolidated P&amp;L (intercompany eliminated)</h2>
+        <span style="font-size:12px;color:var(--muted);">Raw − intercompany eliminations = consolidated. Flag a doc as intercompany via POST /documents/&lt;id&gt;/counterparty-pc.</span>
+      </div>
+      <div id="consolidated-pnl-body" style="padding:16px;">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
     <!-- Optimization suggestions -->
     <div class="table-wrapper" style="margin-bottom:20px;">
       <div class="table-header">
@@ -3536,6 +3559,8 @@ function loadAnalyticsPanel() {
     renderAnalyticsSuspicious(data);
     renderAnalyticsCashflow(data);
     try { renderRevenueCashflowCard(); } catch (e) { console.error('revenue cashflow card failed', e); }
+    try { renderCashflowProjectionCard(); } catch (e) { console.error('projection card failed', e); }
+    try { renderConsolidatedPnlCard(); } catch (e) { console.error('consolidated pnl card failed', e); }
     renderAnalyticsByPeriod(data);
     renderAnalyticsProjection(data);
     renderAnalyticsVendors(data);
@@ -10751,6 +10776,206 @@ async function renderRevenueCashflowCard() {
     box.innerHTML = html;
   } catch (e) {
     box.innerHTML = '<div class="empty-state" style="font-size:13px;">Cashflow load failed: ' + e.message + '</div>';
+  }
+}
+
+// 📈 13-week rolling cashflow projection — G1 (2026-06-26)
+async function renderCashflowProjectionCard() {
+  var box = document.getElementById('cashflow-projection-body');
+  if (!box) return;
+  var qs = ['weeks=13'];
+  if (typeof ANALYTICS_PC !== 'undefined' && ANALYTICS_PC) {
+    var pcCode = (typeof STREAM_PC_MAP !== 'undefined' && STREAM_PC_MAP[ANALYTICS_PC]) || ANALYTICS_PC;
+    qs.push('pc=' + encodeURIComponent(pcCode));
+  }
+  var url = '/api/cashflow/projection?' + qs.join('&');
+  try {
+    var data = await fetch(url, {headers: {'X-FIO-User': (window.currentUser || '')}}).then(function(r){ return r.json(); });
+    if (data.error) {
+      box.innerHTML = '<div class="empty-state" style="font-size:13px;">' + data.error + '</div>';
+      return;
+    }
+    var weeks = data.weeks || [];
+    var opening = data.opening_balance || 0;
+    var ending = weeks.length ? weeks[weeks.length - 1].running_balance : opening;
+    var runway = data.runway_weeks;
+    var totalIn = 0, totalOut = 0;
+    weeks.forEach(function(w){ totalIn += (w.ar_in || 0); totalOut += (w.ap_out || 0); });
+    var runwayColor = runway === null ? '#16a34a' : (runway < 4 ? '#dc2626' : (runway < 8 ? '#d97706' : '#16a34a'));
+    var runwayLabel = runway === null ? '∞ (positive)' : runway + ' wk';
+    var endColor = ending >= 0 ? '#166534' : '#991b1b';
+
+    var html =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px;">' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Opening balance</div>' +
+      '    <div style="font-size:18px;font-weight:700;margin-top:4px;">' + fmtEUR(opening) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#166534;text-transform:uppercase;font-weight:700;">AR pipeline (in)</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:#166534;margin-top:4px;">' + fmtEUR(totalIn) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#991b1b;text-transform:uppercase;font-weight:700;">AP pipeline (out)</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:#991b1b;margin-top:4px;">' + fmtEUR(totalOut) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Ending balance (wk 13)</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:' + endColor + ';margin-top:4px;">' + fmtEUR(ending) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Runway</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:' + runwayColor + ';margin-top:4px;">' + runwayLabel + '</div>' +
+      '  </div>' +
+      '</div>';
+
+    if (weeks.length) {
+      var maxAbs = 0;
+      weeks.forEach(function(w){ maxAbs = Math.max(maxAbs, Math.abs(w.running_balance || 0)); });
+      maxAbs = maxAbs || 1;
+      html += '<div><strong style="font-size:13px;">Weekly running balance (€)</strong>' +
+        '<div style="display:flex;align-items:flex-end;gap:6px;margin-top:10px;min-height:140px;border-bottom:1px solid var(--border);padding-bottom:6px;">';
+      weeks.forEach(function(w){
+        var rb = w.running_balance || 0;
+        var h = Math.round(120 * Math.abs(rb) / maxAbs);
+        var color = rb >= 0 ? '#22c55e' : '#ef4444';
+        html += '<div style="flex:1;min-width:30px;text-align:center;" title="' + w.week_start + '\nIn: ' + fmtEUR(w.ar_in) + '\nOut: ' + fmtEUR(w.ap_out) + '\nBalance: ' + fmtEUR(rb) + '">' +
+          '<div style="height:' + h + 'px;background:' + color + ';border-radius:3px;"></div>' +
+          '<div style="font-size:9px;margin-top:4px;color:var(--muted);font-family:monospace;">' + (w.week_start || '').slice(5) + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+      html += '<table style="width:100%;font-size:12px;margin-top:14px;border-collapse:collapse;">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:4px;">Week</th>' +
+        '<th style="text-align:right;padding:4px;">AR in</th>' +
+        '<th style="text-align:right;padding:4px;">AP out</th>' +
+        '<th style="text-align:right;padding:4px;">Net</th>' +
+        '<th style="text-align:right;padding:4px;">Running</th>' +
+        '</tr></thead><tbody>';
+      weeks.forEach(function(w){
+        var rb = w.running_balance || 0;
+        var rc = rb >= 0 ? '#166534' : '#991b1b';
+        html += '<tr>' +
+          '<td style="padding:4px;font-family:monospace;">' + esc(w.week_start || '') + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#166534;">' + fmtEUR(w.ar_in) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#991b1b;">' + fmtEUR(w.ap_out) + '</td>' +
+          '<td style="padding:4px;text-align:right;">' + fmtEUR(w.net) + '</td>' +
+          '<td style="padding:4px;text-align:right;font-weight:700;color:' + rc + ';">' + fmtEUR(rb) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<div class="empty-state" style="font-size:13px;">No projection data — add invoices with due dates and bills with desired payment dates.</div>';
+    }
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state" style="font-size:13px;">Projection load failed: ' + e.message + '</div>';
+  }
+}
+
+// 📊 Consolidated P&L (intercompany eliminated) — G2 (2026-06-26)
+async function renderConsolidatedPnlCard() {
+  var box = document.getElementById('consolidated-pnl-body');
+  if (!box) return;
+  var qs = [];
+  if (typeof ANALYTICS_FROM !== 'undefined' && ANALYTICS_FROM) {
+    var period = (ANALYTICS_FROM || '').slice(0, 7);
+    if (period) qs.push('period=' + encodeURIComponent(period));
+  }
+  if (typeof ANALYTICS_PC !== 'undefined' && ANALYTICS_PC) {
+    var pcCode = (typeof STREAM_PC_MAP !== 'undefined' && STREAM_PC_MAP[ANALYTICS_PC]) || ANALYTICS_PC;
+    qs.push('pc=' + encodeURIComponent(pcCode));
+  }
+  var url = '/api/pnl/consolidated' + (qs.length ? '?' + qs.join('&') : '');
+  try {
+    var data = await fetch(url, {headers: {'X-FIO-User': (window.currentUser || '')}}).then(function(r){ return r.json(); });
+    if (data.error) {
+      box.innerHTML = '<div class="empty-state" style="font-size:13px;">' + data.error + '</div>';
+      return;
+    }
+    var raw = data.raw_expense || 0;
+    var elim = (data.eliminations && data.eliminations.intercompany_total) || 0;
+    var cons = data.consolidated_expense || 0;
+    var rev = data.raw_revenue || 0;
+    var net = data.consolidated_net || 0;
+    var netColor = net >= 0 ? '#16a34a' : '#dc2626';
+
+    var html =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:18px;">' +
+      '  <div style="padding:12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#166534;text-transform:uppercase;font-weight:700;">Revenue</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:#166534;margin-top:4px;">' + fmtEUR(rev) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#991b1b;text-transform:uppercase;font-weight:700;">Raw expense</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:#991b1b;margin-top:4px;">' + fmtEUR(raw) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;">' +
+      '    <div style="font-size:10px;color:#854d0e;text-transform:uppercase;font-weight:700;">Inter-company elim</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:#854d0e;margin-top:4px;">−' + fmtEUR(elim) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Consolidated expense</div>' +
+      '    <div style="font-size:18px;font-weight:700;margin-top:4px;">' + fmtEUR(cons) + '</div>' +
+      '  </div>' +
+      '  <div style="padding:12px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px;">' +
+      '    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Consolidated net</div>' +
+      '    <div style="font-size:18px;font-weight:700;color:' + netColor + ';margin-top:4px;">' + fmtEUR(net) + '</div>' +
+      '  </div>' +
+      '</div>';
+
+    var streams = data.by_stream || [];
+    if (streams.length) {
+      html += '<div><strong style="font-size:13px;">By stream</strong>' +
+        '<table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse;">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:4px;">Stream</th>' +
+        '<th style="text-align:right;padding:4px;">Revenue</th>' +
+        '<th style="text-align:right;padding:4px;">Raw exp</th>' +
+        '<th style="text-align:right;padding:4px;">Eliminated</th>' +
+        '<th style="text-align:right;padding:4px;">Consolid exp</th>' +
+        '<th style="text-align:right;padding:4px;">Net</th>' +
+        '</tr></thead><tbody>';
+      streams.forEach(function(s){
+        var nc = (s.consolidated_net || 0) >= 0 ? '#16a34a' : '#dc2626';
+        html += '<tr>' +
+          '<td style="padding:4px;"><b>' + esc(s.pc) + '</b> · ' + esc(s.label || '') + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#166534;">' + fmtEUR(s.raw_revenue) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#991b1b;">' + fmtEUR(s.raw_expense) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#854d0e;">' + (s.eliminated ? '−' + fmtEUR(s.eliminated) : '—') + '</td>' +
+          '<td style="padding:4px;text-align:right;">' + fmtEUR(s.consolidated_expense) + '</td>' +
+          '<td style="padding:4px;text-align:right;font-weight:700;color:' + nc + ';">' + fmtEUR(s.consolidated_net) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    var pairs = (data.eliminations && data.eliminations.pairs) || [];
+    if (pairs.length) {
+      html += '<div style="margin-top:14px;"><strong style="font-size:13px;">Inter-company pairs (counterparty → stream)</strong>' +
+        '<table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse;">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:4px;">From (charging)</th>' +
+        '<th style="text-align:left;padding:4px;">To (paying)</th>' +
+        '<th style="text-align:right;padding:4px;">Amount</th>' +
+        '<th style="text-align:right;padding:4px;">Docs</th>' +
+        '</tr></thead><tbody>';
+      pairs.forEach(function(p){
+        html += '<tr>' +
+          '<td style="padding:4px;"><b>' + esc(p.pc_from) + '</b></td>' +
+          '<td style="padding:4px;"><b>' + esc(p.pc_to) + '</b></td>' +
+          '<td style="padding:4px;text-align:right;color:#854d0e;font-weight:600;">' + fmtEUR(p.amount_eur) + '</td>' +
+          '<td style="padding:4px;text-align:right;">' + (p.doc_count || 0) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div class="empty-state" style="font-size:12px;margin-top:14px;">No inter-company pairs flagged. Set <code>counterparty_pc</code> on shared-service docs to enable elimination.</div>';
+    }
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state" style="font-size:13px;">Consolidated P&L load failed: ' + e.message + '</div>';
   }
 }
 

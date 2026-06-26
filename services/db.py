@@ -525,6 +525,13 @@ def init_db() -> None:
             # batch-approve invoices coming due on a specific payday.
             ("is_salary",
                 "ALTER TABLE documents ADD COLUMN is_salary INTEGER DEFAULT 0"),
+            # 2026-06-26 (G2) — Inter-company elimination. When an internal
+            # invoice from AG (shared services) lands on AA's books, set
+            # counterparty_pc='AG' so the consolidated P&L can subtract the
+            # AG→AA leg (otherwise AG cost AND AA cost both inflate the total).
+            # NULL means external vendor (no elimination needed).
+            ("counterparty_pc",
+                "ALTER TABLE documents ADD COLUMN counterparty_pc TEXT"),
             # 2026-06-16 Phase 2 — bank-statement archive metadata.
             # batch_id already lives on card_transactions; this remembers
             # the user-facing archive label + last re-check timestamp

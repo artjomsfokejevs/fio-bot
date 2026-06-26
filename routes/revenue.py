@@ -395,6 +395,44 @@ def bank_match_auto(batch_id: str) -> Any:
     return jsonify({"applied": applied, "count": len(applied)})
 
 
+# 2026-06-26 (G2) — consolidated P&L with intercompany elimination.
+# Per FIO Governance SOP §4.2.
+@revenue_bp.route("/pnl/consolidated", methods=["GET"])
+def pnl_consolidated() -> Any:
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
+    if err:
+        return err
+    from services import intercompany as ic_svc
+    return jsonify(ic_svc.consolidated_pnl(
+        period=request.args.get("period") or None,
+        pc=request.args.get("pc") or None,
+    ))
+
+
+@revenue_bp.route("/pnl/intercompany-pairs", methods=["GET"])
+def pnl_intercompany_pairs() -> Any:
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
+    if err:
+        return err
+    from services import intercompany as ic_svc
+    return jsonify({"pairs": ic_svc.by_pair(period=request.args.get("period") or None)})
+
+
+@revenue_bp.route("/documents/<doc_id>/counterparty-pc", methods=["POST"])
+def set_doc_counterparty_pc(doc_id: str) -> Any:
+    err = _require(*_WRITE_ROLES) or _require_cap("post_to_pnl")
+    if err:
+        return err
+    from services import intercompany as ic_svc
+    body = request.get_json(silent=True) or {}
+    raw = body.get("counterparty_pc")
+    cp = (raw or "").strip() or None
+    ok = ic_svc.set_counterparty_pc(doc_id, cp, by=_user())
+    if not ok:
+        return jsonify({"error": "doc not found"}), 404
+    return jsonify({"doc_id": doc_id, "counterparty_pc": cp})
+
+
 @revenue_bp.route("/cashflow/by-ledger", methods=["GET"])
 def cashflow_by_ledger() -> Any:
     err = _require(*_READ_ROLES) or _require_cap("view_revenue")
