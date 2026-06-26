@@ -4,3 +4,5 @@ pypdf>=4.0.0
 openpyxl>=3.1.0
 python-dotenv>=1.0.0
 gunicorn>=22.0.0
+# 2026-06-26 FB-K (C) — PDF report generation for Bank Statement archive
+reportlab>=4.0.0

@@ -262,3 +262,188 @@ def recheck_archive(batch_id: str) -> Any:
         "rows_reset_for_recheck": affected,
         "hint": "Now call /api/card-audit/reconcile to actually re-match.",
     })
+
+
+# 2026-06-26 FB-K (C) — printable PDF report of one archived batch.
+# Team feedback: "preview as PDF чтобы всё сразу было видно". This gives
+# a 1-page header (uploader/period/totals/status counts) + per-tx table
+# (date · counterparty · amount · status) — for handover or audit trail.
+@notify_bp.route("/bank-statements/archives/<batch_id>/report.pdf", methods=["GET"])
+def archive_pdf_report(batch_id: str) -> Any:
+    from flask import Response as _Resp
+    import io as _io
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        )
+    except ImportError:
+        return jsonify({
+            "status": "not_configured",
+            "error": "reportlab not installed",
+            "hint": "Add 'reportlab>=4.0.0' to requirements.txt and redeploy.",
+        }), 503
+
+    conn = db.get_connection()
+    try:
+        meta_row = conn.execute(
+            "SELECT batch_id, source, "
+            "       MIN(imported_at) AS first_at, MAX(imported_at) AS last_at, "
+            "       MAX(COALESCE(imported_by, '—')) AS imported_by, "
+            "       COUNT(*) AS tx_count, "
+            "       SUM(CASE WHEN match_status='matched' THEN 1 ELSE 0 END) AS matched, "
+            "       SUM(CASE WHEN match_status='unmatched' THEN 1 ELSE 0 END) AS unmatched, "
+            "       SUM(CASE WHEN match_status='suggested' THEN 1 ELSE 0 END) AS suggested, "
+            "       SUM(CASE WHEN match_status='excluded' THEN 1 ELSE 0 END) AS excluded, "
+            "       MIN(posted_at) AS period_start, MAX(posted_at) AS period_end, "
+            "       SUM(CASE WHEN amount > 0 THEN amount_eur ELSE 0 END) AS sum_in_eur, "
+            "       SUM(CASE WHEN amount < 0 THEN amount_eur ELSE 0 END) AS sum_out_eur "
+            "FROM card_transactions WHERE batch_id = ? GROUP BY batch_id",
+            (batch_id,),
+        ).fetchone()
+        if not meta_row or not meta_row["tx_count"]:
+            return jsonify({"error": "batch not found"}), 404
+        meta = dict(meta_row)
+        tx_rows = conn.execute(
+            "SELECT posted_at, amount_eur, currency, counterparty, description, "
+            "       match_status, profit_center "
+            "FROM card_transactions WHERE batch_id = ? "
+            "ORDER BY posted_at ASC, id ASC LIMIT 500",
+            (batch_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=12 * mm, rightMargin=12 * mm,
+        topMargin=12 * mm, bottomMargin=12 * mm,
+        title=f"FIO Bank Statement · {batch_id[:8]}",
+    )
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=16,
+                         textColor=colors.HexColor("#1f2937"))
+    body = ParagraphStyle("body", parent=styles["Normal"], fontSize=9,
+                           textColor=colors.HexColor("#374151"))
+    muted = ParagraphStyle("muted", parent=styles["Normal"], fontSize=8,
+                            textColor=colors.HexColor("#6b7280"))
+    flow: list = []
+    flow.append(Paragraph("📊 Bank Statement Archive · FIO", h1))
+    flow.append(Paragraph(
+        f"Batch <font face='Courier'>{batch_id}</font> · "
+        f"source <b>{meta.get('source') or '—'}</b>",
+        body,
+    ))
+    flow.append(Spacer(1, 4 * mm))
+
+    # Header KPI block as 2-column table
+    period_start = (meta.get("period_start") or "")[:10]
+    period_end = (meta.get("period_end") or "")[:10]
+    period_label = f"{period_start} → {period_end}" if period_start and period_end and period_start != period_end else (period_start or "—")
+    sum_in = float(meta.get("sum_in_eur") or 0)
+    sum_out = float(meta.get("sum_out_eur") or 0)
+    net = sum_in + sum_out
+    header_table = Table([
+        ["Uploaded by", meta.get("imported_by") or "—",
+         "Period covered", period_label],
+        ["Imported at", (meta.get("last_at") or "").replace("T", " ")[:16],
+         "Transactions", str(meta.get("tx_count") or 0)],
+        ["Money in (€)", f"{sum_in:,.2f}",
+         "Money out (€)", f"{abs(sum_out):,.2f}"],
+        ["Net (€)", f"{net:,.2f}",
+         "Match status",
+         f"✓ {meta.get('matched') or 0} · ~ {meta.get('suggested') or 0}"
+         f" · ✗ {meta.get('unmatched') or 0}"
+         f" · — {meta.get('excluded') or 0}"],
+    ], colWidths=[35 * mm, 50 * mm, 35 * mm, 50 * mm])
+    header_table.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6b7280")),
+        ("TEXTCOLOR", (2, 0), (2, -1), colors.HexColor("#6b7280")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f9fafb")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e5e7eb")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    flow.append(header_table)
+    flow.append(Spacer(1, 5 * mm))
+
+    # Per-tx table
+    flow.append(Paragraph(
+        f"<b>Transactions</b> ({len(tx_rows)} of {meta.get('tx_count') or 0})",
+        body,
+    ))
+    flow.append(Spacer(1, 2 * mm))
+
+    status_colors = {
+        "matched":   colors.HexColor("#16a34a"),
+        "suggested": colors.HexColor("#ca8a04"),
+        "unmatched": colors.HexColor("#dc2626"),
+        "excluded":  colors.HexColor("#94a3b8"),
+        "manual":    colors.HexColor("#16a34a"),
+    }
+    table_rows = [["Date", "Counterparty / Description", "PC", "€ EUR", "Status"]]
+    for r in tx_rows:
+        date_s = (r["posted_at"] or "")[:10]
+        cp = (r["counterparty"] or r["description"] or "?")[:60]
+        amt = float(r["amount_eur"] or 0)
+        amt_s = f"{amt:>12,.2f}"
+        pc = r["profit_center"] or "—"
+        st = (r["match_status"] or "?")[:9]
+        table_rows.append([date_s, cp, pc, amt_s, st])
+
+    tx_table = Table(table_rows, colWidths=[20 * mm, 90 * mm, 12 * mm, 28 * mm, 22 * mm], repeatRows=1)
+    style_cmds = [
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+        ("ALIGN", (2, 0), (2, -1), "CENTER"),
+        ("ALIGN", (4, 0), (4, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#9ca3af")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [colors.white, colors.HexColor("#fafafa")]),
+    ]
+    # Per-status colored last column
+    for i, r in enumerate(tx_rows, start=1):
+        c = status_colors.get(r["match_status"], colors.black)
+        style_cmds.append(("TEXTCOLOR", (4, i), (4, i), c))
+        if (r["amount_eur"] or 0) < 0:
+            style_cmds.append(("TEXTCOLOR", (3, i), (3, i),
+                               colors.HexColor("#dc2626")))
+        else:
+            style_cmds.append(("TEXTCOLOR", (3, i), (3, i),
+                               colors.HexColor("#16a34a")))
+    tx_table.setStyle(TableStyle(style_cmds))
+    flow.append(tx_table)
+    flow.append(Spacer(1, 4 * mm))
+    flow.append(Paragraph(
+        "Generated by FIO Accounting Bot · "
+        f"{(meta.get('last_at') or '')[:19].replace('T',' ')} UTC",
+        muted,
+    ))
+
+    doc.build(flow)
+    buf.seek(0)
+    fname = f"fio_bank_archive_{batch_id[:12]}.pdf"
+    return _Resp(buf.getvalue(), mimetype="application/pdf",
+                 headers={"Content-Disposition": f'inline; filename="{fname}"'})

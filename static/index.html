@@ -6893,6 +6893,7 @@ function loadBankStatementArchives() {
           '<td style="padding:5px 8px;font-size:11px;color:var(--muted);white-space:nowrap;">' + esc(when) + '</td>' +
           '<td style="padding:5px 8px;white-space:nowrap;">' +
             '<button class="btn btn-ghost btn-xs" onclick="previewArchiveBatch(\'' + esc(a.batch_id) + '\')" title="Open transactions in this batch (read-only)">👁 Preview</button> ' +
+            '<a class="btn btn-ghost btn-xs" href="/api/bank-statements/archives/' + encodeURIComponent(a.batch_id) + '/report.pdf" target="_blank" style="text-decoration:none;" title="Download 1-page PDF report of this archive">📄 PDF</a> ' +
             '<button class="btn btn-ghost btn-xs" onclick="reopenArchiveInAudit(\'' + esc(a.batch_id) + '\', \'' + esc(a.period || '') + '\')" title="Jump to Bank Statement Audit on this batch period">↗ Open</button> ' +
             '<button class="btn btn-ghost btn-xs" onclick="recheckArchive(\'' + esc(a.batch_id) + '\')" title="Reset suggested/unmatched for re-evaluation">↻ Re-check</button> ' +
             '<button class="btn btn-ghost btn-xs" onclick="revenueMatchSuggest(\'' + esc(a.batch_id) + '\')" title="Match inflows against Revenue receivables">💵 Match</button>' +
