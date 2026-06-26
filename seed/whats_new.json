@@ -3,6 +3,21 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-26-mcp-1-to-5",
+      "date": "2026-06-26",
+      "title": "📧 Email-in · 📷 Mobile photo · ✈️ Travel reports · 🗄 Retention · 📤 ERP export",
+      "summary": "Five upgrades inspired by CostPocket (costpocket.com/lv). Forward an invoice from any inbox and it auto-lands in Approve; snap a receipt with your phone camera; file a per-diem travel report in 30 seconds; see how long each doc must be retained by LV/EE law; export the period to Standard Books / JumisPro / generic CSV with one click.",
+      "highlights": [
+        "📧 MCP-1 — POST /api/email-in/invoice (Postmark / SES-compatible). Forward to invoices@… and the parser pipeline runs end-to-end. Setup in docs/email-in-setup.md.",
+        "📷 MCP-2 — '📷 Take a photo of receipt' button on Upload tab uses <input capture=environment> so mobile browsers open the camera directly. Multi-shot supported.",
+        "✈️ MCP-3 — Travel/per-diem report module. Country/dates → auto-calc per-diem (LV €6, EE €50, EU €60, US €80; override per-trip). Lands as documents.kind=travel and flows through Approve like any other doc.",
+        "🗄 MCP-4 — Retention badge on doc detail panel: 'Retain until YYYY-MM-DD' colour-coded per LV ZGD §35 (5y) / LV Archives Law §6 (75y for salary). Contract documented in docs/compliance.md.",
+        "📤 MCP-5 — GET /api/erp-export/{standard_books|jumis_pro|generic_csv}?period=YYYY-MM — one-file CSV in the target ERP's native column names + encoding (JumisPro gets UTF-8 BOM). Gated by export_bulk capability.",
+        "🚀 Also live: G-finale (📈 13-week projection card + 📊 consolidated P&L + 🚨 runway alarm + opening-balance UI + counterparty-PC selector).",
+        "✅ 174/174 tests green (9 new for MCP-3 + MCP-5)."
+      ]
+    },
+    {
       "version": "2026-06-26-d2-g1",
       "date": "2026-06-26",
       "title": "🛡 B28 backlog closed (capability gates everywhere) · 📈 13-week cashflow projection live",

@@ -1770,6 +1770,71 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
     </div>
 
+    <!-- MCP-3 (2026-06-26) — Travel/per-diem report. Virtual doc with kind=travel. -->
+    <div style="text-align:center;margin-top:12px;">
+      <button type="button" class="btn" onclick="toggleTravelReportForm()" style="font-size:13px;">✈️ Add travel report (per-diem)</button>
+    </div>
+    <div id="travel-report-form" style="display:none;max-width:680px;margin:12px auto 0;padding:14px 16px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-items:end;">
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Country (ISO-2)</label>
+          <input id="tr-country" type="text" maxlength="2" placeholder="EE" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;text-transform:uppercase;" onblur="suggestPerDiem()">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">City (optional)</label>
+          <input id="tr-city" type="text" placeholder="Tallinn" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Departure</label>
+          <input id="tr-from" type="date" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Return</label>
+          <input id="tr-to" type="date" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Per-diem EUR/day</label>
+          <input id="tr-rate" type="number" step="0.01" placeholder="50.00" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Profit center</label>
+          <select id="tr-pc" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+            <option value="">— PC —</option>
+            <option value="AA">AA · Alps2Alps</option>
+            <option value="SP">SP · Skipasser</option>
+            <option value="MN">MN · Mountly</option>
+            <option value="MT">MT · Medical Travel</option>
+            <option value="CF">CF · MyPeak Finance</option>
+            <option value="AL">AL · ALVEDA</option>
+            <option value="AG">AG · Amitours Group</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Purpose</label>
+        <input id="tr-purpose" type="text" placeholder="e.g. Q3 review meeting with TransferHub team" style="width:100%;padding:6px;font-size:13px;border:1px solid var(--border);border-radius:6px;">
+      </div>
+      <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div id="tr-preview" style="font-size:12px;color:var(--muted);"></div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn primary" onclick="submitTravelReport()" style="font-size:12px;">💾 Save travel report</button>
+          <button type="button" class="btn" onclick="toggleTravelReportForm()" style="font-size:12px;">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MCP-2 (2026-06-26) — mobile photo capture. <input capture=environment> -->
+    <!-- triggers the back camera directly on iOS/Android browsers, falls back to -->
+    <!-- file picker on desktop. Same upload pipeline as the drag-and-drop zone.   -->
+    <div style="text-align:center;margin-top:14px;">
+      <label for="mobile-photo-input" class="btn primary" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:15px;padding:12px 22px;">
+        📷 Take a photo of receipt
+      </label>
+      <input id="mobile-photo-input" type="file" accept="image/*" capture="environment" multiple
+             style="display:none;" onchange="if(this.files.length){ handlePhotoCapture(this.files); this.value=''; }">
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;">Snap directly from your phone — opens the camera. Multi-shot supported.</div>
+    </div>
+
     <div style="max-width:520px;margin:16px auto 0;padding:16px 20px;background:var(--brand-light);border-radius:12px;border:1px solid #c7d9f0;text-align:center">
         <div style="font-size:13px;color:var(--text);line-height:1.6">
             <span style="font-size:16px">💡</span>
@@ -7821,6 +7886,33 @@ function renderDetails(doc) {
   html += '<span id="edit-counterparty-pc-status" style="font-size:11px;color:var(--muted);min-width:60px;"></span>';
   html += '</div>';
 
+  // MCP-4 (2026-06-26) — retention badge per LV ZGD §35 / EE RPS §12.
+  // 5y for invoices (default), 75y for salary docs. Computed from uploaded_at,
+  // never auto-deletes (Rita reviews Expired Retention queue once/year).
+  (function(){
+    var uploaded = doc.uploaded_at;
+    if (!uploaded) return;
+    var yrs = doc.is_salary ? 75 : 5;
+    var basis = doc.is_salary ? 'LV Archives Law §6 (75 y)' : 'LV ZGD §35 / EE RPS §12 (5 y)';
+    var d;
+    try { d = new Date(uploaded); } catch (e) { return; }
+    if (!d || isNaN(d.getTime())) return;
+    var expiry = new Date(d.getFullYear() + yrs, 11, 31);  // end of FY + N years
+    var expiryStr = expiry.toISOString().slice(0,10);
+    var remainingMs = expiry - new Date();
+    var remainingDays = Math.round(remainingMs / 86400000);
+    var color, bg, border;
+    if (remainingDays < 0) { color = '#991b1b'; bg = '#fee2e2'; border = '#fca5a5'; }
+    else if (remainingDays < 365) { color = '#854d0e'; bg = '#fef9c3'; border = '#fde047'; }
+    else { color = '#166534'; bg = '#dcfce7'; border = '#86efac'; }
+    var label = remainingDays < 0
+      ? 'Retention expired ' + Math.abs(remainingDays) + ' d ago'
+      : 'Retain until ' + expiryStr + ' (' + remainingDays + ' d left)';
+    html += '<div style="margin-top:8px;padding:6px 10px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;font-size:11px;color:' + color + ';display:flex;align-items:center;gap:6px;" title="' + basis + '">' +
+      '🗄 <strong>' + label + '</strong> — <span style="color:var(--muted);">' + basis + '</span>' +
+      '</div>';
+  })();
+
   // Line items — Phase 2.5: per-line split with checkboxes + dropdowns
   // When invoice mixes categories (food + travel + marketing on one bank statement),
   // user can attribute each line to its own ledger code + profit center.
@@ -10927,6 +11019,83 @@ async function renderCashflowProjectionCard() {
   } catch (e) {
     box.innerHTML = '<div class="empty-state" style="font-size:13px;">Projection load failed: ' + e.message + '</div>';
   }
+}
+
+// ✈️ Travel report — MCP-3 (2026-06-26)
+var _travelPerDiemDefaults = null;
+function toggleTravelReportForm() {
+  var f = document.getElementById('travel-report-form');
+  if (!f) return;
+  var open = f.style.display === 'none' || !f.style.display;
+  f.style.display = open ? 'block' : 'none';
+  if (open && !_travelPerDiemDefaults) {
+    fetch('/api/travel-reports/per-diem-defaults',
+      {headers: {'X-FIO-User': (window.currentUser || '')}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ _travelPerDiemDefaults = d; })
+      .catch(function(){});
+  }
+}
+function suggestPerDiem() {
+  if (!_travelPerDiemDefaults) return;
+  var c = (document.getElementById('tr-country').value || '').toUpperCase().trim();
+  if (!c) return;
+  var rate = _travelPerDiemDefaults.defaults[c] || _travelPerDiemDefaults.fallback_eur;
+  var inp = document.getElementById('tr-rate');
+  if (inp && !inp.value) inp.value = rate;
+  updateTravelPreview();
+}
+function updateTravelPreview() {
+  var from = document.getElementById('tr-from').value;
+  var to = document.getElementById('tr-to').value;
+  var rate = parseFloat(document.getElementById('tr-rate').value || 0);
+  var el = document.getElementById('tr-preview');
+  if (!el || !from || !to || !rate) { if (el) el.textContent = ''; return; }
+  var d1 = new Date(from), d2 = new Date(to);
+  var days = Math.round((d2 - d1) / 86400000) + 1;
+  if (days <= 0) { el.textContent = ''; return; }
+  el.innerHTML = '<b>' + days + '</b> days × €' + rate.toFixed(2) + ' = <b>€' + (days * rate).toFixed(2) + '</b>';
+}
+['tr-from','tr-to','tr-rate'].forEach(function(id){
+  document.addEventListener('input', function(e){ if (e.target && e.target.id === id) updateTravelPreview(); });
+});
+async function submitTravelReport() {
+  var body = {
+    destination_country: (document.getElementById('tr-country').value || '').toUpperCase().trim(),
+    destination_city: document.getElementById('tr-city').value.trim() || null,
+    departure_date: document.getElementById('tr-from').value,
+    return_date: document.getElementById('tr-to').value,
+    per_diem_eur: parseFloat(document.getElementById('tr-rate').value || 0) || null,
+    profit_center: document.getElementById('tr-pc').value,
+    purpose: document.getElementById('tr-purpose').value.trim() || null,
+  };
+  if (!body.destination_country) { showToast('Country (ISO-2) required', 'error'); return; }
+  if (!body.departure_date || !body.return_date) { showToast('Dates required', 'error'); return; }
+  if (!body.profit_center) { showToast('Profit center required', 'error'); return; }
+  try {
+    var res = await fetch('/api/travel-reports', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-FIO-User':(window.currentUser||'')},
+      body: JSON.stringify(body),
+    }).then(function(r){ return r.json(); });
+    if (res.error) { showToast(res.error, 'error'); return; }
+    showToast('Travel report saved: €' + res.total_eur.toFixed(2) + ' (' + res.days + ' days)', 'success');
+    ['tr-country','tr-city','tr-from','tr-to','tr-rate','tr-purpose'].forEach(function(id){
+      var el = document.getElementById(id); if (el) el.value = '';
+    });
+    toggleTravelReportForm();
+    if (typeof loadDocuments === 'function') loadDocuments();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
+}
+
+// 📷 Mobile photo capture handler — MCP-2 (2026-06-26).
+// Wraps the camera files in the same uploadFiles() pipeline as drag-and-drop.
+function handlePhotoCapture(files) {
+  if (!files || !files.length) return;
+  try { uploadFiles(files); }
+  catch (e) { showToast('Photo upload failed: ' + e.message, 'error'); }
 }
 
 // 🔁 Save intercompany counterparty PC — G-ui3 (2026-06-26)

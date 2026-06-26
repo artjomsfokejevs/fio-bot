@@ -689,6 +689,209 @@ def list_documents():
     return jsonify(docs)
 
 
+# MCP-5 (2026-06-26) — ERP export adapters (Standard Books / JumisPro / generic).
+# Returns the requested CSV inline so Rita can grab a one-click bookkeeping
+# import file per ERP target. Gated by export_bulk capability.
+@app.route("/api/erp-export/formats", methods=["GET"])
+def erp_export_formats():
+    from services import erp_export as _erp
+    return jsonify({"formats": _erp.list_supported_formats()})
+
+
+@app.route("/api/erp-export/<format_id>", methods=["GET"])
+def erp_export_build(format_id: str):
+    from services import erp_export as _erp
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                         roles_svc.ROLE_HOLDING_CEO)
+    if err:
+        return err
+    err = _require_capability("export_bulk")
+    if err:
+        return err
+    period = (request.args.get("period") or "").strip()
+    pc = (request.args.get("pc") or "").strip() or None
+    if not period or len(period) != 7:
+        return jsonify({"error": "period (YYYY-MM) required"}), 400
+    try:
+        filename, data, count = _erp.build_export(format_id, period=period, pc=pc)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return (
+        data, 200,
+        {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="%s"' % filename,
+            "X-Export-Rows": str(count),
+            "X-Export-Period": period,
+            "X-Export-PC": pc or "ALL",
+        },
+    )
+
+
+# MCP-1 (2026-06-26) — Email-in webhook for invoices.
+# Accepts Postmark-style inbound JSON; decodes base64 attachments and pushes
+# each through the same auto-parse pipeline as /api/upload. Configure shared
+# secret via FIO_EMAIL_IN_SECRET env (sent as ?secret=… or X-Email-Secret).
+# See docs/email-in-setup.md for Postmark / SES wiring.
+@app.route("/api/email-in/invoice", methods=["POST"])
+def email_in_invoice():
+    import base64
+    secret = os.getenv("FIO_EMAIL_IN_SECRET", "").strip()
+    if secret:
+        provided = (request.headers.get("X-Email-Secret")
+                    or request.args.get("secret") or "").strip()
+        if provided != secret:
+            return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    sender = (payload.get("From") or payload.get("from") or "email-in").strip()
+    subject = (payload.get("Subject") or payload.get("subject") or "").strip()
+    # Postmark uses "Attachments"; SES Lambda forwarder typically uses "attachments".
+    raw_attachments = payload.get("Attachments") or payload.get("attachments") or []
+    if not raw_attachments:
+        return jsonify({"error": "no attachments in payload",
+                        "from": sender, "subject": subject}), 400
+
+    results = []
+    for att in raw_attachments:
+        name = (att.get("Name") or att.get("name") or "attachment").strip()
+        if not _allowed_file(name):
+            results.append({"filename": name, "error": "Unsupported file type"})
+            continue
+        b64 = att.get("Content") or att.get("content") or ""
+        try:
+            data = base64.b64decode(b64) if b64 else b""
+        except Exception as exc:  # noqa: BLE001 — bad encoding from sender, skip
+            results.append({"filename": name, "error": "base64 decode failed: " + str(exc)})
+            continue
+        if not data:
+            results.append({"filename": name, "error": "empty attachment"})
+            continue
+
+        doc_id = str(uuid.uuid4())[:12]
+        ext = name.rsplit(".", 1)[1].lower()
+        safe_name = "%s.%s" % (doc_id, ext)
+        save_path = os.path.join(config.UPLOAD_FOLDER, safe_name)
+        os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+        try:
+            with open(save_path, "wb") as fh:
+                fh.write(data)
+        except OSError as exc:
+            results.append({"filename": name, "error": "save failed: " + str(exc)})
+            continue
+
+        now = datetime.utcnow().isoformat()
+        db.insert_document({
+            "id": doc_id, "filename": safe_name, "original_name": name,
+            "file_type": ext, "file_size": len(data),
+            "uploaded_at": now,
+            "uploaded_by": "email:" + sender,
+            "status": "pending",
+        })
+        db.insert_audit_log(doc_id, "uploaded", {
+            "original_name": name, "source": "email-in",
+            "sender": sender, "subject": subject,
+        })
+
+        # Auto-parse (same flow as /api/upload, single-doc path)
+        try:
+            parsed = parse_document(save_path, ext)
+            if isinstance(parsed, list) and parsed:
+                parsed = parsed[0]
+            if not parsed:
+                raise ValueError("parser returned empty")
+            classification = classify_document(parsed)
+            classification = _apply_governance_suggestions(parsed, classification, sender)
+            update_fields = _build_doc_update(parsed, classification)
+            db.update_document(doc_id, update_fields)
+            db.insert_audit_log(doc_id, "parsed", {"vendor": update_fields.get("vendor", "")})
+            db.insert_audit_log(doc_id, "classified", {
+                "codes": classification["codes"],
+                "auto_post": classification["auto_post"],
+            })
+            if classification["auto_post"]:
+                db.update_document(doc_id, {
+                    "status": "approved", "approved_by": "auto", "approved_at": now,
+                })
+                doc_for_post = db.get_document(doc_id)
+                if doc_for_post:
+                    post_to_actuals(doc_for_post)
+            results.append({"id": doc_id, "filename": name, "status": "classified"})
+        except Exception as exc:  # noqa: BLE001 — never abort the batch
+            logger.exception("email-in auto-parse failed for %s", doc_id)
+            db.update_document(doc_id, {"error": str(exc)})
+            results.append({"id": doc_id, "filename": name, "status": "pending",
+                            "error": str(exc)})
+
+    return jsonify({
+        "from": sender, "subject": subject,
+        "processed": results,
+        "count": len(results),
+    }), 201
+
+
+# MCP-3 (2026-06-26) — Travel / per-diem reports.
+# Stores as documents.kind='travel' with parsed_json payload; flows through
+# the normal Approve → Pay → Post pipeline like any other expense doc.
+@app.route("/api/travel-reports", methods=["POST"])
+def create_travel_report():
+    from services import travel as _travel
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                         roles_svc.ROLE_STREAM_OWNER, roles_svc.ROLE_HOLDING_CEO,
+                         roles_svc.ROLE_VIEWER)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    try:
+        rec = _travel.create_travel_report(body, by=_current_user_name())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("travel report create failed")
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(rec), 201
+
+
+@app.route("/api/travel-reports", methods=["GET"])
+def list_travel_reports():
+    from services import travel as _travel
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                         roles_svc.ROLE_STREAM_OWNER, roles_svc.ROLE_HOLDING_CEO,
+                         roles_svc.ROLE_VIEWER)
+    if err:
+        return err
+    period = (request.args.get("period") or "").strip() or None
+    pc = (request.args.get("pc") or "").strip() or None
+    try:
+        limit = int(request.args.get("limit") or 100)
+    except ValueError:
+        limit = 100
+    return jsonify({"rows": _travel.list_travel_reports(period=period, pc=pc, limit=limit)})
+
+
+@app.route("/api/travel-reports/<doc_id>", methods=["PATCH"])
+def patch_travel_report(doc_id: str):
+    from services import travel as _travel
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                         roles_svc.ROLE_STREAM_OWNER, roles_svc.ROLE_HOLDING_CEO,
+                         roles_svc.ROLE_VIEWER)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    try:
+        rec = _travel.update_travel_report(doc_id, body, by=_current_user_name())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(rec)
+
+
+@app.route("/api/travel-reports/per-diem-defaults", methods=["GET"])
+def travel_per_diem_defaults():
+    from services import travel as _travel
+    return jsonify({"defaults": _travel.PER_DIEM_DEFAULTS_EUR,
+                     "fallback_eur": 60.0})
+
+
 @app.route("/api/documents/<doc_id>", methods=["DELETE"])
 def delete_doc(doc_id: str):
     """Delete a document by ID, removing from DB, disk, AND actuals."""
