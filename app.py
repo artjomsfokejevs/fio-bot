@@ -1336,9 +1336,16 @@ def manually_verify_vat(doc_id: str):
 @app.route("/api/documents/<doc_id>/approve", methods=["POST"])
 def approve_doc(doc_id: str):
     """Approve a document with optional edits to classification."""
+    # 2026-06-26 (D) — gate by post_to_pnl + pc_scope
+    err = _require_capability("post_to_pnl")
+    if err:
+        return err
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
+    err = _require_pc_scope(doc.get("profit_center"))
+    if err:
+        return err
 
     body = request.get_json(silent=True) or {}
     now = datetime.utcnow().isoformat()
@@ -1890,6 +1897,10 @@ def mark_already_paid_by_card(doc_id: str):
     """
     err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
                         roles_svc.ROLE_STREAM_OWNER)
+    if err:
+        return err
+    # 2026-06-26 (D) — mark_paid capability gate (parity with /mark-paid)
+    err = _require_capability("mark_paid")
     if err:
         return err
     body = request.get_json(silent=True) or {}

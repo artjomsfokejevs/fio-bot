@@ -3,6 +3,20 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-26-abc-closeout",
+      "date": "2026-06-26",
+      "title": "🔐 Sub-permissions enforced · ✅ Revolut Personal smoke-tested · 📄 PDF report for Bank Statement archive",
+      "summary": "Plan ABC closeout. (A) FB-L granular permissions now actually enforce: 4 critical workflow endpoints check capability + pc_scope, frontend hides buttons when missing. Rita/Olga/Dima example finally works. (B) Revolut Personal CSV parser verified end-to-end on the team's headers (Completed date / Counterparty BIC) — 3 regression tests pin the format. (C) 📄 PDF report button on every Bank Statement archive row generates a 1-page summary: uploader, period covered, in/out totals, status counts, per-tx table — perfect for handover or audit trail.",
+      "highlights": [
+        "🔐 FB-L enforcement live — capability gates on /budget-validate, /confirm-payment, /mark-paid, /export-bulk-zip; pc_scope filter on the first three. Frontend hides buttons via meCan() + pcInMyScope().",
+        "🧩 9 capability vocabulary: approve_budget · approve_payment · mark_paid · post_to_pnl · manage_payees · manage_users · view_revenue · create_revenue · export_bulk. Set per-user via Admin form.",
+        "👀 GET /api/me now returns 'capabilities' + 'pc_scope' so UI can adapt — 6 unit tests cover Rita (full), Olga (no budget approval), Dima (CF+SP only).",
+        "✅ Revolut Personal parser regression-tested — 3 tests pin the team's actual headers (Completed date / Time completed / Status / Transaction type / Counterparty name / Counterparty BIC / Counterparty IBAN). 4/4 rows ingested on the smoke fixture.",
+        "📄 PDF report endpoint /api/bank-statements/archives/<batch>/report.pdf — 1-page summary with KPI block (uploader, period, money in/out, status counts) + per-tx table (date, counterparty, PC, EUR, status). Inline-rendered, ~3 KB per small batch. Available via 📄 PDF button on each archive row.",
+        "📦 reportlab>=4.0.0 added to requirements.txt (graceful 503 if missing)."
+      ]
+    },
+    {
       "version": "2026-06-24-fb-mega-sweep",
       "date": "2026-06-24",
       "title": "🚀 Mega-sweep — 11 team-feedback fixes (Revenue file upload · Revolut Personal parser · Bulk-ZIP export · Supervision + more)",

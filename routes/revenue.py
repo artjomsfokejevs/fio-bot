@@ -55,11 +55,25 @@ def _require(*allowed):
     return None
 
 
+# 2026-06-26 (D) — capability gate (mirrors app._require_capability,
+# kept local to avoid circular import).
+def _require_cap(cap: str):
+    user = _user()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+        "message": "Capability '%s' required for this Revenue action." % cap,
+    }), 403
+
+
 # ── Documents ────────────────────────────────────────────────────────────────
 
 @revenue_bp.route("/revenue", methods=["GET"])
 def list_revenue() -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     return jsonify({
@@ -76,7 +90,7 @@ def list_revenue() -> Any:
 
 @revenue_bp.route("/revenue/<doc_id>", methods=["GET"])
 def get_revenue(doc_id: str) -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     doc = rev_svc.get_doc(doc_id)
@@ -93,7 +107,7 @@ def get_revenue(doc_id: str) -> Any:
 
 @revenue_bp.route("/revenue", methods=["POST"])
 def create_revenue() -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     # 2026-06-24 FB-A — accept both JSON and multipart (with optional file).
@@ -142,7 +156,7 @@ def create_revenue() -> Any:
 
 @revenue_bp.route("/revenue/<doc_id>", methods=["POST"])
 def update_revenue(doc_id: str) -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     payload = request.get_json(silent=True) or {}
@@ -157,7 +171,7 @@ def update_revenue(doc_id: str) -> Any:
 
 @revenue_bp.route("/revenue/<doc_id>/convert", methods=["POST"])
 def convert_revenue(doc_id: str) -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     payload = request.get_json(silent=True) or {}
@@ -170,7 +184,7 @@ def convert_revenue(doc_id: str) -> Any:
 
 @revenue_bp.route("/revenue/<doc_id>/status", methods=["POST"])
 def status_revenue(doc_id: str) -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     payload = request.get_json(silent=True) or {}
@@ -199,7 +213,7 @@ def delete_revenue(doc_id: str) -> Any:
 
 @revenue_bp.route("/revenue/<doc_id>/receipts", methods=["GET"])
 def list_receipts(doc_id: str) -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     return jsonify({
@@ -211,7 +225,7 @@ def list_receipts(doc_id: str) -> Any:
 
 @revenue_bp.route("/revenue/<doc_id>/receipts", methods=["POST"])
 def add_receipt(doc_id: str) -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     payload = request.get_json(silent=True) or {}
@@ -237,7 +251,7 @@ def add_receipt(doc_id: str) -> Any:
 
 @revenue_bp.route("/revenue-receipts/<int:receipt_id>", methods=["DELETE"])
 def delete_receipt(receipt_id: int) -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     ok = rr_svc.delete_receipt(receipt_id, by=_user())
@@ -250,7 +264,7 @@ def delete_receipt(receipt_id: int) -> Any:
 
 @revenue_bp.route("/cashflow", methods=["GET"])
 def cashflow_monthly() -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     pf = request.args.get("from") or None
@@ -264,7 +278,7 @@ def cashflow_monthly() -> Any:
 
 @revenue_bp.route("/cashflow/by-stream", methods=["GET"])
 def cashflow_by_stream() -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     return jsonify({
@@ -277,7 +291,7 @@ def cashflow_by_stream() -> Any:
 
 @revenue_bp.route("/revenue/bank-match/suggestions/<batch_id>", methods=["GET"])
 def bank_match_suggestions(batch_id: str) -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     return jsonify({"suggestions": bm_svc.suggestions_for_batch(batch_id)})
@@ -285,7 +299,7 @@ def bank_match_suggestions(batch_id: str) -> Any:
 
 @revenue_bp.route("/revenue/bank-match/apply", methods=["POST"])
 def bank_match_apply() -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     payload = request.get_json(silent=True) or {}
@@ -303,7 +317,7 @@ def bank_match_apply() -> Any:
 
 @revenue_bp.route("/revenue/bank-match/auto/<batch_id>", methods=["POST"])
 def bank_match_auto(batch_id: str) -> Any:
-    err = _require(*_WRITE_ROLES)
+    err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
     if err:
         return err
     min_score = int(request.args.get("min_score") or 80)
@@ -313,7 +327,7 @@ def bank_match_auto(batch_id: str) -> Any:
 
 @revenue_bp.route("/cashflow/by-ledger", methods=["GET"])
 def cashflow_by_ledger() -> Any:
-    err = _require(*_READ_ROLES)
+    err = _require(*_READ_ROLES) or _require_cap("view_revenue")
     if err:
         return err
     return jsonify({

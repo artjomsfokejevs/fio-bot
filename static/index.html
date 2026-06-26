@@ -4696,12 +4696,19 @@ function renderFioUsers() {
         pcOpts.map(function(c) {
           return '<option value="' + c + '"' + (c === (u.profit_center||'') ? ' selected' : '') + '>' + (c || '— none —') + '</option>';
         }).join('') + '</select>';
+      // 2026-06-26 (D) — inline-edit now exposes permissions + pc_scope.
+      // Combined column "Caps / Scope" with two stacked inputs to avoid
+      // adding a column to an already-wide table.
       return '<tr class="bt-row-editing">' +
         '<td><input id="fu-edit-name-' + u.id + '" class="bt-inline-edit" value="' + esc(u.full_name||'') + '" /></td>' +
         '<td><input id="fu-edit-email-' + u.id + '" type="email" class="bt-inline-edit" value="' + esc(u.email||'') + '" /></td>' +
         '<td>' + roleSelect + '</td>' +
         '<td>' + pcSelect + '</td>' +
-        '<td><input id="fu-edit-dept-' + u.id + '" class="bt-inline-edit" value="' + esc(u.department||'') + '" /></td>' +
+        '<td>' +
+          '<input id="fu-edit-dept-' + u.id + '" class="bt-inline-edit" value="' + esc(u.department||'') + '" placeholder="Dept" style="margin-bottom:3px;" />' +
+          '<input id="fu-edit-permissions-' + u.id + '" class="bt-inline-edit" value="' + esc(u.permissions||'') + '" placeholder="permissions (e.g. mark_paid)" title="Comma-list of capability codes; blank = all role defaults" style="margin-bottom:3px;font-size:10px;" />' +
+          '<input id="fu-edit-pc-scope-' + u.id + '" class="bt-inline-edit" value="' + esc(u.pc_scope||'') + '" placeholder="pc_scope (e.g. CF,SP)" title="Comma-list of PC codes; blank = all" style="font-size:10px;" />' +
+        '</td>' +
         '<td>' + activeChip + '</td>' +
         '<td class="bt-meta-cell">' + esc(created) + '</td>' +
         '<td class="actions">' +
@@ -4749,6 +4756,9 @@ function saveFioUserEdit(userId) {
     role:          (document.getElementById('fu-edit-role-' + userId)  || {}).value || 'viewer',
     profit_center: (document.getElementById('fu-edit-pc-' + userId)    || {}).value || null,
     department:    (document.getElementById('fu-edit-dept-' + userId)  || {}).value || null,
+    // 2026-06-26 (D) — FB-L sub-permissions editable inline now
+    permissions:   ((document.getElementById('fu-edit-permissions-' + userId) || {}).value || '').trim() || null,
+    pc_scope:      ((document.getElementById('fu-edit-pc-scope-'    + userId) || {}).value || '').trim() || null,
   };
   body.full_name = body.full_name.trim();
   if (!body.full_name) { showToast('Full name is required', 'error'); return; }

@@ -54,6 +54,21 @@ def _require_role(*allowed_roles: str):
     return None
 
 
+# 2026-06-26 (D) — capability gate mirroring app._require_capability.
+# Kept local to avoid circular import from app.py.
+def _require_capability(cap: str):
+    user = _current_user_name()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "message": "You don't have capability '%s'. Ask Admin to grant it." % cap,
+        "you": user,
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+    }), 403
+
+
 # ─────────────────────────────────────────────────────────────────────
 # FIO users (HR / Bookkeeper-managed roster — drives Upload dropdown)
 # ─────────────────────────────────────────────────────────────────────
@@ -68,6 +83,9 @@ def fio_users_list() -> Any:
 
 @admin_bp.route("/fio-users", methods=["POST"])
 def fio_users_create() -> Any:
+    err = _require_capability("manage_users")
+    if err:
+        return err
     body = request.get_json(silent=True) or {}
     actor = _current_user_name() or "admin"
     try:
@@ -85,6 +103,9 @@ def fio_users_create() -> Any:
 
 @admin_bp.route("/fio-users/<int:user_id>", methods=["PATCH"])
 def fio_users_update(user_id: int) -> Any:
+    err = _require_capability("manage_users")
+    if err:
+        return err
     body = request.get_json(silent=True) or {}
     actor = _current_user_name() or "admin"
     try:
@@ -101,6 +122,9 @@ def fio_users_update(user_id: int) -> Any:
 
 @admin_bp.route("/fio-users/<int:user_id>", methods=["DELETE"])
 def fio_users_delete(user_id: int) -> Any:
+    err = _require_capability("manage_users")
+    if err:
+        return err
     actor = _current_user_name() or "admin"
     users_svc.delete_user(user_id)
     db.insert_audit_log("user:" + str(user_id), "fio_user_deactivate",
@@ -122,6 +146,9 @@ def paying_accounts_list() -> Any:
 
 @admin_bp.route("/paying-accounts", methods=["POST"])
 def paying_accounts_create() -> Any:
+    err = _require_capability("manage_payees")
+    if err:
+        return err
     body = request.get_json(silent=True) or {}
     actor = _current_user_name() or "admin"
     try:
@@ -139,6 +166,9 @@ def paying_accounts_create() -> Any:
 
 @admin_bp.route("/paying-accounts/<int:acc_id>", methods=["PATCH"])
 def paying_accounts_update(acc_id: int) -> Any:
+    err = _require_capability("manage_payees")
+    if err:
+        return err
     body = request.get_json(silent=True) or {}
     actor = _current_user_name() or "admin"
     a = pa_svc.update_account(acc_id, body, updated_by=actor)
@@ -152,6 +182,9 @@ def paying_accounts_update(acc_id: int) -> Any:
 
 @admin_bp.route("/paying-accounts/<int:acc_id>", methods=["DELETE"])
 def paying_accounts_delete(acc_id: int) -> Any:
+    err = _require_capability("manage_payees")
+    if err:
+        return err
     actor = _current_user_name() or "admin"
     pa_svc.delete_account(acc_id)
     db.insert_audit_log("paying_account:" + str(acc_id),
