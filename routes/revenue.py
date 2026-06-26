@@ -262,6 +262,76 @@ def delete_receipt(receipt_id: int) -> Any:
 
 # ── Cashflow analytics (Phase 2 of #94) ─────────────────────────────────────
 
+# 2026-06-26 (G1) — 13-week rolling cash-flow projection (Phase 3 G1).
+# Self-service read for anyone who can see revenue analytics.
+@revenue_bp.route("/cashflow/projection", methods=["GET"])
+def cashflow_projection() -> Any:
+    err = _require(*_READ_ROLES)
+    if err:
+        return err
+    from services import cashflow_projection as cp_svc
+    try:
+        weeks = int(request.args.get("weeks") or 13)
+    except ValueError:
+        weeks = 13
+    pc = request.args.get("pc") or None
+    opening_override = request.args.get("opening_eur")
+    try:
+        opening_override = float(opening_override) if opening_override else None
+    except ValueError:
+        opening_override = None
+    try:
+        return jsonify(cp_svc.project(weeks=weeks, pc=pc,
+                                      opening_override=opening_override))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@revenue_bp.route("/cashflow/opening-balance", methods=["GET"])
+def cashflow_opening_balance() -> Any:
+    err = _require(*_READ_ROLES)
+    if err:
+        return err
+    from services import cashflow_projection as cp_svc
+    pc = request.args.get("pc") or None
+    return jsonify({
+        "pc": pc or "ALL",
+        "opening_balance_eur": cp_svc.opening_balance_for(pc),
+        "snapshots": cp_svc.list_opening_balances(pc=pc, limit=20),
+    })
+
+
+@revenue_bp.route("/cashflow/opening-balance", methods=["POST"])
+def cashflow_set_opening_balance() -> Any:
+    err = _require(*_WRITE_ROLES) or _require_cap("manage_payees")
+    if err:
+        return err
+    from services import cashflow_projection as cp_svc
+    body = request.get_json(silent=True) or {}
+    pc = (body.get("pc") or "").strip()
+    balance_eur = body.get("balance_eur")
+    if not pc:
+        return jsonify({"error": "pc required"}), 400
+    try:
+        balance_eur = float(balance_eur)
+    except (TypeError, ValueError):
+        return jsonify({"error": "balance_eur must be a number"}), 400
+    try:
+        rec = cp_svc.set_opening_balance(
+            pc=pc, balance_eur=balance_eur,
+            as_of_date=(body.get("as_of_date") or "").strip() or None,
+            paying_account_id=body.get("paying_account_id"),
+            legal_entity=(body.get("legal_entity") or "").strip() or None,
+            balance_orig=body.get("balance_orig"),
+            currency=(body.get("currency") or "").strip() or None,
+            source=(body.get("source") or "manual").strip(),
+            by=_user(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(rec), 201
+
+
 @revenue_bp.route("/cashflow", methods=["GET"])
 def cashflow_monthly() -> Any:
     err = _require(*_READ_ROLES) or _require_cap("view_revenue")

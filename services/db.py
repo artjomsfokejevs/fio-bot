@@ -384,6 +384,25 @@ CREATE INDEX IF NOT EXISTS ix_chase_pc       ON chase_tasks(profit_center);
 CREATE INDEX IF NOT EXISTS ix_chase_assignee ON chase_tasks(assignee_gid);
 CREATE INDEX IF NOT EXISTS ix_chase_created  ON chase_tasks(created_at);
 
+-- 2026-06-26 (G1) — bank account balances for cashflow projection.
+-- Phase 3 of Financial Governance SOP. Manual seed today; once bank APIs
+-- ship (H) the daily import job writes here directly.
+CREATE TABLE IF NOT EXISTS bank_account_balances (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    paying_account_id INTEGER,                       -- FK to paying_accounts.id
+    pc              TEXT NOT NULL,                   -- canonical PC code
+    legal_entity    TEXT,
+    balance_eur     REAL NOT NULL,
+    balance_orig    REAL,
+    currency        TEXT,
+    as_of_date      TEXT NOT NULL,                   -- ISO date this snapshot represents
+    source          TEXT,                            -- manual|mercury_api|revolut_api|...
+    recorded_at     TEXT NOT NULL,
+    recorded_by     TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_bb_pc_date     ON bank_account_balances(pc, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_bb_account     ON bank_account_balances(paying_account_id);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,

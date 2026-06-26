@@ -53,6 +53,19 @@ def _require_role(*allowed_roles: str):
     return None
 
 
+# 2026-06-26 (D2) — local capability gate (avoid circular import from app.py)
+def _require_capability(cap: str):
+    user = _current_user_name()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+        "message": "Capability '%s' required." % cap,
+    }), 403
+
+
 # ─────────────────────────────────────────────────────────────
 # Notifications bell
 # ─────────────────────────────────────────────────────────────
@@ -78,6 +91,10 @@ def notifications_unread_count() -> Any:
 
 @notify_bp.route("/notifications/<int:notif_id>/read", methods=["POST"])
 def read_notification(notif_id: int) -> Any:
+    # 2026-06-26 (D2) — self-service action, all roles have use_notifications by default
+    err = _require_capability("use_notifications")
+    if err:
+        return err
     actor = _current_user_name() or "unknown"
     ok = notif_svc.mark_read(notif_id, by=actor)
     return jsonify({"status": "read" if ok else "already_read_or_missing"})
@@ -85,6 +102,9 @@ def read_notification(notif_id: int) -> Any:
 
 @notify_bp.route("/notifications/mark-all-read", methods=["POST"])
 def mark_all_read() -> Any:
+    err = _require_capability("use_notifications")
+    if err:
+        return err
     user = _current_user_name()
     role = _current_role()
     n = notif_svc.mark_all_read(user, role, by=user or "unknown")
@@ -97,7 +117,8 @@ def mark_all_read() -> Any:
 
 @notify_bp.route("/documents/<doc_id>/send-ceo-urgent", methods=["POST"])
 def send_ceo_urgent(doc_id: str) -> Any:
-    err = _require_role("admin", "bookkeeper", "holding_ceo")
+    err = (_require_role("admin", "bookkeeper", "holding_ceo")
+           or _require_capability("approve_budget"))
     if err:
         return err
     doc = db.get_document(doc_id)
@@ -146,7 +167,7 @@ def send_ceo_urgent(doc_id: str) -> Any:
 
 @notify_bp.route("/slack/test", methods=["POST"])
 def slack_test() -> Any:
-    err = _require_role("admin", "holding_ceo")
+    err = _require_role("admin", "holding_ceo") or _require_capability("manage_payees")
     if err:
         return err
     return jsonify({
@@ -231,7 +252,7 @@ def recheck_archive(batch_id: str) -> Any:
     uploads new invoices that didn't exist when the batch was first
     reconciled. Marks the batch's unmatched/suggested rows for a fresh
     look without disturbing already-confirmed matches."""
-    err = _require_role("admin", "bookkeeper")
+    err = _require_role("admin", "bookkeeper") or _require_capability("approve_budget")
     if err:
         return err
     # Lightweight implementation — flip suggested+unmatched rows back to

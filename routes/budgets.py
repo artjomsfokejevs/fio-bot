@@ -47,6 +47,19 @@ def _require_role(*allowed):
 _WRITE_ROLES = ("admin", "holding_ceo")
 
 
+# 2026-06-26 (D2) — local capability gate
+def _require_capability(cap: str):
+    user = _current_user_name()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+        "message": "Capability '%s' required." % cap,
+    }), 403
+
+
 @budgets_bp.route("/stream-budgets", methods=["GET"])
 def list_budgets() -> Any:
     period = (request.args.get("period") or "").strip() or None
@@ -75,7 +88,7 @@ def actuals(pc: str, period: str) -> Any:
 
 @budgets_bp.route("/stream-budgets", methods=["POST"])
 def set_budget() -> Any:
-    err = _require_role(*_WRITE_ROLES)
+    err = _require_role(*_WRITE_ROLES) or _require_capability("manage_policies")
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -120,7 +133,8 @@ def list_xalarm() -> Any:
 
 @budgets_bp.route("/xalarm-log/<int:xid>/acknowledge", methods=["POST"])
 def ack_xalarm(xid: int) -> Any:
-    err = _require_role("admin", "holding_ceo", "bookkeeper")
+    err = (_require_role("admin", "holding_ceo", "bookkeeper")
+           or _require_capability("approve_budget"))
     if err:
         return err
     actor = _current_user_name() or "unknown"

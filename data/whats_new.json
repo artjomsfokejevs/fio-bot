@@ -3,6 +3,17 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-26-d-coverage",
+      "date": "2026-06-26",
+      "title": "🔒 Full FB-L coverage — cap gates on 8 more endpoints + inline-edit fields for permissions/pc_scope",
+      "summary": "Closeout for the D-track from the post-ABC honest accounting. Capability gates extended from 4 → 12 endpoints: Admin (fio-users CRUD = manage_users; paying-accounts CRUD = manage_payees), Revenue (read = view_revenue; write/convert/status = create_revenue), Approve & Post (post_to_pnl + pc_scope), and the legacy /mark-already-paid-by-card path (mark_paid). Admin → FIO-managed users inline-edit now exposes the permissions and pc_scope fields so you can tune granular access without recreating the user.",
+      "highlights": [
+        "🔒 8 more mutation endpoints gated: manage_users (3) · manage_payees (3) · post_to_pnl (1) · mark_paid-card-shortcut (1) · view_revenue (read) · create_revenue (5).",
+        "✏️ Inline-edit row in Admin → FIO-managed users now has 2 extra inputs under the dept cell: 'permissions' (e.g. mark_paid,view_revenue) and 'pc_scope' (e.g. CF,SP). Save persists via PATCH /api/fio-users/<id>.",
+        "🛡 PRODUCT_BUILDER pattern catalog gets P136-P139 + T113 + automated review check B28 (mutation endpoint missing cap gate). 120/120 PB tests green."
+      ]
+    },
+    {
       "version": "2026-06-26-abc-closeout",
       "date": "2026-06-26",
       "title": "🔐 Sub-permissions enforced · ✅ Revolut Personal smoke-tested · 📄 PDF report for Bank Statement archive",

@@ -41,6 +41,20 @@ def _require_role(*allowed_roles: str):
 _WRITE_ROLES = ("admin", "bookkeeper", "holding_ceo")
 
 
+# 2026-06-26 (D2) — local capability gate (mirrors app._require_capability,
+# kept local to avoid circular import).
+def _require_capability(cap: str):
+    user = _current_user_name()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+        "message": "Capability '%s' required." % cap,
+    }), 403
+
+
 # ─────────────────────────────────────────────────────────────
 # Partial payments
 # ─────────────────────────────────────────────────────────────
@@ -66,7 +80,7 @@ def list_partial_payments(doc_id: str) -> Any:
 
 @payments_bp.route("/documents/<doc_id>/partial-payments", methods=["POST"])
 def add_partial_payment(doc_id: str) -> Any:
-    err = _require_role(*_WRITE_ROLES)
+    err = _require_role(*_WRITE_ROLES) or _require_capability("mark_paid")
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -97,7 +111,7 @@ def add_partial_payment(doc_id: str) -> Any:
 
 @payments_bp.route("/partial-payments/<int:partial_id>", methods=["DELETE"])
 def delete_partial_payment(partial_id: int) -> Any:
-    err = _require_role(*_WRITE_ROLES)
+    err = _require_role(*_WRITE_ROLES) or _require_capability("mark_paid")
     if err:
         return err
     ok = pp_svc.delete(partial_id)
@@ -112,7 +126,7 @@ def delete_partial_payment(partial_id: int) -> Any:
 
 @payments_bp.route("/documents/<doc_id>/is-internal", methods=["PATCH"])
 def toggle_is_internal(doc_id: str) -> Any:
-    err = _require_role(*_WRITE_ROLES)
+    err = _require_role(*_WRITE_ROLES) or _require_capability("approve_budget")
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -141,7 +155,7 @@ def toggle_is_salary(doc_id: str) -> Any:
     """Phase 2 — Salaries section. Bookkeeper marks salary invoices so
     they show in a dedicated Salaries filter in Budget Check (avoids
     mixing salary docs with vendor invoices)."""
-    err = _require_role(*_WRITE_ROLES)
+    err = _require_role(*_WRITE_ROLES) or _require_capability("approve_budget")
     if err:
         return err
     body = request.get_json(silent=True) or {}

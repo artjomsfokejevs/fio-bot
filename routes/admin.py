@@ -204,7 +204,8 @@ def settings_list() -> Any:
 
 @admin_bp.route("/settings/<key>", methods=["POST"])
 def settings_set(key: str) -> Any:
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    err = (_require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+           or _require_capability("manage_policies"))
     if err:
         return err
     if key not in settings_svc.DEFAULTS:

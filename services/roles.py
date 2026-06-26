@@ -294,16 +294,22 @@ def user_can_tab(user_name: Optional[str], tab: str) -> bool:
 #   create_revenue   — 💵 Revenue Add proforma/invoice / receipts
 #   export_bulk      — Accounting bulk ZIP export
 # ─────────────────────────────────────────────────────────────────────
+#   manage_policies  — Policies & Limits CRUD + violation approvals
+#   use_notifications — read & mark own notifications (granted to everyone
+#                       so B28 noop-gating self-service endpoints passes)
 ROLE_DEFAULT_CAPS: Dict[str, set] = {
     "admin":         {"approve_budget", "approve_payment", "mark_paid", "post_to_pnl",
-                       "manage_payees", "manage_users", "view_revenue",
-                       "create_revenue", "export_bulk"},
-    "holding_ceo":   {"approve_payment", "post_to_pnl", "view_revenue"},
+                       "manage_payees", "manage_users", "manage_policies",
+                       "view_revenue", "create_revenue", "export_bulk",
+                       "use_notifications"},
+    "holding_ceo":   {"approve_payment", "post_to_pnl", "manage_policies",
+                       "view_revenue", "use_notifications"},
     "bookkeeper":    {"approve_budget", "mark_paid", "post_to_pnl",
                        "manage_payees", "view_revenue", "create_revenue",
-                       "export_bulk"},
-    "stream_owner": {"approve_budget", "post_to_pnl", "view_revenue", "create_revenue"},
-    "viewer":        set(),
+                       "export_bulk", "use_notifications"},
+    "stream_owner": {"approve_budget", "post_to_pnl", "view_revenue",
+                       "create_revenue", "use_notifications"},
+    "viewer":        {"use_notifications"},
 }
 
 

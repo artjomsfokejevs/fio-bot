@@ -41,6 +41,19 @@ def _require_role(*allowed_roles: str):
     return None
 
 
+# 2026-06-26 (D2) — local capability gate (avoid circular import from app.py)
+def _require_capability(cap: str):
+    user = _current_user_name()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+        "message": "Capability '%s' required." % cap,
+    }), 403
+
+
 # ─────────────────────────────────────────────────────────────
 # Policy rules CRUD (Admin / CEO)
 # ─────────────────────────────────────────────────────────────
@@ -58,7 +71,7 @@ def list_policy_rules() -> Any:
 
 @policy_bp.route("/policy-rules", methods=["POST"])
 def create_policy_rule() -> Any:
-    err = _require_role(*_RULE_WRITE_ROLES)
+    err = _require_role(*_RULE_WRITE_ROLES) or _require_capability("manage_policies")
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -75,7 +88,7 @@ def create_policy_rule() -> Any:
 
 @policy_bp.route("/policy-rules/<int:rule_id>", methods=["PATCH"])
 def update_policy_rule(rule_id: int) -> Any:
-    err = _require_role(*_RULE_WRITE_ROLES)
+    err = _require_role(*_RULE_WRITE_ROLES) or _require_capability("manage_policies")
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -92,7 +105,7 @@ def update_policy_rule(rule_id: int) -> Any:
 
 @policy_bp.route("/policy-rules/<int:rule_id>", methods=["DELETE"])
 def delete_policy_rule(rule_id: int) -> Any:
-    err = _require_role(*_RULE_WRITE_ROLES)
+    err = _require_role(*_RULE_WRITE_ROLES) or _require_capability("manage_policies")
     if err:
         return err
     actor = _current_user_name() or "admin"
@@ -123,7 +136,7 @@ _VIOLATION_APPROVE_ROLES = (
 
 @policy_bp.route("/policy-violations/approve", methods=["POST"])
 def approve_violation() -> Any:
-    err = _require_role(*_VIOLATION_APPROVE_ROLES)
+    err = _require_role(*_VIOLATION_APPROVE_ROLES) or _require_capability("approve_budget")
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -160,7 +173,7 @@ def list_violation_approvals() -> Any:
 
 @policy_bp.route("/policy-violations/approvals/<int:approval_id>", methods=["DELETE"])
 def delete_violation_approval(approval_id: int) -> Any:
-    err = _require_role("admin")
+    err = _require_role("admin") or _require_capability("approve_budget")
     if err:
         return err
     ok = pva_svc.delete_approval(approval_id)

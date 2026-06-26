@@ -3,6 +3,20 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-26-d2-g1",
+      "date": "2026-06-26",
+      "title": "🛡 B28 backlog closed (capability gates everywhere) · 📈 13-week cashflow projection live",
+      "summary": "D2 closes the B28 backlog — every mutation endpoint now declares which capability it requires (B28 scan: 21 findings → 0). G1 ships the first Phase-3 deliverable from the Financial Governance SOP: a 13-week rolling cashflow projection that needs no bank API today (uses existing AR pipeline + AP pipeline + manually-seeded opening balance). Endpoints ready for the Analytics chart card and the Phase-3 runway X-alarm.",
+      "highlights": [
+        "🛡 21 ungated mutation endpoints now have capability gates: partial-payments, policy-rules, policy-violations, notifications/read, settings, stream-budgets, xalarm/acknowledge, mark-as-already-paid, undo, payment-state, is-internal, is-salary, reparse, users/import, users/delete, users/role, people/refresh-from-asana, send-ceo-urgent, slack/test, recheck-archive, approve. B28 now clean.",
+        "🆕 2 new capabilities — `manage_policies` (admin + holding_ceo by default, gates Policies & Limits + Stream Budgets + chase template settings) and `use_notifications` (everyone, self-service).",
+        "📈 NEW services/cashflow_projection.py — opening balance × AR by due_date × AP by desired_payment_date → 13-week running balance + runway weeks until balance goes negative.",
+        "🆕 Endpoints: GET /api/cashflow/projection?weeks=13&pc=AA · GET/POST /api/cashflow/opening-balance — admin seeds the opening balance manually today; bank API import lands when Phase-3 H ships credentials.",
+        "🗄 NEW table `bank_account_balances` — manual snapshots today, daily API import later; `cashflow_projection.opening_balance_for(pc)` reads the latest per account.",
+        "✅ 6 new unit tests for the projection (155/155 total green)."
+      ]
+    },
+    {
       "version": "2026-06-26-d-coverage",
       "date": "2026-06-26",
       "title": "🔒 Full FB-L coverage — cap gates on 8 more endpoints + inline-edit fields for permissions/pc_scope",

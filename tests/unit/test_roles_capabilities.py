@@ -68,13 +68,16 @@ def test_pc_scope_blank_means_unrestricted(monkeypatch):
     assert roles.pc_in_scope("pytest_rita_unrest", "MN")
 
 
-def test_viewer_has_no_capabilities(monkeypatch):
+def test_viewer_has_only_self_service_capabilities(monkeypatch):
+    """Viewer can mark own notifications read; nothing else."""
     monkeypatch.setattr(roles, "get_role", lambda n: "viewer")
-    assert roles.user_capabilities("anybody") == set()
+    caps = roles.user_capabilities("anybody")
+    assert caps == {"use_notifications"}
     assert not roles.has_capability("anybody", "approve_budget")
+    assert roles.has_capability("anybody", "use_notifications")
 
 
 def test_unknown_user_treated_as_viewer():
     # No fixture, no monkeypatch — just confirm graceful default
     caps = roles.user_capabilities("does_not_exist")
-    assert caps == set()
+    assert caps == {"use_notifications"}

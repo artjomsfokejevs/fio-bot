@@ -1014,8 +1014,9 @@ def reparse_doc(doc_id: str):
     Returns a `delta` payload listing fields that changed so the frontend
     can highlight them.
     """
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
-                        roles_svc.ROLE_STREAM_OWNER)
+    err = (_require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                          roles_svc.ROLE_STREAM_OWNER)
+           or _require_capability("post_to_pnl"))
     if err:
         return err
 
@@ -1934,8 +1935,9 @@ def mark_as_already_paid(doc_id: str):
       paid_at            (default now)
       payment_reference  (optional; auto-synthesised by method if blank)
     """
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
-                        roles_svc.ROLE_STREAM_OWNER)
+    err = (_require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                          roles_svc.ROLE_STREAM_OWNER)
+           or _require_capability("mark_paid"))
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -1946,7 +1948,8 @@ def mark_as_already_paid(doc_id: str):
 def undo_already_paid_by_card(doc_id: str):
     """Revert the already-paid-by-card flag, send the doc back to budget_check.
     Useful if bookkeeper clicked the flag by mistake."""
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    err = (_require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+           or _require_capability("mark_paid"))
     if err:
         return err
     doc = db.get_document(doc_id)
@@ -1985,7 +1988,8 @@ def set_payment_state(doc_id: str):
         state             — required, one of {needs_to_pay,in_progress,paid,on_hold}
         desired_payment_date — optional ISO date (YYYY-MM-DD)
     """
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    err = (_require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+           or _require_capability("mark_paid"))
     if err:
         return err
 
@@ -3236,7 +3240,7 @@ def refresh_from_asana():
     Requires `ASANA_PAT` (Personal Access Token) set as a Fly secret.
     Gracefully reports missing-token state for the UI.
     """
-    err = _require_role(roles_svc.ROLE_ADMIN)
+    err = _require_role(roles_svc.ROLE_ADMIN) or _require_capability("manage_users")
     if err:
         return err
 
@@ -3432,7 +3436,8 @@ def import_user_from_asana():
     Widened 2026-06-08: admin OR bookkeeper. One person per call —
     enforces 'each person responsible for their own actions' (per spec).
     """
-    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    err = (_require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+           or _require_capability("manage_users"))
     if err:
         return err
     body = request.get_json(silent=True) or {}
@@ -3471,7 +3476,7 @@ def delete_user(user_name: str):
     Does NOT touch their historical documents -- their name stays in
     audit logs and on past approvals as a paper trail.
     """
-    err = _require_role(roles_svc.ROLE_ADMIN)
+    err = _require_role(roles_svc.ROLE_ADMIN) or _require_capability("manage_users")
     if err:
         return err
     roles_data = roles_svc.load_roles()
@@ -3499,7 +3504,7 @@ def set_user_role(user_name: str):
     Body: {"role": "admin|holding_ceo|bookkeeper|stream_owner|viewer",
            "profit_center": "AA"  (optional)}
     """
-    err = _require_role(roles_svc.ROLE_ADMIN)
+    err = _require_role(roles_svc.ROLE_ADMIN) or _require_capability("manage_users")
     if err:
         return err
     body = request.get_json(silent=True) or {}
