@@ -3,6 +3,52 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-24-fb-mega-sweep",
+      "date": "2026-06-24",
+      "title": "🚀 Mega-sweep — 11 team-feedback fixes (Revenue file upload · Revolut Personal parser · Bulk-ZIP export · Supervision + more)",
+      "summary": "Eleven issues from the latest team walkthrough closed in one push. Big wins: Revenue 'Add' button now WORKS and accepts a file upload alongside the form. Revolut Personal CSV format (Completed date / Counterparty BIC headers) now parsed. Costpocket-style Accounting bulk-ZIP export (all PDFs + spec.csv) for handover to external accountants. Bank Statement Imports archive now shows who uploaded, period range, in/out totals. Chase tasks include card last-4. Unmatched table shows AI-suggested responsible person. New granular sub-permissions (per-PC scope + capability codes) so accounting team members can have differentiated access.",
+      "highlights": [
+        "💵 Revenue 'Add proforma / invoice' — button works (was broken: wrong modal class), now also accepts a 📎 file upload (PDF/image/docx) saved to the data volume.",
+        "🏦 Revolut Personal CSV — new format spec recognises 'Completed date / Counterparty BIC / Counterparty IBAN' exports. Previously fell through to Generic and 0 rows imported.",
+        "🔎 Bank-name false-positive fix — Mercury + Stripe specs tightened so unrelated CSVs no longer get mis-labelled as Mercury in the archive.",
+        "📦 Costpocket-style bulk export — Accounting tab now has '📦 Bulk ZIP' button per Legal Entity. ZIP contains all invoice files + specification.csv (vendor / VAT / dates / PC / ledger / amounts / status / payment method) + README.txt. Send straight to your accounting firm.",
+        "👤 'Who's uploading?' field removed from Upload — uploader = logged-in user, automatic. Info banner replaces the dropdown.",
+        "💸 Payment date below 'Paid' status — Approve tab now shows '💸 dd-mm-yyyy' under the paid pill so the exact pay date is on screen.",
+        "🚫 Auto-post blocked without PC — Hetzner-style invoices no longer go POSTED with '— unassigned'. Classifier forces human review when profit_center is empty.",
+        "📨 Chase task format upgraded — per-tx line is now 'date · vendor · €amount · card ****1234'. Title auto-prefixed with '[PC]' when all rows share the same stream.",
+        "👥 Unmatched table — responsible person column inline next to Assign. AI-suggested PC + person shown before bookkeeper opens the modal.",
+        "📋 Past Statement Imports archive — full info: who uploaded, period covered (start→end), in/out totals in €, all 4 status counts (matched / suggested / unmatched / excluded).",
+        "🔐 Granular sub-permissions — admin form has PC-scope + permissions fields. Use to restrict bookkeeper to specific streams (e.g. 'CF,SP') or specific capabilities (e.g. 'mark_paid' only, no budget approval). Blank = role default."
+      ]
+    },
+    {
+      "version": "2026-06-24-fb-sweep",
+      "date": "2026-06-24",
+      "title": "🔧 Team feedback sweep — 7 issues closed (auto-post, partial payments, PC dedup, departments, parser errors, Revenue UX)",
+      "summary": "Seven issues from the team's MVP walkthrough closed in one sweep. Biggest win: Hetzner-style auto-post without profit-center is now forbidden — invoices land in human review instead of going to /dev/null. Partial payments now work on ANY invoice (was internal-only), with quick mini-modal from Confirm-for-Payment row and remaining-amount badge on the Amount column. Confirm-for-Payment groups by CANONICAL PC so 'Mountly' no longer appears twice. Department list synced with ledger (8 values, was 6). Bank Statement parser shows loud diagnosis when 0 rows imported. Revenue tab shows friendly explainer instead of bare 'forbidden' + first-time walkthrough banner.",
+      "highlights": [
+        "🚫 Auto-post BLOCKED when classifier can't resolve a profit center — fixes the Hetzner bug where invoices went POSTED with 'unassigned' PC.",
+        "💳 Upload 'I already paid this' banner now hard to miss — yellow border, bold label, plain-language hint that it's for the uploader, not the bookkeeper.",
+        "💰 Partial payment — quick mini-modal on each Awaiting-Payment row + Amount column shows €remaining / €total / €paid breakdown automatically when any partial instalment is logged. Internal-only restriction lifted.",
+        "🏷 Confirm-for-Payment 'To allocate' panel groups by CANONICAL PC — no more 2 'Mountly' rows (was AH + MT legacy). Canonical labels updated: AH = Amitours Holding, MN = Mountly, MT = Medical Travel.",
+        "🏢 Department list now 10 values (was 6): added Sales, IT, Admin, Development. Synced with ledger DIVISION column.",
+        "⚠ Bank Statement upload: when 0 rows imported, UI shows loud red diagnosis (date column not found / amount column not found / all duplicates / format mismatch) + headers seen — instead of silently 'succeeding'.",
+        "🔒 Revenue tab — 'forbidden' replaced with friendly 'your role X doesn't have access, required roles: ...' + first-time walkthrough banner explaining the proforma → invoice → receipt workflow."
+      ]
+    },
+    {
+      "version": "2026-06-24-supervision",
+      "date": "2026-06-24",
+      "title": "🛡 Chase Task Supervision dashboard + fixed Asana dropdowns (timeout + cache)",
+      "summary": "Fixed the Project / Assignee dropdowns in the Create Asana task modal — they were timing out on /users (BT4YOU workspace has 150+ users × pagination). Bumped HTTP timeout 12s → 30s and added a 10-minute in-process cache so subsequent modal opens are instant. New 'Chase Task Supervision' dashboard on Bank Statement Audit shows every chase task ever created with done/pending split, by-stream and by-assignee breakdowns, completion %, and one-click refresh-from-Asana. Mirrors BT4YOU Executive Bot's Supervision Manager pattern.",
+      "highlights": [
+        "🛠 Asana /projects + /users no longer 500 — timeout bumped from 12s to 30s; results memoised for 10 min per workspace so the next modal opens instantly.",
+        "🛡 Chase Task Supervision dashboard (Bank Statement Audit tab) — KPI tiles (Done · Pending · Completion % · Total chased €), by-stream + by-assignee breakdowns, full task list with Asana deeplink.",
+        "🔄 'Refresh from Asana' button — hits /tasks/<gid> for every pending chase task and updates status to 'done' if the bookkeeper / stakeholder marked it complete in Asana.",
+        "💾 chase_tasks table — every task created via the chase modal is persisted with title, PC, assignee, due, tx_ids, attachments. Auditable from day one."
+      ]
+    },
+    {
       "version": "2026-06-23-ux-sweep",
       "date": "2026-06-23",
       "title": "🎨 UX sweep — canonical stream pills · fixed Actions column · bulk chase tasks · Release history dropdown · Revenue tab in Legend",

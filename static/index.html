@@ -4363,7 +4363,19 @@ function loadPeopleList() {
 // ===========================================================================
 // Identity, sign-in, and tab gating by role
 // ===========================================================================
-var ME = { signed_in_as: null, role: 'viewer', allowed_tabs: [], is_admin: false };
+var ME = { signed_in_as: null, role: 'viewer', allowed_tabs: [], is_admin: false,
+           capabilities: [], pc_scope: null };
+
+// 2026-06-24 FB-L — capability check helper. Use to hide buttons when the
+// user lacks a sub-permission (e.g. Olga has bookkeeper but no approve_budget).
+function meCan(cap) {
+  if (!ME || !ME.capabilities) return true;   // optimistic until /api/me lands
+  return ME.capabilities.indexOf(cap) >= 0;
+}
+function pcInMyScope(pc) {
+  if (!ME || !ME.pc_scope) return true;       // null = unrestricted
+  return ME.pc_scope.indexOf(pc) >= 0;
+}
 
 function refreshIdentity() {
   return api('GET', '/api/me').then(function(d) {
@@ -5399,8 +5411,11 @@ function renderCPRows(docs) {
     var previewBtn = '<button class="btn btn-ghost btn-sm" onclick="openModal(\'' + d.id + '\')" title="Open invoice preview + details">👁 Preview</button>';
 
     // Stage-specific action button(s) — composed with the preview button.
+    // 2026-06-24 FB-L — gate by capability + pc_scope (Rita/Olga/Dima)
     var stageAction = '';
-    if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper' || ME.role === 'stream_owner')) {
+    var allowedByPc = pcInMyScope(d.profit_center);
+    if (CP_STAGE === 'budget_check' && (ME.role === 'admin' || ME.role === 'bookkeeper' || ME.role === 'stream_owner')
+        && meCan('approve_budget') && allowedByPc) {
       // Two actions: regular budget-OK flow OR "skip Rita" already-paid-by-card (P2.1)
       stageAction =
         '<button class="btn btn-sm btn-success" onclick="markBudgetOK(\'' + d.id + '\')">✓ Budget OK</button>' +
@@ -5409,9 +5424,11 @@ function renderCPRows(docs) {
                 'title="Skip CEO + Payment. Use when someone already paid via corporate card.">' +
           '💳 Already paid (card)' +
         '</button>';
-    } else if (CP_STAGE === 'awaiting_ceo' && (ME.role === 'admin' || ME.role === 'holding_ceo')) {
+    } else if (CP_STAGE === 'awaiting_ceo' && (ME.role === 'admin' || ME.role === 'holding_ceo')
+               && meCan('approve_payment') && allowedByPc) {
       stageAction = '<button class="btn btn-sm btn-success" onclick="confirmPayment(\'' + d.id + '\')">✓ Approve to pay</button>';
-    } else if (CP_STAGE === 'awaiting_payment' && (ME.role === 'admin' || ME.role === 'bookkeeper')) {
+    } else if (CP_STAGE === 'awaiting_payment' && (ME.role === 'admin' || ME.role === 'bookkeeper')
+               && meCan('mark_paid') && allowedByPc) {
       // 2026-06-24 FB-1 — quick Partial payment button alongside Mark paid.
       // No need to open the full detail modal just to log an instalment.
       stageAction =
@@ -8600,11 +8617,14 @@ function loadByLegalEntity() {
         ? '<span class="pill" style="background:#dcfce7;color:#166534;">' + g.paid_count + '</span>'
         : '<span style="color:var(--muted);">0</span>';
       var rowBg = isUnassigned ? 'background:#fff7ed;' : '';
+      // 2026-06-24 FB-L — bulk ZIP is privileged (full PDFs leave system)
       var dlBtn = g.doc_count > 0
         ? '<div style="display:flex;gap:4px;justify-content:flex-end;">' +
             '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;" onclick="downloadByLegalEntity(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')" title="CSV with all metadata (no invoice files)">📥 CSV</button>' +
-            '<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:#0ea5e9;color:#fff;border-color:#0ea5e9;" onclick="downloadBulkZip(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')" title="ZIP with all invoice files + specification.csv — for accounting firm handover">📦 Bulk ZIP</button>' +
-          '</div>'
+            (meCan('export_bulk')
+              ? '<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:#0ea5e9;color:#fff;border-color:#0ea5e9;" onclick="downloadBulkZip(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')" title="ZIP with all invoice files + specification.csv — for accounting firm handover">📦 Bulk ZIP</button>'
+              : '')
+          + '</div>'
         : '<span style="color:var(--muted);font-size:11px;">—</span>';
       html += '<tr style="' + rowBg + '">' +
         '<td style="padding:8px 12px;border-bottom:1px solid var(--border);"><strong>' + esc(g.name || displayCode) + '</strong>' +

@@ -1624,10 +1624,17 @@ def budget_validate(doc_id: str):
     err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
     if err:
         return err
+    # 2026-06-24 FB-L — sub-permission gate (Rita vs Olga example)
+    err = _require_capability("approve_budget")
+    if err:
+        return err
 
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
+    err = _require_pc_scope(doc.get("profit_center"))
+    if err:
+        return err
     if doc.get("status") not in ("approved", "posted"):
         return jsonify({"error": "Only 'approved' or 'posted' docs can be budget-validated",
                         "current_status": doc.get("status")}), 400
@@ -1658,10 +1665,17 @@ def confirm_payment(doc_id: str):
     err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_HOLDING_CEO)
     if err:
         return err
+    # 2026-06-24 FB-L — sub-permission gate
+    err = _require_capability("approve_payment")
+    if err:
+        return err
 
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
+    err = _require_pc_scope(doc.get("profit_center"))
+    if err:
+        return err
     if doc.get("status") not in ("budget_validated", "approved", "posted"):
         return jsonify({"error": "Doc must be budget-validated (or at least posted/approved) before CEO can confirm",
                         "current_status": doc.get("status")}), 400
@@ -1727,10 +1741,17 @@ def mark_paid(doc_id: str):
     err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
     if err:
         return err
+    # 2026-06-24 FB-L — sub-permission gate
+    err = _require_capability("mark_paid")
+    if err:
+        return err
 
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
+    err = _require_pc_scope(doc.get("profit_center"))
+    if err:
+        return err
     if doc.get("status") not in ("confirmed_to_pay",):
         return jsonify({"error": "Only 'confirmed_to_pay' docs can be marked paid",
                         "current_status": doc.get("status")}), 400
@@ -3271,6 +3292,43 @@ def _require_role(*allowed_roles: str):
     return None
 
 
+# 2026-06-24 FB-L enforcement — capability + pc_scope gates layered on top
+# of role checks. Use these on any action that the bookkeeper-team can
+# differentiate (Rita vs Olga vs Dima example).
+def _require_capability(cap: str):
+    """403 if signed-in user does not have `cap` in their effective capabilities."""
+    user = _current_user_name()
+    if roles_svc.has_capability(user, cap):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "message": "You don't have capability '%s'. Ask Admin to grant it." % cap,
+        "you": user,
+        "your_role": roles_svc.get_role(user),
+        "missing_capability": cap,
+    }), 403
+
+
+def _require_pc_scope(pc: Optional[str]):
+    """403 if user has a pc_scope set and the target PC isn't in it.
+
+    Skips when pc is None (e.g. global actions). Use after the role check
+    on per-PC mutations (Confirm-for-Payment row actions, etc.)."""
+    user = _current_user_name()
+    if not pc:
+        return None
+    if roles_svc.pc_in_scope(user, pc):
+        return None
+    return jsonify({
+        "error": "forbidden",
+        "message": "Your PC scope doesn't include '%s'. Ask Admin to widen pc_scope." % pc,
+        "you": user,
+        "your_role": roles_svc.get_role(user),
+        "your_pc_scope": roles_svc.user_pc_scope(user),
+        "blocked_pc": pc,
+    }), 403
+
+
 @app.route("/api/me", methods=["GET"])
 def me():
     """Tell the browser who it is and what tabs it can see.
@@ -3283,6 +3341,9 @@ def me():
     allowed_tabs = roles_svc.tabs_for_role(role)
     roles_data = roles_svc.load_roles()
     entry = roles_data.get(name) if name else None
+    # 2026-06-24 FB-L enforcement — surface capabilities + pc_scope to UI
+    caps = sorted(roles_svc.user_capabilities(name))
+    scope = roles_svc.user_pc_scope(name)
     return jsonify({
         "signed_in_as": name,
         "role": role,
@@ -3291,6 +3352,8 @@ def me():
         "title": (entry or {}).get("title"),
         "is_admin": role == roles_svc.ROLE_ADMIN,
         "all_roles": roles_svc.ALL_ROLES,
+        "capabilities": caps,
+        "pc_scope":     scope,   # None = unrestricted; list = locked-down
     })
 
 
@@ -3636,6 +3699,10 @@ def export_by_legal_entity():
 # Filtered by Legal Entity + Period. Designed for handover to external accounting.
 @app.route("/api/accounting/export-bulk-zip", methods=["GET"])
 def export_bulk_zip():
+    # 2026-06-24 FB-L — bulk export is privileged (full PDFs leave the system)
+    err = _require_capability("export_bulk")
+    if err:
+        return err
     le_code = (request.args.get("legal_entity") or "").strip()
     if not le_code:
         return jsonify({"error": "legal_entity is required"}), 400

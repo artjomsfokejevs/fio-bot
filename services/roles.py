@@ -271,3 +271,118 @@ def role_can_tab(role: str, tab: str) -> bool:
 
 def user_can_tab(user_name: Optional[str], tab: str) -> bool:
     return role_can_tab(get_role(user_name), tab)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 2026-06-24 FB-L enforcement — granular sub-permissions + PC scope.
+# Lookups read fio_users.permissions (CSV cap codes) and fio_users.pc_scope
+# (CSV canonical PC codes). Blank = role default = full.
+#
+# Default capabilities per role: if a user has NO `permissions` field, they
+# inherit ALL capabilities listed below for their role. If they DO have a
+# `permissions` string, ONLY those listed capabilities are granted (intersect
+# with role defaults).
+#
+# Capability vocabulary (the canonical set — keep small):
+#   approve_budget   — Budget Check stage actions
+#   approve_payment  — Holding-CEO Awaiting-CEO stage approval
+#   mark_paid        — Bookkeeper Mark-paid stage
+#   post_to_pnl      — Approve & Post in Approve tab
+#   manage_payees    — Admin → Paying Accounts CRUD
+#   manage_users     — Admin → FIO-managed users CRUD
+#   view_revenue     — 💵 Revenue tab read
+#   create_revenue   — 💵 Revenue Add proforma/invoice / receipts
+#   export_bulk      — Accounting bulk ZIP export
+# ─────────────────────────────────────────────────────────────────────
+ROLE_DEFAULT_CAPS: Dict[str, set] = {
+    "admin":         {"approve_budget", "approve_payment", "mark_paid", "post_to_pnl",
+                       "manage_payees", "manage_users", "view_revenue",
+                       "create_revenue", "export_bulk"},
+    "holding_ceo":   {"approve_payment", "post_to_pnl", "view_revenue"},
+    "bookkeeper":    {"approve_budget", "mark_paid", "post_to_pnl",
+                       "manage_payees", "view_revenue", "create_revenue",
+                       "export_bulk"},
+    "stream_owner": {"approve_budget", "post_to_pnl", "view_revenue", "create_revenue"},
+    "viewer":        set(),
+}
+
+
+def _user_db_row(user_name: Optional[str]) -> Dict[str, Any]:
+    """Fetch the fio_users row (or {}) for a name. Cached per-request? No —
+    cheap enough at SQLite scale. Safe with stale rows."""
+    if not user_name:
+        return {}
+    try:
+        from services import db as _db
+    except ImportError:
+        return {}
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT permissions, pc_scope, active FROM fio_users WHERE full_name = ?",
+            (user_name,),
+        ).fetchone()
+        if not row:
+            return {}
+        return _db._row_to_dict(row)
+    except Exception:  # noqa: BLE001 — fio_users may not exist on fresh DB
+        return {}
+    finally:
+        conn.close()
+
+
+def _parse_csv_list(s: Optional[str]) -> List[str]:
+    if not s:
+        return []
+    return [p.strip() for p in str(s).split(",") if p.strip()]
+
+
+def user_capabilities(user_name: Optional[str]) -> set:
+    """Return the effective capability set for a user.
+
+    Logic: role-defaults ∩ user.permissions (if user has any).
+    If user.permissions blank → all role defaults.
+    """
+    role = get_role(user_name)
+    role_caps = ROLE_DEFAULT_CAPS.get(role, set())
+    user_caps_raw = _parse_csv_list(_user_db_row(user_name).get("permissions"))
+    if not user_caps_raw:
+        return set(role_caps)
+    return role_caps & set(user_caps_raw)
+
+
+def has_capability(user_name: Optional[str], cap: str) -> bool:
+    """True iff user has this capability via their role + permissions."""
+    return cap in user_capabilities(user_name)
+
+
+def user_pc_scope(user_name: Optional[str]) -> Optional[List[str]]:
+    """Return list of canonical PC codes the user is restricted to.
+
+    `None` = unrestricted (use role default). `[]` (empty list) = restricted
+    to nothing — locks the user out of all PC-filtered data.
+    Used by list endpoints to prefilter results.
+    """
+    raw = _parse_csv_list(_user_db_row(user_name).get("pc_scope"))
+    if not raw:
+        return None
+    # Translate legacy codes if any
+    try:
+        from services import pc_codes as _pc
+        return [_pc.to_canonical(c) or c for c in raw]
+    except ImportError:
+        return raw
+
+
+def pc_in_scope(user_name: Optional[str], pc: Optional[str]) -> bool:
+    """True if `pc` is allowed for `user_name` (or no scope set, or PC unknown)."""
+    if not pc:
+        return True
+    scope = user_pc_scope(user_name)
+    if scope is None:
+        return True
+    try:
+        from services import pc_codes as _pc
+        return (_pc.to_canonical(pc) or pc) in scope
+    except ImportError:
+        return pc in scope
