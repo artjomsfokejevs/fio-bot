@@ -3,20 +3,6 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
-      "version": "2026-06-26-g-finale",
-      "date": "2026-06-26",
-      "title": "📈 Analytics: 13-week projection card + Consolidated P&L + 🚨 runway X-alarm",
-      "summary": "Phase 3 (G-track) lands end-to-end: two new Analytics cards visualise the 13-week cashflow projection and the inter-company-eliminated consolidated P&L, and a new runway-under-N-weeks X-alarm fires through the same email + Asana + in-app pipeline used for budget overruns. A standalone scripts/check_runway.py is ready to wire to fly cron / launchd for daily evaluation.",
-      "highlights": [
-        "📈 NEW Analytics card — 13-week cashflow projection: KPI strip (opening / AR in / AP out / ending / runway), weekly bar chart, per-week table.",
-        "📊 NEW Analytics card — Consolidated P&L with intercompany elimination: raw vs eliminated vs consolidated, per-stream breakdown, IC pair list.",
-        "🚨 NEW xalarm.fire_if_low_runway(threshold_weeks, pc) — projects 13-week cashflow and fires email + Asana + in-app notif when runway drops to/under threshold (default 13 wk ≈ 90 days per SOP §5.3). Reuses xalarm_log with period='runway' and 24h dedup. Recipients = CEO + ops + Rita.",
-        "🆕 POST /api/cashflow/check-runway (gated by approve_budget) — manual or cron trigger; returns {fired: bool, runway_weeks, ...}.",
-        "🛠 NEW scripts/check_runway.py — env-driven runner (THRESHOLD_WEEKS, RUNWAY_PCS) suitable for fly machines run / launchd / GitHub Actions cron.",
-        "✅ 4 new unit tests for the runway alarm (healthy / fires / dedup / no-data); 165/165 total green."
-      ]
-    },
-    {
       "version": "2026-06-26-d2-g1",
       "date": "2026-06-26",
       "title": "🛡 B28 backlog closed (capability gates everywhere) · 📈 13-week cashflow projection live",
