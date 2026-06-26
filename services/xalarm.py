@@ -27,10 +27,16 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "fire_if_overrun",
+    "fire_if_low_runway",
     "list_log",
     "acknowledge",
     "recipients_for",
 ]
+
+# Runway alarm threshold default — Phase 3 G-xalarm (2026-06-26).
+# "Under 90 days" ≈ 13 weeks; CFO escalation per Financial Governance SOP §5.3.
+RUNWAY_PERIOD_KEY = "runway"
+RUNWAY_DEFAULT_THRESHOLD_WEEKS = 13
 
 PC_LABELS = {
     # 2026-06-22 #87 — canonical codes per BT4YOU ledger (services/pc_codes.py).
@@ -324,6 +330,163 @@ def list_log(pc: Optional[str] = None, period: Optional[str] = None,
         return out
     finally:
         conn.close()
+
+
+def _runway_recipients() -> List[str]:
+    """Recipients for runway alarms — CEO + Artjoms + Rita (no stream owner,
+    runway is consolidated)."""
+    out: List[str] = []
+    ceo = (os.getenv("XALARM_CEO_EMAIL") or "").strip()
+    if ceo:
+        out.append(ceo)
+    ops = (os.getenv("XALARM_OPS_EMAIL") or "artjoms.fokejevs@gmail.com").strip()
+    if ops:
+        out.append(ops)
+    try:
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT email FROM fio_users WHERE role='bookkeeper' AND active=1 "
+                "AND email IS NOT NULL ORDER BY id LIMIT 1"
+            ).fetchone()
+            if row and row["email"]:
+                out.append(row["email"].strip())
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        logger.exception("rita lookup failed (runway)")
+    seen = set(); deduped = []
+    for e in out:
+        k = e.lower()
+        if k not in seen:
+            seen.add(k); deduped.append(e)
+    return deduped
+
+
+def fire_if_low_runway(*, threshold_weeks: int = RUNWAY_DEFAULT_THRESHOLD_WEEKS,
+                       pc: Optional[str] = None,
+                       actor: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Project 13-week cashflow; if runway_weeks <= threshold, fire the alarm.
+
+    Reuses xalarm_log with period='runway' so dedup window (24h) prevents
+    spam. budget_eur stores the threshold, actual_eur stores the observed
+    runway (or threshold+1 sentinel if positive but very close).
+
+    Best-effort — never raises. Returns the alarm payload or None when
+    runway is healthy / projection has no data.
+    """
+    try:
+        from services import cashflow_projection as cf
+    except Exception:  # noqa: BLE001
+        logger.exception("cashflow_projection import failed")
+        return None
+    try:
+        proj = cf.project(weeks=max(threshold_weeks, 13), pc=pc)
+    except Exception:  # noqa: BLE001
+        logger.exception("cashflow projection failed for pc=%s", pc)
+        return None
+
+    runway = proj.get("runway_weeks")
+    ending = float(proj.get("ending_balance_eur") or 0)
+    opening = float(proj.get("opening_balance_eur") or 0)
+    pc_label = pc or "ALL"
+
+    # Healthy: runway None (stays positive) OR runway above threshold
+    if runway is None or runway > threshold_weeks:
+        return None
+    # If we have zero opening balance AND zero projected cash movement,
+    # the projection is meaningless — skip rather than firing on noise.
+    if opening == 0 and not any((w.get("ar_in") or 0) + (w.get("ap_out") or 0)
+                                 for w in proj.get("series") or []):
+        return None
+
+    period = RUNWAY_PERIOD_KEY
+    pc_key = pc_label
+
+    existing = _recent_unack_for(pc_key, period)
+    recipients = _runway_recipients()
+
+    overrun_weeks = max(0, threshold_weeks - runway)
+    overrun_pct = (overrun_weeks / threshold_weeks * 100.0) if threshold_weeks else 0.0
+    status = {
+        "budget_eur": float(threshold_weeks),  # semantic: threshold
+        "actual_eur": float(runway),           # semantic: observed runway
+        "overrun_eur": float(overrun_weeks),
+        "overrun_pct": round(overrun_pct, 2),
+    }
+
+    subject = ("X-ALARM: %s runway %d week%s — below %d-week threshold (ending balance %.2f EUR)"
+               % (pc_label, runway, "" if runway == 1 else "s",
+                  threshold_weeks, ending))
+    body_lines = [
+        subject,
+        "",
+        "13-week cashflow projection shows the running bank balance",
+        "going negative in week %d (threshold: under %d weeks)." % (runway, threshold_weeks),
+        "",
+        "Opening balance: %.2f EUR" % opening,
+        "Ending balance (wk 13): %.2f EUR" % ending,
+        "",
+        "Per Financial Governance SOP §5.3:",
+        "  1. CFO + CEO review runway within 24h.",
+        "  2. Trigger AR collection sprint on top-10 outstanding invoices.",
+        "  3. Defer non-critical AP > 5,000 EUR until runway > %d weeks." % threshold_weeks,
+        "",
+        "See Analytics → 📈 13-week cashflow projection for the breakdown.",
+        "",
+        "— FIO Accounting Bot (auto-generated runway alarm)",
+    ]
+    body = "\n".join(body_lines)
+
+    email_res = email_send.send(to=recipients, subject=subject, body_text=body) \
+        if recipients else {"status": "no-recipients"}
+    email_status = str(email_res.get("status") or "unknown")
+
+    asana_url = None
+    try:
+        from services import asana_sync as _asn
+        res = _asn.create_task(name=subject, notes=body)
+        if isinstance(res, dict):
+            asana_url = res.get("permalink_url") or res.get("url")
+    except Exception:  # noqa: BLE001
+        logger.debug("runway xalarm asana task skipped")
+
+    xid = _upsert_log(
+        existing=existing, pc=pc_key, period=period, status=status,
+        trigger_doc_id=None, recipients=recipients,
+        email_status=email_status, asana_task_url=asana_url,
+    )
+
+    try:
+        notif.create(
+            kind="runway_alarm",
+            title="🚨 Runway alarm: %s — %d wk left (threshold %d)" % (
+                pc_label, runway, threshold_weeks),
+            body=("Ending balance %.2f EUR. Email %s." % (ending, email_status)),
+            recipient_role="admin",
+            href="/?xalarm=" + str(xid),
+            severity="urgent",
+            created_by=actor or "system",
+        )
+        notif.create(
+            kind="runway_alarm",
+            title="🚨 Runway alarm: %s — %d wk left" % (pc_label, runway),
+            body=("Ending balance %.2f EUR." % ending),
+            recipient_role="bookkeeper",
+            href="/?xalarm=" + str(xid),
+            severity="urgent",
+            created_by=actor or "system",
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("runway xalarm in-app notif failed")
+
+    return {
+        "id": xid, "pc": pc_key, "period": period,
+        "runway_weeks": runway, "threshold_weeks": threshold_weeks,
+        "ending_balance_eur": ending, "opening_balance_eur": opening,
+        "email_status": email_status, "dedup_hit": bool(existing),
+        "recipients": recipients, "asana_task_url": asana_url,
+    }
 
 
 def acknowledge(xid: int, *, by: Optional[str] = None) -> bool:

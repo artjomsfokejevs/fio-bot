@@ -332,6 +332,27 @@ def cashflow_set_opening_balance() -> Any:
     return jsonify(rec), 201
 
 
+@revenue_bp.route("/cashflow/check-runway", methods=["POST"])
+def cashflow_check_runway() -> Any:
+    """G-xalarm — manual or cron trigger to evaluate runway and fire alarm.
+    Returns the alarm payload (or {fired: false, reason: ...}) for observability.
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import xalarm as _xa
+    body = request.get_json(silent=True) or {}
+    try:
+        threshold = int(body.get("threshold_weeks") or _xa.RUNWAY_DEFAULT_THRESHOLD_WEEKS)
+    except (TypeError, ValueError):
+        threshold = _xa.RUNWAY_DEFAULT_THRESHOLD_WEEKS
+    pc = (body.get("pc") or "").strip() or None
+    result = _xa.fire_if_low_runway(threshold_weeks=threshold, pc=pc, actor=_user())
+    if result is None:
+        return jsonify({"fired": False, "threshold_weeks": threshold, "pc": pc or "ALL"})
+    return jsonify({"fired": True, **result})
+
+
 @revenue_bp.route("/cashflow", methods=["GET"])
 def cashflow_monthly() -> Any:
     err = _require(*_READ_ROLES) or _require_cap("view_revenue")

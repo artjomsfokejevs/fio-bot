@@ -10795,10 +10795,11 @@ async function renderCashflowProjectionCard() {
       box.innerHTML = '<div class="empty-state" style="font-size:13px;">' + data.error + '</div>';
       return;
     }
-    var weeks = data.weeks || [];
-    var opening = data.opening_balance || 0;
-    var ending = weeks.length ? weeks[weeks.length - 1].running_balance : opening;
-    var runway = data.runway_weeks;
+    var weeks = data.series || [];
+    var opening = data.opening_balance_eur || 0;
+    var ending = (data.ending_balance_eur !== undefined) ? data.ending_balance_eur :
+                 (weeks.length ? weeks[weeks.length - 1].running_balance : opening);
+    var runway = (data.runway_weeks === undefined) ? null : data.runway_weeks;
     var totalIn = 0, totalOut = 0;
     weeks.forEach(function(w){ totalIn += (w.ar_in || 0); totalOut += (w.ap_out || 0); });
     var runwayColor = runway === null ? '#16a34a' : (runway < 4 ? '#dc2626' : (runway < 8 ? '#d97706' : '#16a34a'));
