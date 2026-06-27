@@ -1,0 +1,10 @@
+{
+  "_comment": "Product Builder review-checks marker file. Used by B30 (hardcoded brand literal detector) to know which hex values were dropped during the 2026-06-27 Keel rebrand and should no longer appear in JS/HTML inline styles. See PRODUCT_BUILDER/references/review_checks.py.",
+  "brand_hex_dropped": [
+    "#1a56db",
+    "#1e40af",
+    "#102a52",
+    "#1a3f7a",
+    "#1a73e8"
+  ]
+}
