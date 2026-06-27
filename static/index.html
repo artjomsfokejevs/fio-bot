@@ -214,10 +214,13 @@ h1, h2, .table-header h2, .display-heading {
   color: #fff;
 }
 .tab-btn.active {
-  background: rgba(255,255,255,0.18);
+  /* Keel rebrand — active tab carries amber accent so the navigation
+     reads as part of the Keel product, not the BT4YOU shell. */
+  background: linear-gradient(135deg, rgba(217,119,6,.95) 0%, rgba(245,158,11,.95) 100%);
   color: #fff;
   font-weight: 600;
   border: none;
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .45);
 }
 /* Legacy .tab-bar (in case used elsewhere) — hidden in this layout */
 .tab-bar { display: none; }
@@ -270,7 +273,7 @@ h1, h2, .table-header h2, .display-heading {
 }
 .form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
 }
 .grid-span-2 { grid-column: span 2; }
 .grid-span-3 { grid-column: span 3; }
@@ -318,7 +321,7 @@ h1, h2, .table-header h2, .display-heading {
 }
 .bt-inline-edit:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
 }
 .bt-row-editing { background: var(--brand-light) !important; }
 .bt-row-editing td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
@@ -366,7 +369,7 @@ select, textarea {
 textarea { line-height: 1.45; padding: 8px 10px; }
 input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
 }
 input[disabled], select[disabled], textarea[disabled] {
   background: #f8fafc;
@@ -438,7 +441,7 @@ input::placeholder, textarea::placeholder { color: #9ca3af; }
 .bt-filter-bar input[type="search"] { flex: 1 1 220px; min-width: 200px; }
 .bt-filter-bar input:focus, .bt-filter-bar select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,86,219,0.10);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .15);
 }
 .bt-filter-bar label { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 
@@ -565,7 +568,11 @@ input::placeholder, textarea::placeholder { color: #9ca3af; }
 }
 .bt-footer-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .bt-footer .bot-name { font-weight: 700; color: var(--text); }
-.bt-footer .bot-family { color: var(--accent); font-weight: 600; }
+.bt-footer .bot-family {
+  color: var(--keel-amber-dark);
+  font-weight: 600;
+  font-family: var(--font-display);
+}
 .bt-footer .bot-sibling {
   display: inline-block;
   padding: 2px 8px;
@@ -652,24 +659,44 @@ input::placeholder, textarea::placeholder { color: #9ca3af; }
   transition: width 0.3s;
 }
 
-/* Table */
+/* Table — BT4YOU-style card with subtle top stripe + soft lift shadow */
 .table-wrapper {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, .04),
+    0 10px 30px rgba(217, 119, 6, .06);
+  position: relative;
+}
+.table-wrapper::before {
+  /* 3px brand stripe at the top — distinguishes the Keel surface */
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--keel-amber-dark) 0%, var(--keel-amber) 100%);
+  z-index: 1;
 }
 .table-header {
-  padding: 16px 20px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  /* Subtle horizontal divider feel; matches BT4YOU card top-stripe motif */
+  background: linear-gradient(180deg, #fffdf6 0%, #ffffff 100%);
 }
-.table-header h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+.table-header h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
 .table-header-controls {
   display: flex;
   gap: 12px;
@@ -725,7 +752,7 @@ tbody tr:hover { background: #f8fafc; }
   letter-spacing: 0.5px;
 }
 .badge-pending { background: rgba(217,119,6,0.1); color: var(--yellow); }
-.badge-parsed, .badge-classified { background: rgba(26,86,219,0.1); color: var(--accent); }
+.badge-parsed, .badge-classified { background: rgba(245, 158, 11, .12); color: var(--keel-amber-dark); }
 .badge-approved { background: rgba(5,150,105,0.1); color: var(--green); }
 .badge-rejected { background: rgba(220,38,38,0.1); color: var(--red); }
 .badge-posted { background: rgba(2,132,199,0.1); color: #0284c7; }
@@ -765,11 +792,18 @@ tbody tr:hover { background: #f8fafc; }
   font-family: inherit;
   transition: opacity 0.15s;
 }
-.btn:hover { opacity: 0.85; }
-.btn-primary { background: var(--accent); color: white; }
+.btn:hover { opacity: 0.92; filter: brightness(1.04); }
+/* Keel rebrand — .btn-primary uses amber gradient by default; legacy code
+   that uses .btn-primary inherits the new brand without further edits. */
+.btn-primary {
+  background: linear-gradient(135deg, var(--keel-amber-dark) 0%, var(--keel-amber) 100%);
+  color: white;
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .35);
+}
 .btn-success { background: var(--green); color: white; }
 .btn-danger { background: var(--red); color: white; }
 .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--brand-light); color: var(--keel-amber-dark); border-color: var(--keel-amber); }
 .btn-sm { padding: 4px 10px; font-size: 11px; white-space: nowrap; }
 /* Confirm-for-Payment table: stage-aware columns + sticky Actions column on
    the right so the call-to-action button stays visible during horizontal pan. */
@@ -904,18 +938,27 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #fff;
-  flex-shrink: 0;            /* never shrink, always visible at top */
+  /* Subtle amber tint so modals feel like part of the Keel product */
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+  flex-shrink: 0;
   z-index: 2;
 }
-.modal-header h3 { font-size: 17px; font-weight: 600; color: var(--text); }
+.modal-header h3 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
 .modal-close {
   background: none;
   border: none;
   color: var(--muted);
   font-size: 24px;
   cursor: pointer;
+  transition: color .15s;
 }
+.modal-close:hover { color: var(--keel-amber-dark); }
 .modal-body {
   padding: 20px 24px;
   display: grid;
@@ -1061,7 +1104,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 .modal-actions input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
 }
 .fio-select:disabled,
 .modal-actions select:disabled,
@@ -1099,8 +1142,8 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 }
 .export-toolbar select:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+  border-color: var(--keel-amber);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
 }
 .btn-export {
   display: inline-flex;
@@ -1202,7 +1245,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 .alloc-grid select:focus, .alloc-grid input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
 }
 .alloc-grid input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; }
 .alloc-grid .col-pc    { width: 26%; }
@@ -6499,7 +6542,7 @@ function showStreamPnl(streamId, profitCenter) {
   var section = document.getElementById('pnl-section');
   section.style.display = 'block';
 
-  var color = STREAM_COLORS[streamId] || '#1a56db';
+  var color = STREAM_COLORS[streamId] || '#d97706';
   document.getElementById('pnl-section-title').innerHTML = '<span style="color:' + color + ';">' + esc(STREAM_NAMES[streamId] || streamId) + '</span> &mdash; P&amp;L';
 
   renderPnlForStream(streamId, profitCenter);
@@ -10111,7 +10154,7 @@ function renderCaKpis(s) {
       '</div>';
   }
   var html = '';
-  html += kpi('Total card-tx', s.total?.n, s.total?.eur, '#1a56db');
+  html += kpi('Total card-tx', s.total?.n, s.total?.eur, '#d97706');
   html += kpi('Unmatched', st.unmatched?.n, st.unmatched?.eur, '#dc2626');
   html += kpi('Suggested',  st.suggested?.n, st.suggested?.eur, '#d97706');
   html += kpi('Auto-matched', st.matched?.n, st.matched?.eur, '#10b981');
