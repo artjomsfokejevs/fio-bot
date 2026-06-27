@@ -1,8 +1,7 @@
 {
-  "_comment": "Product Builder review-checks marker file. Used by B30 (hardcoded brand literal detector) to know which hex values were dropped during the 2026-06-27 Keel rebrand and should no longer appear in JS/HTML inline styles. See PRODUCT_BUILDER/references/review_checks.py.",
+  "_comment": "Product Builder review-checks marker file. Used by B30 (hardcoded brand literal detector) to know which hex values were dropped during the 2026-06-27 Keel rebrand and should no longer appear in JS/HTML inline styles. NOTE: #1e40af is kept off the list because it is still the semantic 'info' foreground (on #dbeafe bg) for in_progress badges — semantic info-blue is unaffected by the brand recolour. See PRODUCT_BUILDER/references/review_checks.py.",
   "brand_hex_dropped": [
     "#1a56db",
-    "#1e40af",
     "#102a52",
     "#1a3f7a",
     "#1a73e8"

@@ -4152,9 +4152,9 @@ function renderAnalyticsCashflow(data) {
   var p = cf.pipeline || {};
   var pipelineCards =
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px;">' +
-      '<div style="padding:12px;background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;">' +
-        '<div style="font-size:10px;color:#1e40af;text-transform:uppercase;font-weight:700;">Posted · awaiting CEO</div>' +
-        '<div style="font-size:20px;font-weight:700;color:#1e40af;margin-top:4px;">' + fmtEUR(p.posted_awaiting_confirm) + '</div>' +
+      '<div style="padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;">' +
+        '<div style="font-size:10px;color:#854d0e;text-transform:uppercase;font-weight:700;">Posted · awaiting CEO</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#854d0e;margin-top:4px;">' + fmtEUR(p.posted_awaiting_confirm) + '</div>' +
       '</div>' +
       '<div style="padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;">' +
         '<div style="font-size:10px;color:#92400e;text-transform:uppercase;font-weight:700;">Confirmed · awaiting payment</div>' +
@@ -7742,7 +7742,7 @@ function renderDetails(doc) {
         html += '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Reg. No: ' + esc(m0.company_number) + (m0.jurisdiction ? ' · ' + esc(m0.jurisdiction.toUpperCase()) : '') + '</div>';
       }
       if (m0.opencorporates_url) {
-        html += '<div style="font-size:11px;margin-top:2px;"><a href="' + esc(m0.opencorporates_url) + '" target="_blank" style="color:#1a56db;">View on OpenCorporates ↗</a></div>';
+        html += '<div style="font-size:11px;margin-top:2px;"><a href="' + esc(m0.opencorporates_url) + '" target="_blank" style="color:var(--accent);">View on OpenCorporates ↗</a></div>';
       }
     }
     if (regCheck.warnings && regCheck.warnings.length) {
