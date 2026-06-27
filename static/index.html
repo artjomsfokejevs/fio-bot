@@ -3,26 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Keel — Accounting Co-pilot · by BT4YOU</title>
+<title>Keel — Your Digital CFO · by BT4YOU.ai</title>
+<!-- 2026-06-27 Keel rebrand — match BT4YOU Landing brand system
+     (BT4YOU_LANDING_BRAND project). Fonts pulled per the spec:
+     Inter (body/UI) · Source Serif 4 (display) · IBM Plex Mono (labels). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-    --bg: #f0f4f8;
+    /* 2026-06-27 Keel rebrand — BT4YOU.ai design tokens.
+       Source: BT4YOU_LANDING_BRAND project brand spec.
+       Keel = "Digital CFO" → amber primary, BT4YOU navy ink for surfaces. */
+    --bg: #f8fafc;                /* BT4YOU surface-soft */
     --surface: #ffffff;
     --card: #ffffff;
-    --border: #dde3ed;
-    --text: #1e293b;
-    --muted: #64748b;
-    --accent: #1a56db;
-    --accent2: #1e40af;
+    --border: #e2e8f0;            /* BT4YOU border */
+    --text: #0f172a;              /* BT4YOU ink */
+    --muted: #64748b;             /* BT4YOU muted */
+    --accent: #d97706;            /* Keel amber-dark (links, focus) */
+    --accent2: #b45309;
     --green: #059669;
     --red: #dc2626;
-    --yellow: #d97706;
-    --brand-dark: #102a52;
-    --brand-blue: #1a56db;
-    --brand-light: #e8f0fe;
+    --yellow: #f59e0b;            /* Keel amber primary */
+    --brand-dark: #0b1228;        /* BT4YOU hero deep navy */
+    --brand-blue: #1e3a8a;        /* BT4YOU deep blue */
+    --brand-light: #fffbeb;       /* Keel amber background */
+    --keel-amber: #f59e0b;
+    --keel-amber-dark: #d97706;
+    --keel-amber-deep: #b45309;
+    --keel-amber-bg: #fffbeb;
+    --bt-violet: #6d28d9;
     --font: 'Inter', system-ui, sans-serif;
+    --font-display: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, "SFMono-Regular", "Monaco", monospace;
     /* Profit-center / brand stream colors (FIO Top-10 fix #7, 2026-06-07).
        Single source of truth — STREAM_COLORS JS object reads from these via
        getComputedStyle. Add a new brand here, it appears everywhere. */
@@ -44,15 +60,41 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* Header */
+/* Keel rebrand 2026-06-27 — display serif for page headings (h1/h2),
+   matches BT4YOU Landing's Source Serif 4 hero treatment. */
+h1, h2, .table-header h2, .display-heading {
+  font-family: var(--font-display);
+  letter-spacing: -.01em;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--keel-amber-dark);
+}
+.btn.primary, button.primary {
+  background: linear-gradient(135deg, var(--keel-amber-dark) 0%, var(--keel-amber) 100%);
+  border-color: var(--keel-amber-dark);
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .35);
+}
+.btn.primary:hover, button.primary:hover {
+  filter: brightness(1.05);
+}
+
+/* Header — Keel rebrand 2026-06-27.
+   BT4YOU hero gradient (deep navy → brand blue) with a thin amber
+   underline so Keel reads as a distinct product within the suite. */
 .header {
-  background: linear-gradient(135deg, #102a52 0%, #1a3f7a 50%, #1a56db 100%);
+  background: linear-gradient(135deg, #0b1228 0%, #1e3a8a 55%, #2f6df6 100%);
   padding: 0;
   display: flex;
   align-items: stretch;
   justify-content: center;
   height: 56px;
-  border-bottom: none;
+  border-bottom: 2px solid var(--keel-amber);
+  box-shadow: 0 1px 0 rgba(245, 158, 11, .3);
 }
 .header > .header-left,
 .header > .header-right {
@@ -463,8 +505,22 @@ input::placeholder, textarea::placeholder { color: #9ca3af; }
 
 /* 2026-06-16 — brand lockup (title + subtitle next to logo mark) */
 .bt-brand-lockup { display: flex; flex-direction: column; line-height: 1.15; white-space: nowrap; flex-shrink: 0; }
-.bt-brand-title { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: .02em; }
-.bt-brand-subtitle { font-size: 10px; font-weight: 400; color: rgba(255,255,255,.65); margin-top: 1px; }
+.bt-brand-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -.01em;
+}
+.bt-brand-subtitle {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255,255,255,.7);
+  margin-top: 1px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
 /* Hide subtitle on narrow viewports to give tabs more room */
 @media (max-width: 1100px) {
   .bt-brand-subtitle { display: none; }
@@ -474,21 +530,23 @@ input::placeholder, textarea::placeholder { color: #9ca3af; }
   .bt-brand-lockup { display: none; }
 }
 
-/* Logo mark (square chip) */
+/* Logo mark — Keel amber accent chip with serif wordmark per BT4YOU spec */
 .bt-logo-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  min-width: 44px;
   height: 36px;
+  padding: 0 10px;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
   color: #fff;
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: .02em;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 1px 4px rgba(26, 115, 232, .35);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -.01em;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .55), 0 8px 20px rgba(217, 119, 6, .25);
 }
 
 /* Footer — bot-family attribution */
@@ -1625,8 +1683,8 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   <div class="header-left">
     <span class="bt-logo-mark">Keel</span>
     <div class="bt-brand-lockup">
-      <span class="bt-brand-title">Keel · Accounting Co-pilot</span>
-      <span class="bt-brand-subtitle">part of BT4YOU.ai · the agentic business suite</span>
+      <span class="bt-brand-title">Keel · Your Digital CFO</span>
+      <span class="bt-brand-subtitle">BT4YOU.ai · Executive Systems</span>
     </div>
     <div class="bt-tabs-wrap">
       <button class="bt-tabs-arrow bt-tabs-arrow-left"  type="button" aria-label="Scroll tabs left"
@@ -2886,7 +2944,9 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   <!-- ==================== PANEL 5: FIO LEGEND ==================== -->
   <div class="panel" id="panel-legend">
     <div style="max-width:980px;margin:0 auto;padding:8px 12px;">
-      <h2 style="font-size:22px;font-weight:700;margin:0 0 6px 0;">📖 Keel Legend <span style="font-size:12px;color:var(--muted);font-weight:400;">(formerly FIO Legend)</span></h2>
+      <div class="eyebrow" style="margin-bottom:4px;">Keel · Field manual</div>
+      <h2 style="font-size:26px;font-weight:600;margin:0 0 6px 0;letter-spacing:-.015em;">📖 The Keel Legend</h2>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Your digital CFO, end-to-end — from receipt to revenue. Accountant, controller, CFO in one system.</div>
       <p style="color:var(--muted);font-size:13px;margin:0 0 24px 0;">Rules, how the tool works, and what each control does. Bookmark this page if you're new.</p>
 
       <div style="display:grid;grid-template-columns:1fr;gap:18px;">
