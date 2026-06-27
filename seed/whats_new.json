@@ -3,6 +3,20 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-06-27-keel-fixes",
+      "date": "2026-06-27",
+      "title": "🚢 Rebrand → Keel · 🔄 Full regenerate button · 🔐 export_bulk bug · 🧠 Chase task: AI hints",
+      "summary": "FIO is now Keel — Accounting Co-pilot, part of the BT4YOU.ai agentic business suite. Header + Legend + email + Asana footers say 'Keel' from this build forward. Plus four fixes from operator feedback: (1) Full-regenerate ⟳ on the doc modal now actually re-runs the AI parser (was just a soft reload). (2) The 'forbidden export_bulk' 403 on viewers is gone — meCan() no longer returns optimistic-true after identity loaded. (3) Chase Missing-Invoice task description + per-tx cards now show AI-suggested business stream, ledger code, cardholder + card last-4 (parsed from reference). (4) Add Revenue Document modal — UX is on the follow-up list (needs your screenshot pass).",
+      "highlights": [
+        "🚢 Branding — 'FIO Accounting Bot' → 'Keel · Accounting Co-pilot'. Header logo, footer, browser title, FIO Legend tab title, Asana chase footer. Domain + DB names unchanged for now (separate migration when you're ready).",
+        "🔄 Document modal — two refresh buttons: ⟲ (soft reload, no AI) and 🔄 (full regenerate — re-runs the AI parser + classification, repopulates every field). Confirms before firing (10–30s LLM call).",
+        "🔐 BUG FIX — viewers no longer see the 'Bulk ZIP' button (meCan() was returning true while /api/me was loading). Backend was correctly blocking; UI now matches.",
+        "🧠 Chase Missing-Invoice task — every transaction card now shows colour chips: 🤖 stream (suggested PC), 📒 ledger (rules-based guess), 💳 ••last-4 (parsed from reference), 👤 owner. The intro note appends an 'AI hints' bullet list so the stakeholder knows what to search for.",
+        "📒 NEW classifier.suggest_ledger_from_text(text) — rules-only ledger guess from a bank-row description (no LLM). Used in card_audit/list enrichment so chase tasks ship with ledger hints.",
+        "⚠ Follow-up: full Alps2Alps-removal (was 'AA' default in many dropdowns), Add-Revenue-modal UI polish from screenshot, full Keel rebrand of email/Slack/Postmark identities + database renames + bt4you.ai brand-asset alignment (your landing was 403 to my crawler — pass me a screenshot/copy export and I'll match colors/fonts)."
+      ]
+    },
+    {
       "version": "2026-06-26-mcp-1-to-5",
       "date": "2026-06-26",
       "title": "📧 Email-in · 📷 Mobile photo · ✈️ Travel reports · 🗄 Retention · 📤 ERP export",
