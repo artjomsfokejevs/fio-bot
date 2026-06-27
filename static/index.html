@@ -262,6 +262,59 @@ h1, h2, .table-header h2, .display-heading {
 .form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Labelled-field component — pairs a small uppercase label with its
+   input so dropdowns/inputs never need placeholder-as-label. Used by
+   the Add Revenue Document modal (2026-06-27) and any future form
+   that needs production-grade spacing. */
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+.field-label .req { color: var(--keel-amber-dark); margin-left: 2px; }
+.field input, .field select, .field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  min-width: 0;
+}
+.field select { padding-right: 28px; }      /* room for the chevron */
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--keel-amber);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.field-section {
+  grid-column: 1 / -1;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 14px 0 -2px 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  letter-spacing: -.005em;
+}
+.field-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.field-section .field-section-hint {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 8px;
+}
 .form-grid input, .form-grid select, .form-grid textarea {
   font-family: inherit; font-size: 13px;
   padding: 8px 10px;
@@ -3482,7 +3535,10 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 
   <!-- Add / Detail modal for Revenue (shared) -->
   <div class="modal-overlay" id="revenue-modal-overlay">
-    <div class="modal">
+    <!-- Revenue modal — 2026-06-27 UX pass: widened to 880 px and given
+         a dedicated max-width so labelled fields (PC selector, customer,
+         dates) don't truncate. Matches Keel modal-header treatment. -->
+    <div class="modal" style="max-width:880px;width:96vw;">
       <div class="modal-header">
         <h3 id="revenue-modal-title">Add revenue document</h3>
         <button class="modal-close" onclick="closeRevenueModal()">×</button>
@@ -10732,43 +10788,102 @@ async function loadRevenue() {
 
 function openRevenueAddModal() {
   document.getElementById('revenue-modal-title').textContent = 'Add revenue document';
+  // 2026-06-27 UX rewrite — sectioned 2-column grid with proper labels
+  // above every field, the file-attach panel inline (not floating below),
+  // and right-aligned action buttons. Replaces the 4-col placeholder-only
+  // layout that truncated dropdown text ("AA · Alps2A▾", "Customer na",
+  // "Legal entity (") and looked unfinished.
   document.getElementById('revenue-modal-body').innerHTML =
-    '<div class="form-grid form-grid-4">' +
-    '  <select id="rev-add-kind">' +
-    '    <option value="proforma">Proforma</option>' +
-    '    <option value="invoice">Invoice</option>' +
-    '    <option value="credit_note">Credit note</option>' +
-    '  </select>' +
-    '  <select id="rev-add-pc">' +
-    '    <option value="AA">AA · Alps2Alps</option><option value="AH">AH · Holding</option>' +
-    '    <option value="AG">AG · Group</option><option value="AL">AL · ALVEDA</option>' +
-    '    <option value="CF">CF · MyPeak</option><option value="MN">MN · Mountly</option>' +
-    '    <option value="MT">MT · Medical Travel</option><option value="SP">SP · Skipasser</option>' +
-    '    <option value="RR">RR · Rock2Rock</option>' +
-    '  </select>' +
-    '  <input id="rev-add-customer" placeholder="Customer name" />' +
-    '  <input id="rev-add-vat" placeholder="Customer VAT (optional)" />' +
-    '  <input id="rev-add-invno" placeholder="Invoice #" />' +
-    '  <input id="rev-add-issue" type="date" />' +
-    '  <input id="rev-add-due" type="date" placeholder="Due date" />' +
-    '  <input id="rev-add-amount" type="number" step="0.01" placeholder="Amount" />' +
-    '  <select id="rev-add-currency">' +
-    '    <option value="EUR" selected>EUR</option><option value="USD">USD</option>' +
-    '    <option value="GBP">GBP</option><option value="HUF">HUF</option>' +
-    '    <option value="CHF">CHF</option>' +
-    '  </select>' +
-    '  <input id="rev-add-ledger" placeholder="Ledger code (BB00/BC00/INT0/OTH0)" />' +
-    '  <input id="rev-add-entity" placeholder="Legal entity (issuer)" />' +
-    '  <input id="rev-add-desc" placeholder="Description" class="grid-span-3" />' +
+    '<div class="form-grid form-grid-2" style="padding:18px 22px 4px;">' +
+
+    // ── Section 1 — Document basics ──
+    '  <div class="field-section">📄 Document basics' +
+    '    <span class="field-section-hint">What you are issuing and to whom.</span>' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-kind">Kind<span class="req">*</span></label>' +
+    '    <select id="rev-add-kind">' +
+    '      <option value="proforma">Proforma</option>' +
+    '      <option value="invoice">Invoice</option>' +
+    '      <option value="credit_note">Credit note</option>' +
+    '    </select>' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-pc">Profit center (stream)<span class="req">*</span></label>' +
+    '    <select id="rev-add-pc">' +
+    '      <option value="" disabled selected>— select stream —</option>' +
+    '      <option value="SP">SP · Skipasser</option>' +
+    '      <option value="MN">MN · Mountly</option>' +
+    '      <option value="MT">MT · Medical Travel</option>' +
+    '      <option value="CF">CF · MyPeak Finance</option>' +
+    '      <option value="AL">AL · ALVEDA</option>' +
+    '      <option value="AG">AG · Amitours Group (holding)</option>' +
+    '    </select>' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-customer">Customer name<span class="req">*</span></label>' +
+    '    <input id="rev-add-customer" type="text" placeholder="e.g. TransferHub OÜ" />' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-vat">Customer VAT (optional)</label>' +
+    '    <input id="rev-add-vat" type="text" placeholder="e.g. EE100123456" />' +
+    '  </div>' +
+
+    // ── Section 2 — Money & dates ──
+    '  <div class="field-section">💶 Money &amp; dates</div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-invno">Invoice number</label>' +
+    '    <input id="rev-add-invno" type="text" placeholder="e.g. INV-2026-0001" />' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-amount">Amount<span class="req">*</span></label>' +
+    '    <input id="rev-add-amount" type="number" step="0.01" min="0" placeholder="0.00" />' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-issue">Issue date</label>' +
+    '    <input id="rev-add-issue" type="date" />' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-due">Due date</label>' +
+    '    <input id="rev-add-due" type="date" />' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-currency">Currency</label>' +
+    '    <select id="rev-add-currency">' +
+    '      <option value="EUR" selected>EUR — Euro</option>' +
+    '      <option value="USD">USD — US Dollar</option>' +
+    '      <option value="GBP">GBP — British Pound</option>' +
+    '      <option value="HUF">HUF — Hungarian Forint</option>' +
+    '      <option value="CHF">CHF — Swiss Franc</option>' +
+    '    </select>' +
+    '  </div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-ledger">Ledger code</label>' +
+    '    <input id="rev-add-ledger" type="text" placeholder="BB00 · BC00 · INT0 · OTH0" />' +
+    '  </div>' +
+
+    // ── Section 3 — Issuer & description ──
+    '  <div class="field-section">🏢 Issuer &amp; description</div>' +
+    '  <div class="field">' +
+    '    <label class="field-label" for="rev-add-entity">Legal entity (issuer)</label>' +
+    '    <input id="rev-add-entity" type="text" placeholder="e.g. Skipasser OÜ" />' +
+    '  </div>' +
+    '  <div class="field" style="grid-column: 1 / -1;">' +
+    '    <label class="field-label" for="rev-add-desc">Description</label>' +
+    '    <input id="rev-add-desc" type="text" placeholder="What is this charge for?" />' +
+    '  </div>' +
     '</div>' +
-    // 2026-06-24 FB-A — attach invoice PDF/file
-    '<div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed var(--border);border-radius:6px;">' +
-    '  <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px;">📎 Attach invoice file (optional — PDF / image / docx)</label>' +
+
+    // 2026-06-24 FB-A — attach invoice file (now flush with grid)
+    '<div style="margin:6px 22px 16px;padding:14px;background:#fffdf6;border:1px dashed var(--keel-amber);border-radius:8px;">' +
+    '  <label class="field-label" for="rev-add-file" style="display:block;margin-bottom:6px;">📎 Attach invoice file (optional — PDF / image / docx / xlsx)</label>' +
     '  <input id="rev-add-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" style="font-size:12px;" />' +
     '</div>' +
-    '<div class="modal-footer" style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;">' +
+
+    // Footer — flush right, primary action distinguished
+    '<div class="modal-footer" style="padding:14px 22px;border-top:1px solid var(--border);background:#fafbfd;display:flex;justify-content:flex-end;gap:10px;border-radius:0 0 14px 14px;">' +
     '  <button class="btn btn-ghost" onclick="closeRevenueModal()">Cancel</button>' +
-    '  <button class="btn btn-primary" onclick="submitRevenueAdd()">Save</button>' +
+    '  <button class="btn btn-primary" onclick="submitRevenueAdd()">💾 Save document</button>' +
     '</div>';
   document.getElementById('revenue-modal-overlay').classList.add('active');
 }
