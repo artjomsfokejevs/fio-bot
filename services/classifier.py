@@ -275,6 +275,18 @@ def _build_description(parsed: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+def suggest_ledger_from_text(text: str) -> Optional[str]:
+    """Quick rules-only ledger guess from a free-form text blob (typically
+    a bank-statement counterparty + description). Returns the top ledger
+    code or None — never calls the LLM (used in hot paths like the chase
+    task builder where we just want a 'best effort' hint).
+    """
+    if not text or not isinstance(text, str):
+        return None
+    matches = _match_rules(text, text)
+    return matches[0]["code"] if matches else None
+
+
 def _match_rules(vendor: str, description: str) -> List[Dict[str, Any]]:
     """Match vendor/description against the rule engine.
 

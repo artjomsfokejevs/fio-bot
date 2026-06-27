@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FIO — Financial Intake & Orchestrator</title>
+<title>Keel — Accounting Co-pilot · by BT4YOU</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -1623,10 +1623,10 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
 
 <header class="header">
   <div class="header-left">
-    <span class="bt-logo-mark">FIO</span>
+    <span class="bt-logo-mark">Keel</span>
     <div class="bt-brand-lockup">
-      <span class="bt-brand-title">FIO Accounting Bot</span>
-      <span class="bt-brand-subtitle">BT4YOU Business Bots</span>
+      <span class="bt-brand-title">Keel · Accounting Co-pilot</span>
+      <span class="bt-brand-subtitle">part of BT4YOU.ai · the agentic business suite</span>
     </div>
     <div class="bt-tabs-wrap">
       <button class="bt-tabs-arrow bt-tabs-arrow-left"  type="button" aria-label="Scroll tabs left"
@@ -3398,7 +3398,8 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
     <div class="modal-header">
       <h3 id="modal-title">Document Details</h3>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button class="btn btn-ghost btn-sm" onclick="reloadModal()" title="Reload document data" style="font-size:16px;padding:4px 8px;">&#128260;</button>
+        <button class="btn btn-ghost btn-sm" onclick="reloadModal()" title="Reload document data (no AI)" style="font-size:14px;padding:4px 8px;">⟲</button>
+        <button class="btn btn-ghost btn-sm" onclick="regenerateDoc()" title="Re-run AI parsing + re-classify (full regenerate)" style="font-size:16px;padding:4px 8px;">&#128260;</button>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
     </div>
@@ -4495,8 +4496,13 @@ var ME = { signed_in_as: null, role: 'viewer', allowed_tabs: [], is_admin: false
 // 2026-06-24 FB-L — capability check helper. Use to hide buttons when the
 // user lacks a sub-permission (e.g. Olga has bookkeeper but no approve_budget).
 function meCan(cap) {
-  if (!ME || !ME.capabilities) return true;   // optimistic until /api/me lands
-  return ME.capabilities.indexOf(cap) >= 0;
+  // 2026-06-27 — was 'optimistic until /api/me lands' but that surfaced
+  // a viewer's export_bulk 403 (button visible, request rejected).
+  // Now: unknown identity stays optimistic; loaded identity with NO caps
+  // (viewer) is treated as no-permission.
+  if (!ME) return true;            // not loaded yet
+  var caps = ME.capabilities || [];
+  return caps.indexOf(cap) >= 0;
 }
 function pcInMyScope(pc) {
   if (!ME || !ME.pc_scope) return true;       // null = unrestricted
@@ -7533,6 +7539,40 @@ function reloadModal() {
   });
 }
 
+// 🔄 Full regenerate — 2026-06-27. Re-runs the AI parser end-to-end:
+//   POST /api/documents/<id>/reparse → re-extract vendor/amount/dates/lines
+//   → re-classify → re-render the modal so every field reflects the new run.
+// Use when the modal shows stale or partially-extracted data (e.g. parser
+// failed first time, or a new prompt has been deployed).
+function regenerateDoc() {
+  if (!currentDoc) return;
+  if (!confirm('Re-run the AI parser on this document?\n\nThis will overwrite the current extracted fields (vendor, amount, line items, ledger suggestion, …) with a fresh AI extraction.')) return;
+  var docId = currentDoc.id;
+  var titleEl = document.getElementById('modal-title');
+  var originalTitle = titleEl ? titleEl.textContent : '';
+  if (titleEl) titleEl.textContent = '⏳ Re-parsing… (this can take 10–30 s)';
+  showToast('AI re-parse started…', 'info');
+  api('POST', '/api/documents/' + docId + '/reparse', {})
+    .then(function(res) {
+      if (res && res.error) { throw new Error(res.error); }
+      // Re-fetch + full re-render so every section reflects the new data
+      return api('GET', '/api/documents/' + docId);
+    })
+    .then(function(doc) {
+      currentDoc = doc;
+      selectedCode = doc.ledger_code;
+      if (titleEl) titleEl.textContent = doc.original_name || doc.filename || originalTitle;
+      renderPreview(doc);
+      renderDetails(doc);
+      renderModalActions(doc);
+      showToast('✓ Document fully regenerated', 'success');
+    })
+    .catch(function(err) {
+      if (titleEl) titleEl.textContent = originalTitle;
+      showToast('Regenerate failed: ' + (err.message || err), 'error');
+    });
+}
+
 document.getElementById('modal-overlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
@@ -9688,24 +9728,70 @@ async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) 
     : ('<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:11px;color:#92400e;margin-bottom:10px;">' +
        '📎 No matched invoice files to attach — these are the unmatched transactions FIO is asking the stakeholder to provide.</div>');
 
+  // 2026-06-27 — Enrich each tx card with the AI hints the stakeholder needs
+  // to search for the invoice: business stream (PC), ledger guess, cardholder
+  // last-4 (parsed from reference if available), and original counterparty.
+  function _extractLast4(it) {
+    var src = (it.card_last4 || it.last4 || '').toString();
+    if (src && src.length >= 4) return src.slice(-4);
+    var ref = (it.reference || it.description || '');
+    var m = ref.match(/(?:\*{2,4}|x{2,4}|XX|••|\.{2,4})\s*(\d{4})/i)
+         || ref.match(/(\d{4})\s*$/);  // many bank exports end with last-4
+    return m ? m[1] : '';
+  }
   var txListHtml = items.map(function(it, idx) {
     var posted = (it.date || '').slice(0, 10) || '—';
     var amt = Number(it.amount_eur || 0).toFixed(2);
     var who = it.counterparty || it.description || '?';
     var hasAttach = !!it.matched_invoice_id;
+    var sPc = it.suggested_pc || it.profit_center || '';
+    var sPcName = sPc && PC_LABELS ? (PC_LABELS[sPc] || '') : '';
+    var sLedger = it.suggested_ledger_code || it.ledger_code || '';
+    var last4 = _extractLast4(it);
+
+    var aiChips = '';
+    if (sPc) {
+      aiChips += '<span style="display:inline-block;background:#dbeafe;color:#1e3a8a;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:4px;font-weight:600;" title="AI-suggested business stream">🤖 stream: ' + esc(sPc) + (sPcName ? ' · ' + esc(sPcName) : '') + '</span>';
+    }
+    if (sLedger) {
+      aiChips += '<span style="display:inline-block;background:#fef3c7;color:#854d0e;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:4px;font-weight:600;" title="AI-suggested ledger code">📒 ledger: ' + esc(sLedger) + '</span>';
+    }
+    if (last4) {
+      aiChips += '<span style="display:inline-block;background:#f3f4f6;color:#374151;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:4px;font-family:ui-monospace,monospace;" title="Card last-4 — search statements / receipts for this">💳 ••' + esc(last4) + '</span>';
+    }
+    if (it.suggested_person) {
+      aiChips += '<span style="display:inline-block;background:#ede9fe;color:#5b21b6;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:4px;font-weight:600;" title="Likely owner">👤 ' + esc(it.suggested_person) + '</span>';
+    }
+
     return '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:#fff;">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px;">' +
         '<span style="font-size:12px;font-weight:700;color:var(--text);">' + (idx+1) + '. €' + amt + '</span>' +
         '<span style="font-size:11px;color:var(--muted);font-family:monospace;">' + esc(posted) + '</span>' +
       '</div>' +
       '<div style="font-size:11px;color:var(--text);margin-bottom:4px;line-height:1.4;">' + esc(who) + '</div>' +
-      (it.reference ? '<div style="font-size:10px;color:var(--muted);font-family:monospace;">ref: ' + esc(it.reference) + '</div>' : '') +
-      (it.suggested_person ? '<div style="font-size:10px;color:#1e3a8a;margin-top:4px;">→ suggested: ' + esc(it.suggested_person) + '</div>' : '') +
+      (it.reference ? '<div style="font-size:10px;color:var(--muted);font-family:monospace;margin-bottom:4px;">ref: ' + esc(it.reference) + '</div>' : '') +
+      (aiChips ? '<div style="margin-top:4px;">' + aiChips + '</div>' : '') +
       (hasAttach
         ? '<div style="font-size:10px;color:#166534;margin-top:4px;">📎 Matched invoice will be attached to the Asana task.</div>'
         : '') +
     '</div>';
   }).join('');
+
+  // 2026-06-27 — richer intro telling the stakeholder where to look + what
+  // AI already guessed (stream, ledger, cardholder, last-4).
+  var aiHintsBullets = items.map(function(it, idx){
+    var bits = [];
+    if (it.suggested_pc) bits.push('stream ' + it.suggested_pc + ((PC_LABELS && PC_LABELS[it.suggested_pc]) ? ' (' + PC_LABELS[it.suggested_pc] + ')' : ''));
+    if (it.suggested_ledger_code) bits.push('ledger ' + it.suggested_ledger_code);
+    var l4 = _extractLast4(it);
+    if (l4) bits.push('card ••' + l4);
+    if (it.suggested_person) bits.push('owner ' + it.suggested_person);
+    if (!bits.length) return null;
+    return '  ' + (idx+1) + '. €' + Number(it.amount_eur||0).toFixed(2) + ' · ' + (it.counterparty || it.description || '?') + ' → AI hint: ' + bits.join(', ');
+  }).filter(Boolean).join('\n');
+  var hintsBlock = aiHintsBullets
+    ? '\n\nAI hints (what the bot detected to help you locate the invoice):\n' + aiHintsBullets + '\n'
+    : '';
 
   overlay.innerHTML =
     '<div class="modal" style="max-width:95vw;width:95vw;max-height:95vh;height:95vh;display:flex;flex-direction:column;">' +
@@ -9752,7 +9838,7 @@ async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) 
             '</div>' +
             '<div>' +
               '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;">Intro note <span style="color:var(--muted);font-weight:400;">(transaction list is auto-appended below this)</span></label>' +
-              '<textarea id="chase-create-body" rows="10" style="width:100%;padding:12px;font-size:13px;border:1px solid var(--border);border-radius:6px;font-family:inherit;line-height:1.5;resize:vertical;min-height:200px;">Hi,\n\nFIO Bank Statement Audit flagged ' + items.length + ' transaction(s) in your stream (' + pc + ' — ' + pcName + ') with no matching invoice.\n\nPlease find the invoice(s) for these charges and upload them to FIO (https://fio-amitours.fly.dev/) under Upload → mark as "already paid".\n\nIf any of these belong to a different stream, reply with the correct profit-center code so Rita can re-route.\n\n— FIO Accounting Bot</textarea>' +
+              '<textarea id="chase-create-body" rows="14" style="width:100%;padding:12px;font-size:13px;border:1px solid var(--border);border-radius:6px;font-family:inherit;line-height:1.5;resize:vertical;min-height:240px;">Hi,\n\nKeel Bank Statement Audit flagged ' + items.length + ' transaction(s) in your stream (' + pc + ' — ' + pcName + ') with no matching invoice.\n\nPlease locate the invoice(s) for these charges and upload them at https://fio-amitours.fly.dev/ → Upload tab → mark as "already paid".' + hintsBlock + '\nIf any of these belong to a different stream, reply with the correct profit-center code so Rita can re-route.\n\n— Keel Accounting Bot</textarea>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -11437,7 +11523,7 @@ async function refreshChaseSupervision() {
 
 <footer class="bt-footer">
   <div class="bt-footer-left">
-    <span class="bot-name">FIO Accounting Bot</span> · part of the <span class="bot-family">BT4YOU Bots Family</span>
+    <span class="bot-name">Keel · Accounting Co-pilot</span> · part of the <span class="bot-family">BT4YOU.ai agentic business suite</span>
     <span style="color:var(--muted)">— alongside</span>
     <span class="bot-sibling">BT4YOU Executive Bot</span>
     <span class="bot-sibling">BT4YOU Call QA</span>

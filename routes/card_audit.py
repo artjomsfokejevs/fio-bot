@@ -134,6 +134,20 @@ def card_audit_list() -> Any:
                 pass
         tx["suggested_pc"] = pc
         tx["suggested_person"] = person
+
+        # 2026-06-27 — also suggest a ledger code so the Asana chase task
+        # description tells the stakeholder which account this likely posts
+        # to. Cheap keyword classifier on the merchant description; the AI
+        # vision classifier runs only on actual invoices, not on bank rows.
+        if not tx.get("suggested_ledger_code"):
+            try:
+                from services import classifier as _clf
+                desc_blob = (tx.get("counterparty") or "") + " " + (tx.get("description") or "")
+                lc = _clf.suggest_ledger_from_text(desc_blob) if hasattr(_clf, "suggest_ledger_from_text") else None
+                if lc:
+                    tx["suggested_ledger_code"] = lc
+            except Exception:  # noqa: BLE001 — graceful when classifier missing
+                pass
     return jsonify({"transactions": rows})
 
 
