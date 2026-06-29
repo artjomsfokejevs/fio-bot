@@ -2483,6 +2483,28 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
       </div>
     </div>
 
+    <!-- 2026-06-29 — UNIFIED CASH TIMELINE editor (operator's Google
+         Sheet, hosted inside Keel). Renders rows from cashflow_weekly,
+         offers a paste-from-sheet modal + "Recompute actuals" button. -->
+    <div class="table-wrapper" style="margin-bottom:20px;">
+      <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2>🗓️ Weekly cashflow timeline <span style="font-size:12px;color:var(--muted);font-weight:400;">(Amitours unified, fact + plan)</span></h2>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <select id="cw-window" onchange="renderCashflowWeeklyCard()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;">
+            <option value="4_8">−4 / +8 weeks</option>
+            <option value="8_13" selected>−8 / +13 weeks</option>
+            <option value="26_26">−26 / +26 weeks</option>
+            <option value="52_52">−52 / +52 weeks</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="openCashflowImportModal()" style="font-size:12px;">📋 Paste from Sheet</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="triggerDeriveActuals()" style="font-size:12px;" title="Recompute 'actual' rows from revenue_receipts + paid documents + bank balances">🔄 Recompute actuals</button>
+        </div>
+      </div>
+      <div id="cashflow-weekly-body" style="padding:8px 0;overflow:auto;max-height:70vh;">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
     <!-- 2026-06-26 G2 — Consolidated P&L with intercompany elimination -->
     <div class="table-wrapper" style="margin-bottom:20px;">
       <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -3547,6 +3569,40 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
   </div>
 
   <!-- Add / Detail modal for Revenue (shared) -->
+  <!-- 2026-06-29 — Weekly cashflow paste-import modal -->
+  <div class="modal-overlay" id="cw-import-overlay">
+    <div class="modal" style="max-width:920px;width:96vw;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="modal-header">
+        <h3>📋 Paste from Google Sheet</h3>
+        <button class="modal-close" onclick="closeCashflowImportModal()">×</button>
+      </div>
+      <div class="modal-body" style="padding:18px 22px;overflow:auto;flex:1;min-height:0;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+          Copy a block of rows from your <b>AMITOURS — UNIFIED CASH TIMELINE</b> sheet (including the header row).
+          Required columns: <code>End Date</code> + <code>Type</code>. Cells like <code>€1,234.56</code>, <code>(€500)</code>, <code>—</code> are normalised automatically.
+          Rows marked <code>Actual</code> are skipped — use <b>🔄 Recompute actuals</b> on the card header instead.
+        </div>
+        <textarea id="cw-import-text" placeholder="Period&#x9;End Date&#x9;Type&#x9;B2C revenue plan&#x9;A2A burn plan&#x10;W26&#x9;6/29/2026&#x9;Forecast&#x9;€50,000&#x9;(€30,000)" style="width:100%;min-height:240px;font-family:ui-monospace,monospace;font-size:11px;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;"></textarea>
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
+            Default row type:
+            <select id="cw-import-default-type" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;">
+              <option value="forecast" selected>forecast</option>
+              <option value="estimate">estimate</option>
+              <option value="plug">plug</option>
+            </select>
+            <span style="color:var(--muted);font-size:11px;">(applied to rows where <code>Type</code> column is blank)</span>
+          </label>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="submitCashflowImport(true)">🔍 Preview (dry-run)</button>
+            <button class="btn btn-primary btn-sm" onclick="submitCashflowImport(false)">💾 Import</button>
+          </div>
+        </div>
+        <div id="cw-import-result" style="margin-top:14px;font-size:12px;"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="revenue-modal-overlay">
     <!-- Revenue modal — 2026-06-27 UX pass: widened to 880 px and given
          a dedicated max-width so labelled fields (PC selector, customer,
@@ -3834,6 +3890,7 @@ function loadAnalyticsPanel() {
     renderAnalyticsCashflow(data);
     try { renderRevenueCashflowCard(); } catch (e) { console.error('revenue cashflow card failed', e); }
     try { renderCashflowOverviewCard(); } catch (e) { console.error('cashflow overview failed', e); }
+    try { renderCashflowWeeklyCard(); } catch (e) { console.error('cashflow weekly failed', e); }
     try { renderCashflowProjectionCard(); } catch (e) { console.error('projection card failed', e); }
     try { renderConsolidatedPnlCard(); } catch (e) { console.error('consolidated pnl card failed', e); }
     renderAnalyticsByPeriod(data);
@@ -11331,6 +11388,242 @@ async function renderRevenueCashflowCard() {
 // P&L) and renders the six headline numbers the operator's planning sheet
 // already uses: liquidity (latest bank snapshot), revenue (cash-in),
 // COGS / expense, group burn, AP committed, AR outstanding.
+// ──────────────────────────────────────────────────────────────────────
+// 🗓️ Weekly cashflow timeline — UI for cashflow_weekly (2026-06-29).
+// Replicates the operator's AMITOURS UNIFIED CASH TIMELINE Google Sheet
+// inside Keel: rows = weeks, cols = the same line items the operator
+// uses in their planning workbook. Live data from /api/cashflow/weekly.
+// ──────────────────────────────────────────────────────────────────────
+
+// Column spec — keeps headers + cell renderers + the cashflow_weekly
+// payload key in one structure so they cannot drift apart.
+var CW_COLS = [
+  {key:'_period',     label:'Period',         group:'id',    width:60,  align:'left'},
+  {key:'_end',        label:'End Date',       group:'id',    width:88,  align:'left'},
+  {key:'_type',       label:'Type',           group:'id',    width:80,  align:'left'},
+  {key:'b2c_revenue_fact', label:'B2C fact',  group:'rev',   width:90,  align:'right', positive:true},
+  {key:'b2c_revenue_plan', label:'B2C plan',  group:'rev',   width:90,  align:'right'},
+  {key:'b2b_revenue_fact', label:'B2B fact',  group:'rev',   width:90,  align:'right', positive:true},
+  {key:'b2b_revenue_plan', label:'B2B plan',  group:'rev',   width:90,  align:'right'},
+  {key:'holdback',         label:'Hold back', group:'rev',   width:84,  align:'right'},
+  {key:'financing_inflow', label:'Fin in',    group:'fin',   width:84,  align:'right'},
+  {key:'financing_outflow',label:'Fin out',   group:'fin',   width:84,  align:'right', signed:true},
+  {key:'a2a_burn_fact',    label:'A2A burn fact', group:'a2a', width:96, align:'right', signed:true},
+  {key:'a2a_burn_plan',    label:'A2A burn plan', group:'a2a', width:96, align:'right', signed:true},
+  {key:'marketing_plan',   label:'Mktg plan', group:'a2a',   width:88,  align:'right', signed:true},
+  {key:'a2a_cogs_fact',    label:'A2A COGS fact', group:'a2a', width:96, align:'right', signed:true},
+  {key:'a2a_cogs_plan',    label:'A2A COGS plan', group:'a2a', width:96, align:'right', signed:true},
+  {key:'a2a_cogs_ap',      label:'COGS AP',   group:'a2a',   width:84,  align:'right', signed:true},
+  {key:'holding_royalty',  label:'Holding royalty', group:'pf', width:104, align:'right'},
+  {key:'portfolio_burn_fact',label:'Pf burn fact', group:'pf', width:96, align:'right', signed:true},
+  {key:'portfolio_burn_plan',label:'Pf burn plan', group:'pf', width:96, align:'right', signed:true},
+  {key:'portfolio_inflows',label:'Pf inflows',group:'pf',   width:92,  align:'right'},
+  {key:'outstanding_ap_intercompany', label:'AP / IC', group:'other', width:84, align:'right'},
+  {key:'net_eur',          label:'Net',       group:'sum',   width:92,  align:'right', bold:true, signed:true},
+  {key:'balance_eop_eur',  label:'Balance EoP', group:'sum', width:104, align:'right', bold:true, balance:true},
+];
+
+var CW_GROUP_BG = {
+  id:    '#ffffff',
+  rev:   '#ecfdf5',   // light green — revenue
+  fin:   '#fff7ed',   // amber-tinted — financing
+  a2a:   '#fef3c7',   // amber — Alps2Alps engine
+  pf:    '#ede9fe',   // violet — portfolio
+  other: '#f1f5f9',
+  sum:   '#fffbeb',   // brand amber background — totals
+};
+
+function _cwFmt(val, col) {
+  if (val === null || val === undefined || val === '') return '<span style="color:#cbd5e1;">·</span>';
+  var n = Number(val);
+  if (isNaN(n)) return esc(String(val));
+  var abs = Math.abs(n);
+  var formatted = '€' + abs.toLocaleString('en', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  if (col.signed && n < 0) return '<span style="color:#991b1b;">(' + formatted + ')</span>';
+  if (col.positive && n > 0) return '<span style="color:#166534;">' + formatted + '</span>';
+  if (col.balance) {
+    var color = n < 0 ? '#991b1b' : (n < 100000 ? '#854d0e' : '#166534');
+    return '<b style="color:' + color + ';">€' + abs.toLocaleString('en', {minimumFractionDigits: 0, maximumFractionDigits: 0}) + '</b>';
+  }
+  if (col.bold && n < 0) return '<b style="color:#991b1b;">(' + formatted + ')</b>';
+  if (col.bold) return '<b>' + formatted + '</b>';
+  return formatted;
+}
+
+function _cwWindowSel() {
+  var el = document.getElementById('cw-window');
+  var v = (el && el.value) || '8_13';
+  var parts = v.split('_');
+  return {wb: parseInt(parts[0], 10) || 8, wa: parseInt(parts[1], 10) || 13};
+}
+
+async function renderCashflowWeeklyCard() {
+  var box = document.getElementById('cashflow-weekly-body');
+  if (!box) return;
+  var win = _cwWindowSel();
+  var url = '/api/cashflow/weekly?weeks_before=' + win.wb + '&weeks_after=' + win.wa;
+  try {
+    var data = await fetch(url, {headers: {'X-FIO-User': (window.currentUser || '')}}).then(function(r){ return r.json(); });
+    if (data.error) {
+      box.innerHTML = '<div class="empty-state" style="padding:14px;">' + esc(data.error) + '</div>';
+      return;
+    }
+    var rows = data.rows || [];
+    var today = data.today_monday;
+    if (!rows.length) {
+      box.innerHTML =
+        '<div class="empty-state" style="padding:32px 16px;text-align:center;">' +
+        '<div style="font-size:14px;margin-bottom:8px;">No weekly rows yet.</div>' +
+        '<div style="font-size:12px;color:var(--muted);">' +
+        'Click <b>📋 Paste from Sheet</b> to import forecast/estimate/plug rows from your Google Sheet, ' +
+        'and <b>🔄 Recompute actuals</b> to populate actual rows from documents + bank balances.' +
+        '</div>' +
+        '</div>';
+      return;
+    }
+
+    var html = '<table style="width:100%;border-collapse:separate;border-spacing:0;font-size:11px;font-family:ui-monospace,monospace;min-width:1800px;">';
+    // Header
+    html += '<thead><tr>';
+    CW_COLS.forEach(function(c){
+      html += '<th style="position:sticky;top:0;background:' + (CW_GROUP_BG[c.group] || '#fff') +
+              ';padding:8px 6px;border-bottom:2px solid var(--keel-amber);font-size:10px;text-transform:uppercase;' +
+              'letter-spacing:.04em;text-align:' + (c.align || 'left') + ';' +
+              'min-width:' + c.width + 'px;white-space:nowrap;color:#374151;font-family:var(--font);' +
+              'z-index:5;">' + esc(c.label) + '</th>';
+    });
+    html += '<th style="position:sticky;top:0;background:#f8fafc;padding:8px 6px;border-bottom:2px solid var(--keel-amber);' +
+            'min-width:80px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-family:var(--font);z-index:5;">Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    rows.forEach(function(r){
+      var isToday = r.week_start === today;
+      var rowBg = isToday ? 'rgba(245,158,11,.10)' : 'transparent';
+      var rowBorder = isToday ? '2px solid var(--keel-amber)' : '1px solid #f1f5f9';
+      var typeBadge = '';
+      if (r.row_type === 'actual')    typeBadge = '<span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;">actual</span>';
+      else if (r.row_type === 'forecast') typeBadge = '<span style="background:#dbeafe;color:#1e3a8a;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;">forecast</span>';
+      else if (r.row_type === 'estimate') typeBadge = '<span style="background:#ede9fe;color:#5b21b6;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;">estimate</span>';
+      else if (r.row_type === 'plug')     typeBadge = '<span style="background:#fef3c7;color:#854d0e;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;">plug</span>';
+
+      html += '<tr style="background:' + rowBg + ';border-bottom:' + rowBorder + ';">';
+      CW_COLS.forEach(function(c){
+        var bg = CW_GROUP_BG[c.group] || 'transparent';
+        var content;
+        if (c.key === '_period') content = '<b>' + esc(r.week_label || '') + '</b>';
+        else if (c.key === '_end') content = '<span style="color:var(--muted);">' + esc(r.week_start || '') + '</span>';
+        else if (c.key === '_type') content = typeBadge;
+        else content = _cwFmt((r.fields || {})[c.key], c);
+        html += '<td style="padding:6px 6px;text-align:' + (c.align || 'left') +
+                ';background:' + bg + ';border-bottom:1px solid #f1f5f9;white-space:nowrap;">' + content + '</td>';
+      });
+      // Actions
+      var act = '';
+      if (r.row_type !== 'actual') {
+        act = '<button class="btn btn-ghost btn-sm" onclick="deleteCashflowWeeklyRow(\'' + r.week_start + '\',\'' + r.row_type + '\')" style="font-size:10px;padding:2px 6px;">🗑</button>';
+      } else {
+        act = '<span style="font-size:10px;color:var(--muted);" title="Actuals are derived — use Recompute">🔒</span>';
+      }
+      html += '<td style="padding:6px 6px;text-align:right;background:#fafbfd;border-bottom:1px solid #f1f5f9;">' + act + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    // Footer summary
+    var info = '<div style="padding:10px 14px;border-top:1px solid var(--border);background:#fafbfd;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;">' +
+              '<span><b>' + rows.length + '</b> row(s) · window <b>' + esc(data.window_start) + '</b> → <b>' + esc(data.window_end) + '</b> · today\'s Monday: <b>' + esc(today || '') + '</b></span>' +
+              '<span>Rows in amber row = current week · 🔒 = derived (use Recompute) · 🗑 = delete forecast/estimate/plug</span>' +
+              '</div>';
+    box.innerHTML = html + info;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state" style="padding:14px;color:#dc2626;">Weekly cashflow load failed: ' + esc(e.message || String(e)) + '</div>';
+  }
+}
+
+function openCashflowImportModal() {
+  var ov = document.getElementById('cw-import-overlay');
+  if (!ov) return;
+  document.getElementById('cw-import-text').value = '';
+  document.getElementById('cw-import-result').innerHTML = '';
+  ov.classList.add('active');
+}
+function closeCashflowImportModal() {
+  var ov = document.getElementById('cw-import-overlay');
+  if (ov) ov.classList.remove('active');
+}
+async function submitCashflowImport(dryRun) {
+  var text = (document.getElementById('cw-import-text').value || '').trim();
+  var defType = document.getElementById('cw-import-default-type').value;
+  var result = document.getElementById('cw-import-result');
+  if (!text) { result.innerHTML = '<span style="color:#dc2626;">⚠ Paste some text first.</span>'; return; }
+  result.innerHTML = '⏳ ' + (dryRun ? 'Previewing' : 'Importing') + '…';
+  try {
+    var res = await fetch('/api/cashflow/weekly/import-tsv', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-FIO-User':(window.currentUser||'')},
+      body: JSON.stringify({text: text, default_row_type: defType, dry_run: dryRun}),
+    }).then(function(r){ return r.json(); });
+    if (res.error) { result.innerHTML = '<span style="color:#dc2626;">⚠ ' + esc(res.error) + '</span>'; return; }
+    var html = '<div style="padding:10px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;">' +
+               '<b>' + (dryRun ? 'Preview' : 'Imported') + ':</b> ' +
+               res.rows_imported + ' / ' + res.rows_seen + ' row(s) ' +
+               (dryRun ? 'will be written' : 'written') + ' · separator: ' + esc(res.separator || '?') +
+               '</div>';
+    if (res.unknown_columns && res.unknown_columns.length) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;color:#854d0e;font-size:11px;">' +
+              '⚠ Unknown columns ignored: <code>' + res.unknown_columns.map(esc).join(', ') + '</code></div>';
+    }
+    if (res.skipped_examples && res.skipped_examples.length) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px;">' +
+              '<b>' + res.rows_skipped + ' row(s) skipped</b> — examples:<ul style="margin:4px 0 0 18px;">';
+      res.skipped_examples.forEach(function(s){
+        html += '<li>line ' + s.line + ': ' + esc(s.reason) + ' — <code>' + esc((s.row||'').slice(0,80)) + '</code></li>';
+      });
+      html += '</ul></div>';
+    }
+    result.innerHTML = html;
+    if (!dryRun) {
+      renderCashflowWeeklyCard();
+      renderCashflowOverviewCard();
+    }
+  } catch (e) {
+    result.innerHTML = '<span style="color:#dc2626;">⚠ Import failed: ' + esc(e.message || String(e)) + '</span>';
+  }
+}
+
+async function triggerDeriveActuals() {
+  if (!confirm('Recompute actual rows from documents + revenue receipts + bank balances?\nThis wipes prior actuals in the last 26 weeks and rebuilds them.')) return;
+  showToast('Recomputing actuals…', 'info');
+  try {
+    var res = await fetch('/api/cashflow/weekly/derive-actuals', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-FIO-User':(window.currentUser||'')},
+      body: JSON.stringify({weeks_before: 26, weeks_after: 0}),
+    }).then(function(r){ return r.json(); });
+    if (res.error) { showToast('Recompute failed: ' + res.error, 'error'); return; }
+    showToast('✓ Rebuilt ' + (res.weeks_rebuilt || 0) + ' week(s) of actuals', 'success');
+    renderCashflowWeeklyCard();
+    renderCashflowOverviewCard();
+  } catch (e) {
+    showToast('Recompute failed: ' + (e.message || String(e)), 'error');
+  }
+}
+
+async function deleteCashflowWeeklyRow(weekStart, rowType) {
+  if (!confirm('Delete ' + rowType + ' row for week ' + weekStart + '?')) return;
+  try {
+    var res = await fetch('/api/cashflow/weekly/' + encodeURIComponent(weekStart) + '/' + encodeURIComponent(rowType), {
+      method: 'DELETE',
+      headers: {'X-FIO-User':(window.currentUser||'')},
+    }).then(function(r){ return r.json(); });
+    if (res.error) { showToast(res.error, 'error'); return; }
+    showToast('✓ Deleted', 'success');
+    renderCashflowWeeklyCard();
+  } catch (e) {
+    showToast('Delete failed: ' + (e.message || String(e)), 'error');
+  }
+}
+
 async function renderCashflowOverviewCard() {
   var box = document.getElementById('cashflow-overview-body');
   if (!box) return;

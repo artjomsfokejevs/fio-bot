@@ -4028,14 +4028,23 @@ def export_bulk_zip():
     # a hint to load the app first, so they don't think the role is wrong.
     user = _current_user_name()
     if not user:
+        # 2026-06-29 bugfix — Fly's edge proxy passes the original scheme
+        # via X-Forwarded-Proto; request.url_root reports 'http://' because
+        # the in-cluster hop is plain HTTP. Honour the forwarded scheme so
+        # the message doesn't trick the operator into clicking an http://
+        # link (which the browser then upgrades inconsistently).
+        proto = (request.headers.get("X-Forwarded-Proto")
+                 or ("https" if request.is_secure else "http"))
+        host = request.headers.get("X-Forwarded-Host") or request.host
+        sign_in_url = f"{proto}://{host}".rstrip("/")
         return jsonify({
             "error": "not_signed_in",
-            "message": ("You're not signed in. Open the Keel app first "
-                         "(https://fio-amitours.fly.dev/), sign in as a "
-                         "user with bookkeeper or admin role, then click "
-                         "the 📦 Bulk ZIP button on the Accounting tab — "
-                         "this URL is gated by the export_bulk capability."),
-            "sign_in_url": request.url_root.rstrip("/"),
+            "message": ("You're not signed in. Open the Keel app first ("
+                         + sign_in_url + "/), sign in as a user with "
+                         "bookkeeper or admin role, then click the 📦 Bulk "
+                         "ZIP button on the Accounting tab — this URL is "
+                         "gated by the export_bulk capability."),
+            "sign_in_url": sign_in_url,
             "required_capability": "export_bulk",
         }), 401
     err = _require_capability("export_bulk")
