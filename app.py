@@ -3918,7 +3918,23 @@ def export_by_legal_entity():
 # Filtered by Legal Entity + Period. Designed for handover to external accounting.
 @app.route("/api/accounting/export-bulk-zip", methods=["GET"])
 def export_bulk_zip():
-    # 2026-06-24 FB-L — bulk export is privileged (full PDFs leave the system)
+    # 2026-06-24 FB-L — bulk export is privileged (full PDFs leave the system).
+    # 2026-06-29 — operator hit this URL directly while logged-out and got an
+    # opaque 403 "missing capability export_bulk" with you:null. Detect the
+    # not-signed-in case first and return 401 with a clear sign-in prompt and
+    # a hint to load the app first, so they don't think the role is wrong.
+    user = _current_user_name()
+    if not user:
+        return jsonify({
+            "error": "not_signed_in",
+            "message": ("You're not signed in. Open the Keel app first "
+                         "(https://fio-amitours.fly.dev/), sign in as a "
+                         "user with bookkeeper or admin role, then click "
+                         "the 📦 Bulk ZIP button on the Accounting tab — "
+                         "this URL is gated by the export_bulk capability."),
+            "sign_in_url": request.url_root.rstrip("/"),
+            "required_capability": "export_bulk",
+        }), 401
     err = _require_capability("export_bulk")
     if err:
         return err
