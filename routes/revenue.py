@@ -429,6 +429,56 @@ def cashflow_weekly_upsert() -> Any:
     return jsonify(rec), 201
 
 
+@revenue_bp.route("/cashflow/weekly/import-tsv", methods=["POST"])
+def cashflow_weekly_import_tsv() -> Any:
+    """Accept a paste from the operator's Google Sheet (TSV or CSV) and
+    upsert each row as forecast/estimate/plug. Returns a structured
+    summary: rows_seen, rows_imported, skipped_examples, unknown_columns.
+
+    Body: {text: "...", default_row_type?: 'forecast', dry_run?: false}
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    body = request.get_json(silent=True) or {}
+    text = body.get("text") or ""
+    drt = (body.get("default_row_type") or "forecast").strip()
+    if drt not in _cw.WRITABLE_ROW_TYPES:
+        return jsonify({"error": "default_row_type must be one of "
+                                  + str(list(_cw.WRITABLE_ROW_TYPES))}), 400
+    try:
+        out = _cw.import_tsv(text=text,
+                              default_row_type=drt,
+                              by=_user(),
+                              dry_run=bool(body.get("dry_run")))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(out), 201 if not body.get("dry_run") else 200
+
+
+@revenue_bp.route("/cashflow/weekly/derive-actuals", methods=["POST"])
+def cashflow_weekly_derive_actuals() -> Any:
+    """Recompute 'actual' rows for the past N weeks from source data
+    (revenue_receipts + paid documents + bank_account_balances). Idempotent —
+    wipes prior actuals in the window first.
+
+    Body: {weeks_before?: 26, weeks_after?: 0}
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    body = request.get_json(silent=True) or {}
+    try:
+        wb = int(body.get("weeks_before") or 26)
+        wa = int(body.get("weeks_after") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "weeks_before / weeks_after must be ints"}), 400
+    out = _cw.derive_actuals(weeks_before=wb, weeks_after=wa, by=_user())
+    return jsonify(out)
+
+
 @revenue_bp.route("/cashflow/weekly/<week_start>/<row_type>", methods=["DELETE"])
 def cashflow_weekly_delete(week_start: str, row_type: str) -> Any:
     err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
