@@ -9129,8 +9129,10 @@ function downloadBulkZip(entityCode) {
                'Can be sent directly to the external accounting firm.')) return;
   var url = '/api/accounting/export-bulk-zip?legal_entity=' + encodeURIComponent(entityCode);
   if (period) url += '&period=' + encodeURIComponent(period);
+  // window.location triggers navigation, which doesn't carry the
+  // X-FIO-User header — inline identity via the GET-only ?as= shortcut.
   showToast('📦 Building ZIP — download will start shortly…', 'info');
-  window.location.href = url;
+  window.location.href = _withIdentity(url);
 }
 
 async function exportAccountingSheets(profitCenter, period) {
@@ -10500,13 +10502,24 @@ function loadCaBatches() {
   });
 }
 
+// 2026-06-29 — browser navigation does NOT send our X-FIO-User header,
+// so direct window.location/open downloads land at the backend as
+// anonymous and get 401. Inline the signed-in user as ?as= (GET-only
+// shortcut, safe — POST/DELETE refuse it). Use this for every URL we
+// hand to the browser instead of fetch().
+function _withIdentity(url) {
+  var who = (window.currentUser || '').trim();
+  if (!who) return url;
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'as=' + encodeURIComponent(who);
+}
+
 function downloadCaBatch(batchId) {
-  window.location.href = '/api/card-audit/batches/' + encodeURIComponent(batchId) + '/export';
+  window.location.href = _withIdentity('/api/card-audit/batches/' + encodeURIComponent(batchId) + '/export');
 }
 
 function exportCardAudit() {
   var period = document.getElementById('ca-period').value;
-  window.location.href = '/api/card-audit/export?period=' + period;
+  window.location.href = _withIdentity('/api/card-audit/export?period=' + period);
 }
 
 function printNonMatching() {
@@ -10515,7 +10528,7 @@ function printNonMatching() {
   var url = '/api/card-audit/non-matching/print?period=' + encodeURIComponent(period);
   if (pc) url += '&profit_center=' + encodeURIComponent(pc);
   // Open in a new tab so user can hit Cmd+P
-  window.open(url, '_blank', 'noopener');
+  window.open(_withIdentity(url), '_blank', 'noopener');
 }
 
 // ─── Modal (open card-tx for assign/match/exclude/delete) ───
