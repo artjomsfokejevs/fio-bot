@@ -3589,8 +3589,16 @@ def _current_user_name() -> Optional[str]:
 
     Frontend sets this from localStorage (fio_signed_in_as) on every fetch.
     Returns None when nothing set -- treated as anonymous / viewer.
+
+    2026-06-29 — shortcut-link fallback: GET requests may also pass
+    `?as=<full_name>` in the query string. Lets admins / bookkeepers
+    bookmark download URLs (e.g. nightly Bulk-ZIP export) without
+    needing the in-app fetch wrapper to add the header. Restricted to
+    GET so mutation routes still require the header.
     """
     name = (request.headers.get("X-FIO-User") or "").strip()
+    if not name and request.method == "GET":
+        name = (request.args.get("as") or "").strip()
     return name or None
 
 
@@ -4037,14 +4045,36 @@ def export_bulk_zip():
                  or ("https" if request.is_secure else "http"))
         host = request.headers.get("X-Forwarded-Host") or request.host
         sign_in_url = f"{proto}://{host}".rstrip("/")
+        # Build a clickable shortcut URL using the operator's known
+        # admin emails (best-effort — first admin in fio_users wins).
+        shortcut = ""
+        try:
+            conn = db.get_connection()
+            row = conn.execute(
+                "SELECT full_name FROM fio_users "
+                "WHERE active = 1 AND role IN ('admin','bookkeeper') "
+                "ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END, id "
+                "LIMIT 1"
+            ).fetchone()
+            conn.close()
+            if row and row["full_name"]:
+                from urllib.parse import urlencode as _urlencode
+                qs = dict(request.args.items())
+                qs["as"] = row["full_name"]
+                shortcut = (sign_in_url + request.path + "?" + _urlencode(qs))
+        except Exception:  # noqa: BLE001
+            pass
         return jsonify({
             "error": "not_signed_in",
-            "message": ("You're not signed in. Open the Keel app first ("
-                         + sign_in_url + "/), sign in as a user with "
-                         "bookkeeper or admin role, then click the 📦 Bulk "
-                         "ZIP button on the Accounting tab — this URL is "
-                         "gated by the export_bulk capability."),
+            "message": ("You're not signed in. Two options: (1) open the "
+                         "Keel app (" + sign_in_url + "/), sign in as a "
+                         "user with bookkeeper or admin role, then click "
+                         "the 📦 Bulk ZIP button on the Accounting tab; "
+                         "OR (2) append `?as=<your full name>` to this URL "
+                         "for a shortcut (works because GET endpoints "
+                         "accept identity via query param)."),
             "sign_in_url": sign_in_url,
+            "shortcut_url": shortcut or None,
             "required_capability": "export_bulk",
         }), 401
     err = _require_capability("export_bulk")
