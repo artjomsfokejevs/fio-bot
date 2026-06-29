@@ -29,3 +29,56 @@ def test_suggest_pc_for_vendor_handles_empty():
     """Vendor suggestion with no brand → None."""
     out = bts.suggest_pc_for_vendor("", "")
     assert out is None or isinstance(out, (str, dict))
+
+
+# ────────────────────────────────────────────────────────────────────────
+# 2026-06-29 — Operator-feedback vendor rules
+# Two PC mis-classifications hit production:
+#   - Caisse AVS (CH payroll vendor) was routed to AA instead of AG
+#   - DEEP AYURVEDA HEALTHCARE was routed to AA instead of AL
+# Lock the fix so future suggester edits don't regress.
+# ────────────────────────────────────────────────────────────────────────
+
+def test_caisse_avs_routes_to_ag_holding():
+    """CH payroll collector → Amitours Holding (AG), not Alps2Alps."""
+    r = bts.suggest_pc_for_vendor(
+        "Caisse AVS de la Fédération patronale vaudoise",
+        "Route du Lac 2, 1094 Paudex",
+    )
+    assert r is not None
+    assert r["profit_center"] == "AG"
+    assert r["confidence"] >= 90
+
+
+def test_federation_patronale_vaudoise_routes_to_ag():
+    r = bts.suggest_pc_for_vendor("Fédération patronale vaudoise", "")
+    assert r is not None and r["profit_center"] == "AG"
+
+
+def test_deep_ayurveda_routes_to_alveda():
+    """Health-services vendor → ALVEDA (AL)."""
+    r = bts.suggest_pc_for_vendor("DEEP AYURVEDA HEALTHCARE PVT. LTD", "India")
+    assert r is not None
+    assert r["profit_center"] == "AL"
+
+
+def test_ayurveda_keyword_alone_routes_to_alveda():
+    r = bts.suggest_pc_for_vendor("Some Ayurveda Clinic", "")
+    assert r is not None and r["profit_center"] == "AL"
+
+
+def test_address_keyword_fallback_to_ag():
+    """When the vendor name is generic but the address is in Paudex /
+    Vaud / Switzerland, route to AG. Real example: a generic invoice
+    from a small CH supplier where only the address gives away the
+    correct stream."""
+    r = bts.suggest_pc_for_vendor("Some Vendor SARL", "Route du Lac 2, 1094 Paudex")
+    assert r is not None and r["profit_center"] == "AG"
+
+
+def test_external_vendor_with_no_signal_returns_none():
+    """Vendor with no brand / health / CH keyword → None (caller falls
+    back to LLM classification). Sanity that we didn't over-fit."""
+    r = bts.suggest_pc_for_vendor("Vodafone Magyarország Zrt.",
+                                    "Budapest, Hungary")
+    assert r is None

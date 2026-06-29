@@ -403,6 +403,67 @@ CREATE TABLE IF NOT EXISTS bank_account_balances (
 CREATE INDEX IF NOT EXISTS ix_bb_pc_date     ON bank_account_balances(pc, as_of_date);
 CREATE INDEX IF NOT EXISTS ix_bb_account     ON bank_account_balances(paying_account_id);
 
+-- 2026-06-29 — Weekly cashflow (Amitours UNIFIED CASH TIMELINE).
+-- Mirrors the operator's planning Google Sheet so we can keep both
+-- "Actual" rows (derived from documents + revenue_receipts + bank balances)
+-- and "Forecast"/"Estimate" rows (operator-entered) in one table. Read API
+-- exposes a richer projection than the simple 13-week one; UI editor for
+-- forecast rows lands in a later phase.
+--
+-- Conventions:
+--   * week_start  — ISO Monday (YYYY-MM-DD).
+--   * row_type    — actual | forecast | estimate | plug.
+--                   'actual' rows are recomputed from source data on every
+--                   read so manual edits to them are NOT preserved (the
+--                   computer is the source of truth for actuals).
+--                   'forecast'/'estimate'/'plug' rows are operator-entered
+--                   and survive recompute.
+--   * All amounts in EUR. NULL = no value (different from 0).
+CREATE TABLE IF NOT EXISTS cashflow_weekly (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start                  TEXT NOT NULL,            -- ISO Monday YYYY-MM-DD
+    week_label                  TEXT,                     -- 'W26', 'W-15', 'PLUG: …'
+    row_type                    TEXT NOT NULL CHECK(row_type IN ('actual','forecast','estimate','plug')),
+
+    -- Revenue (cash-in)
+    b2c_revenue_fact            REAL,
+    b2c_revenue_plan            REAL,
+    b2b_revenue_fact            REAL,
+    b2b_revenue_plan            REAL,
+    holdback                    REAL,                     -- Stripe / processor reserve change
+
+    -- Financing
+    financing_inflow            REAL,
+    financing_outflow           REAL,
+
+    -- Alps2Alps cost engine (operator splits "burn" plan vs fact)
+    a2a_burn_fact               REAL,
+    a2a_burn_plan               REAL,
+    marketing_plan              REAL,
+    a2a_cogs_fact               REAL,
+    a2a_cogs_plan               REAL,
+    a2a_cogs_ap                 REAL,                     -- DEP/BON memo line
+
+    -- Holding & portfolio
+    holding_royalty             REAL,
+    portfolio_burn_fact         REAL,
+    portfolio_burn_plan         REAL,
+    portfolio_inflows           REAL,
+
+    -- Other / catch-all
+    outstanding_ap_intercompany REAL,                     -- bucket per the Google Sheet
+    net_eur                     REAL,                     -- computed: sum of in - sum of out
+    balance_eop_eur             REAL,                     -- running balance, end-of-period
+
+    note                        TEXT,                     -- free-form (e.g. plug reason)
+    source                      TEXT,                     -- 'derived' | 'manual' | 'import:sheet'
+    updated_at                  TEXT NOT NULL,
+    updated_by                  TEXT,
+    UNIQUE(week_start, row_type)
+);
+CREATE INDEX IF NOT EXISTS ix_cw_week  ON cashflow_weekly(week_start);
+CREATE INDEX IF NOT EXISTS ix_cw_type  ON cashflow_weekly(row_type);
+
 CREATE TABLE IF NOT EXISTS policy_violation_approvals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     violation_key   TEXT NOT NULL UNIQUE,

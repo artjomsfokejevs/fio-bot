@@ -353,6 +353,99 @@ def cashflow_check_runway() -> Any:
     return jsonify({"fired": True, **result})
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Weekly cashflow timeline (Amitours UNIFIED CASH TIMELINE) — 2026-06-29.
+# Read endpoints land first; UI editor + Google-Sheet import in next phase.
+# ─────────────────────────────────────────────────────────────────────
+
+@revenue_bp.route("/cashflow/weekly", methods=["GET"])
+def cashflow_weekly_list() -> Any:
+    """Return weekly rows centred on the current ISO Monday.
+    Query params:
+      weeks_before (int, default 8)
+      weeks_after  (int, default 13)
+      row_types    (csv: actual,forecast,estimate,plug; default all)
+    """
+    err = _require(*_READ_ROLES)
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    try:
+        wb = int(request.args.get("weeks_before") or 8)
+        wa = int(request.args.get("weeks_after") or 13)
+    except ValueError:
+        return jsonify({"error": "weeks_before / weeks_after must be integers"}), 400
+    raw_types = (request.args.get("row_types") or "").strip()
+    row_types = [t.strip() for t in raw_types.split(",") if t.strip()] or None
+    if row_types:
+        bad = [t for t in row_types if t not in _cw.VALID_ROW_TYPES]
+        if bad:
+            return jsonify({"error": "invalid row_types",
+                            "invalid": bad,
+                            "valid": list(_cw.VALID_ROW_TYPES)}), 400
+    try:
+        return jsonify(_cw.list_weeks(weeks_before=wb, weeks_after=wa, row_types=row_types))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@revenue_bp.route("/cashflow/weekly/totals", methods=["GET"])
+def cashflow_weekly_totals() -> Any:
+    err = _require(*_READ_ROLES)
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    try:
+        wb = int(request.args.get("weeks_before") or 8)
+        wa = int(request.args.get("weeks_after") or 13)
+    except ValueError:
+        return jsonify({"error": "weeks_before / weeks_after must be integers"}), 400
+    return jsonify(_cw.totals(weeks_before=wb, weeks_after=wa))
+
+
+@revenue_bp.route("/cashflow/weekly", methods=["POST"])
+def cashflow_weekly_upsert() -> Any:
+    """Upsert one forecast / estimate / plug row.
+    Body: {week_start, row_type, week_label?, note?, fields: {…}}
+    Actuals are derived; this endpoint refuses row_type=actual.
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    body = request.get_json(silent=True) or {}
+    try:
+        rec = _cw.upsert_row(
+            week_start=(body.get("week_start") or "").strip(),
+            row_type=(body.get("row_type") or "").strip(),
+            fields=body.get("fields") or {},
+            week_label=(body.get("week_label") or "").strip() or None,
+            note=(body.get("note") or "").strip() or None,
+            source=(body.get("source") or "").strip() or None,
+            by=_user(),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(rec), 201
+
+
+@revenue_bp.route("/cashflow/weekly/<week_start>/<row_type>", methods=["DELETE"])
+def cashflow_weekly_delete(week_start: str, row_type: str) -> Any:
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    try:
+        deleted = _cw.delete_row(week_start, row_type)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not deleted:
+        return jsonify({"error": "not_found",
+                        "week_start": week_start, "row_type": row_type}), 404
+    return jsonify({"deleted": True,
+                    "week_start": week_start, "row_type": row_type})
+
+
 @revenue_bp.route("/cashflow", methods=["GET"])
 def cashflow_monthly() -> Any:
     err = _require(*_READ_ROLES) or _require_cap("view_revenue")
