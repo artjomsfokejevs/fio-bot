@@ -5,5 +5,8 @@
     "#102a52",
     "#1a3f7a",
     "#1a73e8"
-  ]
+  ],
+  "_b32_comment": "B32 detector — SPA uses X-FIO-User header (set by the fetch wrapper). Any browser navigation (window.location/window.open/location.assign) to /api/ must wrap the URL in _withIdentity so the GET-only ?as= shortcut survives. See PRODUCT_BUILDER 2026-06-29 retro V129.",
+  "auth_header_scheme": "X-FIO-User",
+  "identity_url_helpers": ["_withIdentity"]
 }
