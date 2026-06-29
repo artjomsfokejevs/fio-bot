@@ -728,6 +728,83 @@ def erp_export_build(format_id: str):
     )
 
 
+# 2026-06-29 — Revenue Add modal: parse-preview endpoint.
+# Accepts a multipart file, parses it through the same vision pipeline
+# as /api/upload, and returns a JSON shape that the modal can map onto
+# its form fields (customer, VAT, invoice #, dates, amount, currency,
+# ledger guess, profit-center guess). The file is NEVER persisted by
+# this endpoint — the caller is expected to POST /api/revenue with the
+# attachment as a separate multipart field. This lets the operator
+# see the parsed fields, tweak them, then save in one motion.
+@app.route("/api/revenue/parse-preview", methods=["POST"])
+def revenue_parse_preview():
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER,
+                         roles_svc.ROLE_STREAM_OWNER, roles_svc.ROLE_HOLDING_CEO)
+    if err:
+        return err
+    if "file" not in request.files:
+        return jsonify({"error": "file is required (multipart field 'file')"}), 400
+    f = request.files["file"]
+    if not f.filename or not _allowed_file(f.filename):
+        return jsonify({"error": "Unsupported file type"}), 400
+    ext = f.filename.rsplit(".", 1)[1].lower()
+    # Stream to a temp path, parse, delete. No DB writes.
+    import tempfile as _tempfile, time as _time
+    with _tempfile.NamedTemporaryFile(suffix="." + ext, delete=False) as tmp:
+        tmp.write(f.read())
+        tmp_path = tmp.name
+    started = _time.monotonic()
+    try:
+        parsed = parse_document(tmp_path, ext)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("revenue parse-preview failed")
+        return jsonify({"error": "parser failed: " + str(exc)}), 500
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+    elapsed = round(_time.monotonic() - started, 2)
+    # Multi-receipt response → take the first
+    if isinstance(parsed, list) and parsed:
+        parsed = parsed[0]
+    if not isinstance(parsed, dict):
+        parsed = {}
+    # Classify to get PC + ledger suggestion
+    classification = classify_document(parsed) if parsed else {"codes": []}
+    top = (classification.get("codes") or [{}])[0]
+    vendor_data = parsed.get("vendor") or {}
+    if isinstance(vendor_data, dict):
+        customer_name = (vendor_data.get("name") or "").strip()
+        vat = vendor_data.get("vat_number") or ""
+    else:
+        customer_name = str(vendor_data or "").strip()
+        vat = ""
+    money = parsed.get("money") or {}
+    dates = parsed.get("dates") or {}
+    invoice_meta = parsed.get("invoice") or {}
+    return jsonify({
+        "parsed_ok": bool(parsed),
+        "elapsed_seconds": elapsed,
+        "suggestions": {
+            "customer":       customer_name or None,
+            "vat":            vat or None,
+            "invoice_number": (invoice_meta.get("number") or
+                                parsed.get("invoice_number")),
+            "issue_date":     (dates.get("document_date") or
+                                dates.get("invoice_date")),
+            "due_date":        dates.get("due_date"),
+            "amount":          money.get("total_amount"),
+            "currency":        (money.get("currency") or "EUR").upper(),
+            "ledger_code":     top.get("code"),
+            "profit_center":   top.get("profit_center"),
+            "legal_entity":    parsed.get("legal_entity") or invoice_meta.get("seller_name"),
+            "description":     invoice_meta.get("description") or "",
+        },
+        "raw": parsed,
+    })
+
+
 # MCP-1 (2026-06-26) — Email-in webhook for invoices.
 # Accepts Postmark-style inbound JSON; decodes base64 attachments and pushes
 # each through the same auto-parse pipeline as /api/upload. Configure shared
@@ -1243,11 +1320,24 @@ def reparse_doc(doc_id: str):
         "profit_center": doc.get("profit_center"),
     }
 
+    # 2026-06-29 — operator reported reparse is slow on production. Capture
+    # per-stage timings + total + file size so the next investigation has
+    # numbers (not just "feels slow"). Logged at INFO so they land in fly
+    # logs; also returned to the client so the modal can show "Done in 18s
+    # — parse 14.2s, classify 0.3s, persist 0.1s".
+    import time as _time
+    t0 = _time.monotonic()
+    try:
+        file_size_bytes = os.path.getsize(file_path)
+    except OSError:
+        file_size_bytes = 0
+
     try:
         parsed = parse_document(file_path, doc["file_type"])
     except Exception as exc:
         logger.exception("reparse failed for %s", doc_id)
         return jsonify({"error": "parser raised", "detail": str(exc)[:300]}), 500
+    t_after_parse = _time.monotonic()
 
     if isinstance(parsed, list):
         if not parsed:
@@ -1262,12 +1352,24 @@ def reparse_doc(doc_id: str):
     classification = classify_document(parsed_single)
     classification = _apply_governance_suggestions(
         parsed_single, classification, doc.get("uploaded_by"))
+    t_after_classify = _time.monotonic()
+
     update_fields = _build_doc_update(parsed_single, classification)
     db.update_document(doc_id, update_fields)
+    timings = {
+        "parse_seconds":     round(t_after_parse - t0, 2),
+        "classify_seconds":  round(t_after_classify - t_after_parse, 2),
+        "persist_seconds":   round(_time.monotonic() - t_after_classify, 2),
+        "total_seconds":     round(_time.monotonic() - t0, 2),
+        "file_size_kb":      round(file_size_bytes / 1024, 1),
+    }
+    logger.info("reparse doc=%s ext=%s timings=%s",
+                 doc_id, doc.get("file_type"), timings)
     db.insert_audit_log(doc_id, "reparsed", {
         "by": _current_user_name() or "user",
         "prior_legal_entity": before["legal_entity"],
         "new_legal_entity": update_fields.get("legal_entity"),
+        "timings": timings,
     })
 
     new_doc = db.get_document(doc_id)
@@ -1279,6 +1381,7 @@ def reparse_doc(doc_id: str):
         "document": new_doc,
         "delta": delta,
         "changed_fields": list(delta.keys()),
+        "timings": timings,
     })
 
 

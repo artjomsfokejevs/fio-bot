@@ -7728,6 +7728,8 @@ function regenerateDoc() {
   api('POST', '/api/documents/' + docId + '/reparse', {})
     .then(function(res) {
       if (res && res.error) { throw new Error(res.error); }
+      // Stash timings so the success toast can include them
+      if (res && res.timings) window._lastReparseTimings = res.timings;
       // Re-fetch + full re-render so every section reflects the new data
       return api('GET', '/api/documents/' + docId);
     })
@@ -7738,7 +7740,18 @@ function regenerateDoc() {
       renderPreview(doc);
       renderDetails(doc);
       renderModalActions(doc);
-      showToast('✓ Document fully regenerated', 'success');
+      // 2026-06-29 — expose the per-stage timings the reparse endpoint
+      // now returns so operators can see WHY a reparse took 20 seconds
+      // (usually 95% of it is the LLM call on a PDF).
+      var t = window._lastReparseTimings || null;
+      var msg = '✓ Document fully regenerated';
+      if (t && t.total_seconds) {
+        msg += ' in ' + t.total_seconds + 's (parse ' + t.parse_seconds +
+               's · classify ' + t.classify_seconds + 's · ' +
+               t.file_size_kb + ' KB)';
+      }
+      showToast(msg, 'success');
+      window._lastReparseTimings = null;
     })
     .catch(function(err) {
       if (titleEl) titleEl.textContent = originalTitle;
@@ -10889,9 +10902,11 @@ function openRevenueAddModal() {
     '</div>' +
 
     // 2026-06-24 FB-A — attach invoice file (now flush with grid)
+    // 2026-06-29 — onchange runs parse-preview and auto-fills the form
     '<div style="margin:6px 22px 16px;padding:14px;background:#fffdf6;border:1px dashed var(--keel-amber);border-radius:8px;">' +
-    '  <label class="field-label" for="rev-add-file" style="display:block;margin-bottom:6px;">📎 Attach invoice file (optional — PDF / image / docx / xlsx)</label>' +
-    '  <input id="rev-add-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" style="font-size:12px;" />' +
+    '  <label class="field-label" for="rev-add-file" style="display:block;margin-bottom:6px;">📎 Attach invoice file — Keel will auto-fill the fields above</label>' +
+    '  <input id="rev-add-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" style="font-size:12px;" onchange="revenueParsePreview(this)" />' +
+    '  <div id="rev-parse-status" style="font-size:11px;color:var(--muted);margin-top:8px;"></div>' +
     '</div>' +
 
     // Footer — flush right, primary action distinguished
@@ -10900,6 +10915,73 @@ function openRevenueAddModal() {
     '  <button class="btn btn-primary" onclick="submitRevenueAdd()">💾 Save document</button>' +
     '</div>';
   document.getElementById('revenue-modal-overlay').classList.add('active');
+}
+
+// 📎 Revenue Add modal — auto-fill from parsed file (2026-06-29).
+// Streams the chosen file to /api/revenue/parse-preview and fills any
+// empty form fields with the parser's suggestions. Operator can still
+// edit afterwards — we never overwrite a field the operator already
+// touched, so this is safe to fire on every file pick.
+async function revenueParsePreview(inputEl) {
+  var file = inputEl && inputEl.files && inputEl.files[0];
+  var status = document.getElementById('rev-parse-status');
+  if (!file) { if (status) status.textContent = ''; return; }
+  if (!status) return;
+  status.innerHTML = '⏳ Parsing <b>' + esc(file.name) + '</b>… (10–30 s)';
+  var fd = new FormData();
+  fd.append('file', file);
+  try {
+    var res = await fetch('/api/revenue/parse-preview', {
+      method: 'POST',
+      headers: {'X-FIO-User': (window.currentUser || '')},
+      body: fd,
+    }).then(function(r){ return r.json(); });
+    if (res.error) {
+      status.innerHTML = '<span style="color:#dc2626;">⚠ ' + esc(res.error) + '</span>';
+      return;
+    }
+    var s = res.suggestions || {};
+    var filled = [];
+    function fill(id, val) {
+      if (val === null || val === undefined || val === '') return;
+      var el = document.getElementById(id);
+      if (!el) return;
+      // Don't clobber operator edits — only fill if the field is empty
+      // (input.value === '' / select default selected).
+      var current = (el.value || '').trim();
+      if (current && current !== el.defaultValue) return;
+      el.value = String(val);
+      filled.push(id.replace(/^rev-add-/, ''));
+    }
+    fill('rev-add-customer',  s.customer);
+    fill('rev-add-vat',       s.vat);
+    fill('rev-add-invno',     s.invoice_number);
+    fill('rev-add-issue',     (s.issue_date || '').slice(0, 10));
+    fill('rev-add-due',       (s.due_date || '').slice(0, 10));
+    fill('rev-add-amount',    s.amount);
+    fill('rev-add-currency',  s.currency);
+    fill('rev-add-ledger',    s.ledger_code);
+    fill('rev-add-entity',    s.legal_entity);
+    fill('rev-add-desc',      s.description);
+    // PC dropdown — set to suggested value if it matches an existing option
+    if (s.profit_center) {
+      var pcEl = document.getElementById('rev-add-pc');
+      if (pcEl && !pcEl.value) {
+        var hit = Array.prototype.find.call(pcEl.options, function(o){ return o.value === s.profit_center; });
+        if (hit) { pcEl.value = s.profit_center; filled.push('pc'); }
+      }
+    }
+    if (filled.length) {
+      status.innerHTML = '<span style="color:#166534;">✓ Parsed in ' +
+        (res.elapsed_seconds || '?') + 's · auto-filled: ' +
+        filled.join(', ') + '. Review and edit as needed.</span>';
+    } else {
+      status.innerHTML = '<span style="color:#854d0e;">⚠ Parsed in ' +
+        (res.elapsed_seconds || '?') + 's but no usable fields. Fill manually.</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:#dc2626;">⚠ Parse request failed: ' + esc(e.message || String(e)) + '</span>';
+  }
 }
 
 async function submitRevenueAdd() {
