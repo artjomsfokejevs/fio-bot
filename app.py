@@ -3957,13 +3957,19 @@ def export_bulk_zip():
         spec_buf.write(f"# Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n")
         spec_buf.write(f"# Total documents: {len(rows)}\n\n")
         spec_fields = ["row", "document_id", "filename", "vendor", "vat_number",
-                       "invoice_date", "uploaded_at", "approved_at", "paid_at",
+                       "invoice_date", "uploaded_at", "uploaded_by",
+                       "approved_at", "paid_at",
                        "profit_center", "ledger_code", "department",
                        "currency", "amount_original", "amount_eur",
                        "legal_entity", "status", "payment_method",
                        "payment_account", "payment_reference", "approved_by"]
         spec_writer = _csv.DictWriter(spec_buf, fieldnames=spec_fields, extrasaction="ignore")
         spec_writer.writeheader()
+
+        # 2026-06-28 — also accumulate dicts so we can ship an .xlsx version
+        # next to the .csv. Accountants open the xlsx in Excel directly with
+        # currency-formatted Amount columns; the csv is kept for diff tools.
+        _spec_rows_for_xlsx = []
 
         # 2. Each invoice file under documents/
         included_files = 0
@@ -3978,7 +3984,7 @@ def export_bulk_zip():
                     parsed = {}
             if isinstance(parsed, dict):
                 invoice_date = (parsed.get("dates", {}) or {}).get("document_date", "")
-            spec_writer.writerow({
+            spec_row = {
                 "row":            i,
                 "document_id":    d.get("id"),
                 "filename":       d.get("original_name") or d.get("filename"),
@@ -3986,6 +3992,7 @@ def export_bulk_zip():
                 "vat_number":     d.get("vat_number"),
                 "invoice_date":   invoice_date,
                 "uploaded_at":    d.get("uploaded_at"),
+                "uploaded_by":    d.get("uploaded_by"),
                 "approved_at":    d.get("approved_at"),
                 "paid_at":        d.get("payment_executed_at"),
                 "profit_center":  d.get("profit_center"),
@@ -4000,7 +4007,9 @@ def export_bulk_zip():
                 "payment_account":d.get("payment_account"),
                 "payment_reference":d.get("payment_reference"),
                 "approved_by":    d.get("approved_by"),
-            })
+            }
+            spec_writer.writerow(spec_row)
+            _spec_rows_for_xlsx.append(spec_row)
             # Add the invoice file
             fname = d.get("filename")
             if fname:
@@ -4018,6 +4027,69 @@ def export_bulk_zip():
 
         zf.writestr("specification.csv", spec_buf.getvalue())
 
+        # 2026-06-28 — also ship an .xlsx version with frozen header row,
+        # bold headers, autofilter, currency-formatted amounts, and a
+        # final TOTAL row so the accountant doesn't need to add formulas
+        # to know the period total. Best-effort: if openpyxl import fails,
+        # skip silently and keep the csv.
+        try:
+            import openpyxl  # noqa: WPS433
+            from openpyxl.styles import Font, PatternFill, Alignment
+            from openpyxl.utils import get_column_letter
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Specification"
+            ws.append(spec_fields)
+            header_fill = PatternFill("solid", fgColor="F59E0B")
+            header_font = Font(bold=True, color="FFFFFF")
+            for col_idx in range(1, len(spec_fields) + 1):
+                c = ws.cell(row=1, column=col_idx)
+                c.fill = header_fill
+                c.font = header_font
+                c.alignment = Alignment(horizontal="left", vertical="center")
+            for r in _spec_rows_for_xlsx:
+                ws.append([r.get(f, "") for f in spec_fields])
+            # Currency format on amount_original + amount_eur
+            for f in ("amount_original", "amount_eur"):
+                if f in spec_fields:
+                    idx = spec_fields.index(f) + 1
+                    letter = get_column_letter(idx)
+                    for cell in ws[letter][1:]:
+                        cell.number_format = "#,##0.00"
+            # Final TOTAL row
+            total_row = ws.max_row + 1
+            ws.cell(row=total_row, column=1, value="TOTAL").font = Font(bold=True)
+            if "amount_eur" in spec_fields:
+                idx = spec_fields.index("amount_eur") + 1
+                letter = get_column_letter(idx)
+                total = sum(float(r.get("amount_eur") or 0)
+                             for r in _spec_rows_for_xlsx)
+                cell = ws.cell(row=total_row, column=idx, value=round(total, 2))
+                cell.number_format = "#,##0.00"
+                cell.font = Font(bold=True)
+            ws.freeze_panes = "A2"
+            last_col = get_column_letter(len(spec_fields))
+            ws.auto_filter.ref = f"A1:{last_col}1"
+            # Reasonable column widths
+            widths = {"row": 6, "document_id": 14, "filename": 36,
+                       "vendor": 30, "vat_number": 14, "invoice_date": 12,
+                       "uploaded_at": 20, "uploaded_by": 18,
+                       "approved_at": 20, "paid_at": 20,
+                       "profit_center": 6, "ledger_code": 10, "department": 14,
+                       "currency": 8, "amount_original": 14, "amount_eur": 14,
+                       "legal_entity": 18, "status": 14,
+                       "payment_method": 14, "payment_account": 18,
+                       "payment_reference": 18, "approved_by": 18}
+            for f, w in widths.items():
+                if f in spec_fields:
+                    ws.column_dimensions[get_column_letter(spec_fields.index(f) + 1)].width = w
+            xlsx_buf = io.BytesIO()
+            wb.save(xlsx_buf)
+            zf.writestr("specification.xlsx", xlsx_buf.getvalue())
+        except Exception:  # noqa: BLE001 — xlsx is a nice-to-have; csv is the SSOT
+            logger.exception("specification.xlsx generation skipped")
+
         # 3. README.txt
         readme = (
             f"AMITOURS HOLDING — Accounting Bulk Export\n"
@@ -4026,12 +4098,14 @@ def export_bulk_zip():
             f"Period: {period or 'ALL'}\n"
             f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
             f"Contents:\n"
-            f"  documents/        {included_files} invoice file(s)\n"
-            f"  specification.csv {len(rows)} row(s) with full metadata\n"
-            f"  README.txt        this file\n\n"
-            f"Spec columns: vendor / VAT / invoice date / dates / PC / ledger /\n"
-            f"              department / currency / amounts (orig + EUR) / status /\n"
-            f"              payment method / account / reference / approver.\n\n"
+            f"  documents/         {included_files} invoice file(s)\n"
+            f"  specification.csv  {len(rows)} row(s) — diff-friendly\n"
+            f"  specification.xlsx same data, Excel-formatted + TOTAL row\n"
+            f"  README.txt         this file\n\n"
+            f"Spec columns: vendor / VAT / invoice date / dates / uploader /\n"
+            f"              approver / PC / ledger / department / currency /\n"
+            f"              amounts (orig + EUR) / status / payment method /\n"
+            f"              account / reference.\n\n"
             + (f"⚠ {len(missing_files)} document(s) have no file on disk — see specification.csv for IDs.\n"
                if missing_files else "")
             + "Please route this archive to the accounting firm for "

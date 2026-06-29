@@ -439,7 +439,7 @@ def build_governance_index() -> Dict[str, Any]:
 # Vendor → stream cache (cleared on demand). FIO's classifier asks this for
 # each uploaded invoice before deciding which PC to suggest.
 _VENDOR_STREAM_HINTS = (
-    # Direct brand names — strongest signal
+    # ── Direct brand names — strongest signal ──
     ("alps2alps",   "AA", 95),
     ("alps 2 alps", "AA", 95),
     ("rock2rock",   "RR", 95),
@@ -459,6 +459,33 @@ _VENDOR_STREAM_HINTS = (
     ("french cars", "FC", 95),
     ("eu transfer", "ET", 90),
     ("loyalty club","LC", 85),
+    # ── External-vendor → internal-PC routing (2026-06-28) ──
+    # ALVEDA (health/wellness stream) — any vendor whose name suggests
+    # ayurvedic / wellness / health services is billed for AL.
+    ("ayurveda",        "AL", 90),
+    ("deep ayurveda",   "AL", 95),
+    ("panchakarma",     "AL", 85),
+    ("wellness retreat","AL", 85),
+    # AG (Amitours Holding / Swiss treasury) — payroll, social-security,
+    # and statutory CH bodies bill the Swiss holding entity, NOT a
+    # specific operating stream. Operators kept seeing these route to AA
+    # (the largest stream) which corrupted Alps2Alps' cost ledger.
+    ("caisse avs",                            "AG", 95),
+    ("federation patronale vaudoise",         "AG", 95),
+    ("fédération patronale vaudoise",         "AG", 95),
+    ("federation patronale",                  "AG", 85),
+    ("fédération patronale",                  "AG", 85),
+    ("caisse cantonale",                      "AG", 80),
+    ("suva",                                  "AG", 80),  # CH workplace insurance
+    ("administration cantonale des impots",   "AG", 80),
+    ("administration cantonale des impôts",   "AG", 80),
+    # Heuristic boosts via address — concatenated blob also covers the
+    # vendor's address. Lausanne / Paudex / Vaud / Switzerland strongly
+    # imply AG when no other brand keyword matches.
+    ("paudex",           "AG", 70),
+    ("1094 paudex",      "AG", 75),
+    ("route du lac 2",   "AG", 75),
+    ("lausanne, switzerland", "AG", 60),
 )
 
 
