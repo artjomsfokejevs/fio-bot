@@ -3577,12 +3577,32 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         <button class="modal-close" onclick="closeCashflowImportModal()">×</button>
       </div>
       <div class="modal-body" style="padding:18px 22px;overflow:auto;flex:1;min-height:0;">
+        <!-- 2026-06-30 — Two ways to import: paste OR Sheet URL. The URL
+             path saves the operator from copy-pasting every week; it
+             fetches the published Sheet server-side and runs the same
+             import_tsv pipeline. -->
+        <div style="background:#fffbeb;border:1px solid var(--keel-amber);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+          <div style="font-size:11px;color:#854d0e;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">🔗 Option 1 — Import from Google Sheet URL</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+            Paste the Sheet link (any tab). The sheet must be <b>shared with "Anyone with the link can view"</b>.
+            Keel will fetch the right tab, normalise cells, and upsert non-Actual rows. <a href="https://support.google.com/docs/answer/9331169" target="_blank" rel="noopener" style="color:var(--keel-amber-dark);">How to share</a>.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="cw-import-url" type="url"
+                   placeholder="https://docs.google.com/spreadsheets/d/&lt;KEY&gt;/edit#gid=&lt;GID&gt;"
+                   style="flex:1;min-width:300px;padding:7px 10px;font-size:12px;font-family:ui-monospace,monospace;border:1px solid var(--border);border-radius:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="submitCashflowGsheetUrl(true)" style="font-size:12px;">🔍 Preview</button>
+            <button class="btn btn-primary btn-sm" onclick="submitCashflowGsheetUrl(false)" style="font-size:12px;">🔗 Import from URL</button>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">📋 Option 2 — Paste raw TSV/CSV</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
           Copy a block of rows from your <b>AMITOURS — UNIFIED CASH TIMELINE</b> sheet (including the header row).
           Required columns: <code>End Date</code> + <code>Type</code>. Cells like <code>€1,234.56</code>, <code>(€500)</code>, <code>—</code> are normalised automatically.
           Rows marked <code>Actual</code> are skipped — use <b>🔄 Recompute actuals</b> on the card header instead.
         </div>
-        <textarea id="cw-import-text" placeholder="Period&#x9;End Date&#x9;Type&#x9;B2C revenue plan&#x9;A2A burn plan&#x10;W26&#x9;6/29/2026&#x9;Forecast&#x9;€50,000&#x9;(€30,000)" style="width:100%;min-height:240px;font-family:ui-monospace,monospace;font-size:11px;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;"></textarea>
+        <textarea id="cw-import-text" placeholder="Period&#x9;End Date&#x9;Type&#x9;B2C revenue plan&#x9;A2A burn plan&#x10;W26&#x9;6/29/2026&#x9;Forecast&#x9;€50,000&#x9;(€30,000)" style="width:100%;min-height:200px;font-family:ui-monospace,monospace;font-size:11px;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;"></textarea>
         <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
             Default row type:
@@ -3591,7 +3611,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
               <option value="estimate">estimate</option>
               <option value="plug">plug</option>
             </select>
-            <span style="color:var(--muted);font-size:11px;">(applied to rows where <code>Type</code> column is blank)</span>
+            <span style="color:var(--muted);font-size:11px;">(applied to rows where <code>Type</code> column is blank, and to URL imports)</span>
           </label>
           <div style="display:flex;gap:8px;">
             <button class="btn btn-ghost btn-sm" onclick="submitCashflowImport(true)">🔍 Preview (dry-run)</button>
@@ -11613,6 +11633,8 @@ function openCashflowImportModal() {
   var ov = document.getElementById('cw-import-overlay');
   if (!ov) return;
   document.getElementById('cw-import-text').value = '';
+  var urlInput = document.getElementById('cw-import-url');
+  if (urlInput) urlInput.value = '';
   document.getElementById('cw-import-result').innerHTML = '';
   ov.classList.add('active');
 }
@@ -11620,6 +11642,49 @@ function closeCashflowImportModal() {
   var ov = document.getElementById('cw-import-overlay');
   if (ov) ov.classList.remove('active');
 }
+// 🔗 Cashflow import — Google Sheet URL path (2026-06-30)
+async function submitCashflowGsheetUrl(dryRun) {
+  var url = (document.getElementById('cw-import-url').value || '').trim();
+  var defType = document.getElementById('cw-import-default-type').value;
+  var result = document.getElementById('cw-import-result');
+  if (!url) { result.innerHTML = '<span style="color:#dc2626;">⚠ Paste a Google Sheet URL first.</span>'; return; }
+  result.innerHTML = '⏳ Fetching Sheet from Google and ' + (dryRun ? 'previewing' : 'importing') + '…';
+  try {
+    var res = await fetch('/api/cashflow/weekly/import-gsheet-url', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-FIO-User':(window.currentUser||'')},
+      body: JSON.stringify({url: url, default_row_type: defType, dry_run: dryRun}),
+    }).then(function(r){ return r.json(); });
+    if (res.error) { result.innerHTML = '<span style="color:#dc2626;">⚠ ' + esc(res.error) + '</span>'; return; }
+    var html = '<div style="padding:10px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;">' +
+               '<b>' + (dryRun ? 'Preview' : 'Imported') + ' from Sheet:</b> ' +
+               res.rows_imported + ' / ' + res.rows_seen + ' row(s) ' +
+               (dryRun ? 'will be written' : 'written') +
+               ' · fetched <b>' + (res.fetched_bytes || 0) + '</b> bytes' +
+               (res.export_url ? ' · <a href="' + esc(res.export_url) + '" target="_blank" style="color:#166534;">view raw export ↗</a>' : '') +
+               '</div>';
+    if (res.unknown_columns && res.unknown_columns.length) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;color:#854d0e;font-size:11px;">' +
+              '⚠ Unknown columns ignored: <code>' + res.unknown_columns.map(esc).join(', ') + '</code></div>';
+    }
+    if (res.skipped_examples && res.skipped_examples.length) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px;">' +
+              '<b>' + res.rows_skipped + ' row(s) skipped</b> — examples:<ul style="margin:4px 0 0 18px;">';
+      res.skipped_examples.forEach(function(s){
+        html += '<li>line ' + s.line + ': ' + esc(s.reason) + '</li>';
+      });
+      html += '</ul></div>';
+    }
+    result.innerHTML = html;
+    if (!dryRun) {
+      renderCashflowWeeklyCard();
+      renderCashflowOverviewCard();
+    }
+  } catch (e) {
+    result.innerHTML = '<span style="color:#dc2626;">⚠ URL import failed: ' + esc(e.message || String(e)) + '</span>';
+  }
+}
+
 async function submitCashflowImport(dryRun) {
   var text = (document.getElementById('cw-import-text').value || '').trim();
   var defType = document.getElementById('cw-import-default-type').value;

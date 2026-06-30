@@ -491,6 +491,40 @@ def cashflow_weekly_import_tsv() -> Any:
     return jsonify(out), 201 if not body.get("dry_run") else 200
 
 
+@revenue_bp.route("/cashflow/weekly/import-gsheet-url", methods=["POST"])
+def cashflow_weekly_import_gsheet_url() -> Any:
+    """Fetch a published Google Sheet and upsert via import_tsv.
+
+    Body: {url, default_row_type?, dry_run?, fmt?: tsv|csv}
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    drt = (body.get("default_row_type") or "forecast").strip()
+    if drt not in _cw.WRITABLE_ROW_TYPES:
+        return jsonify({"error": "default_row_type must be one of "
+                                  + str(list(_cw.WRITABLE_ROW_TYPES))}), 400
+    fmt = (body.get("fmt") or "tsv").strip().lower()
+    if fmt not in ("tsv", "csv"):
+        return jsonify({"error": "fmt must be 'tsv' or 'csv'"}), 400
+    try:
+        out = _cw.import_from_gsheet_url(
+            url=url,
+            default_row_type=drt,
+            by=_user(),
+            dry_run=bool(body.get("dry_run")),
+            fmt=fmt,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "url": url}), 400
+    return jsonify(out), 201 if not body.get("dry_run") else 200
+
+
 @revenue_bp.route("/cashflow/weekly/derive-actuals", methods=["POST"])
 def cashflow_weekly_derive_actuals() -> Any:
     """Recompute 'actual' rows for the past N weeks from source data

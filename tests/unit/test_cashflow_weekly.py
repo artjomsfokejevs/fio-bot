@@ -215,3 +215,120 @@ def test_derive_actuals_is_idempotent():
     out1 = cw.derive_actuals(weeks_before=2, weeks_after=0, by="pytest")
     out2 = cw.derive_actuals(weeks_before=2, weeks_after=0, by="pytest")
     assert out1["weeks_rebuilt"] == out2["weeks_rebuilt"]
+
+
+# ────────────────────────────────────────────────────────────────────────
+# gsheet_url_to_export_url — URL parser (2026-06-30)
+# ────────────────────────────────────────────────────────────────────────
+
+def test_gsheet_url_parses_edit_with_hash_gid():
+    out = cw.gsheet_url_to_export_url(
+        "https://docs.google.com/spreadsheets/d/1AbCxYz_KEY-99/edit#gid=789"
+    )
+    assert out == "https://docs.google.com/spreadsheets/d/1AbCxYz_KEY-99/export?format=tsv&gid=789"
+
+
+def test_gsheet_url_defaults_gid_zero_when_missing():
+    out = cw.gsheet_url_to_export_url(
+        "https://docs.google.com/spreadsheets/d/1AbCxYz/edit"
+    )
+    assert out.endswith("gid=0")
+
+
+def test_gsheet_url_query_param_gid():
+    out = cw.gsheet_url_to_export_url(
+        "https://docs.google.com/spreadsheets/d/KEY1/edit?gid=42#xyz"
+    )
+    assert "gid=42" in out
+
+
+def test_gsheet_url_passes_through_existing_export_url():
+    already = ("https://docs.google.com/spreadsheets/d/K/export"
+                "?format=csv&gid=12&otherparam=z")
+    assert cw.gsheet_url_to_export_url(already) == already
+
+
+def test_gsheet_url_rejects_non_sheets_url():
+    import pytest
+    with pytest.raises(ValueError, match="does not look like a Google Sheets"):
+        cw.gsheet_url_to_export_url("https://example.com/nope")
+
+
+def test_gsheet_url_rejects_empty():
+    import pytest
+    with pytest.raises(ValueError, match="url is required"):
+        cw.gsheet_url_to_export_url("")
+    with pytest.raises(ValueError, match="url is required"):
+        cw.gsheet_url_to_export_url(None)
+
+
+def test_import_from_gsheet_url_surfaces_not_published(monkeypatch):
+    """Simulate the 401/403 that Google returns for un-published sheets."""
+    import urllib.error
+    import pytest
+
+    def fake_urlopen(req, timeout=12.0):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    with pytest.raises(ValueError, match="not publicly accessible"):
+        cw.import_from_gsheet_url(
+            "https://docs.google.com/spreadsheets/d/SOMEKEY/edit",
+            by="pytest",
+        )
+
+
+def test_import_from_gsheet_url_surfaces_html_login_page(monkeypatch):
+    """If Google serves an HTML sign-in redirect, we must catch that
+    BEFORE trying to parse it as TSV."""
+    import io
+    import pytest
+
+    class _FakeResp:
+        def __init__(self):
+            self.headers = {"Content-Type": "text/html; charset=utf-8"}
+        def read(self):
+            return b"<html><body>Sign in</body></html>"
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+
+    def fake_urlopen(req, timeout=12.0):
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    with pytest.raises(ValueError, match="HTML page"):
+        cw.import_from_gsheet_url(
+            "https://docs.google.com/spreadsheets/d/SOMEKEY/edit",
+            by="pytest",
+        )
+
+
+def test_import_from_gsheet_url_end_to_end(monkeypatch):
+    """Happy path: TSV body comes back, import_tsv processes it,
+    payload includes source_url + export_url + fetched_bytes."""
+    body = (
+        "Period\tEnd Date\tType\tB2C revenue plan\tA2A burn plan\n"
+        "W30\t7/27/2026\tForecast\t€11,000\t(€7,000)\n"
+    ).encode("utf-8")
+
+    class _FakeResp:
+        def __init__(self, body_bytes):
+            self._body = body_bytes
+            self.headers = {"Content-Type": "text/tab-separated-values"}
+        def read(self):
+            return self._body
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+
+    monkeypatch.setattr("urllib.request.urlopen",
+                        lambda req, timeout=12.0: _FakeResp(body))
+
+    out = cw.import_from_gsheet_url(
+        "https://docs.google.com/spreadsheets/d/KEY/edit#gid=0",
+        by="pytest", dry_run=True,
+    )
+    assert out["rows_imported"] == 1
+    assert out["dry_run"] is True
+    assert "source_url" in out and out["source_url"].endswith("#gid=0")
+    assert "export_url" in out and "format=tsv" in out["export_url"]
+    assert out["fetched_bytes"] == len(body)
