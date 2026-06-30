@@ -4465,9 +4465,66 @@ function loadSchema() {
   api('GET', '/api/ledger-schema').then(function(s) {
     ledgerSchema = s;
     populateExportPcFilter();
+    populatePcSelectsFromSchema();
   }).catch(function(err) {
     console.error('loadSchema failed:', err);
     // ledgerSchema stays undefined; populateExportPcFilter guards on it
+  });
+}
+
+// 2026-06-30 — Sync every static PC dropdown in the HTML with the
+// canonical list from /api/ledger-schema (9 PCs after the boot-hook
+// fix). Before this, 6+ <select> elements were hardcoded with a 7-PC
+// subset → operator's PC was missing from the dropdown even though
+// the backend knew it.
+//
+// IDs handled here are explicit so we never accidentally mutate a
+// select that has different semantics (e.g. "All streams" filter
+// where '' is a meaningful first option).
+function populatePcSelectsFromSchema() {
+  if (!ledgerSchema || !Array.isArray(ledgerSchema.profit_centers)) return;
+  var pcs = ledgerSchema.profit_centers;
+  // Each entry: [select id, leading-blank label or null]
+  var TARGETS = [
+    ['tr-pc',         '— PC —'],                   // Travel report
+    ['stream-filter', 'All Streams'],               // Approve tab filter
+    ['ob-pc',         '— select PC —'],             // Opening balance
+    ['fu-pc',         '— none —'],                  // fio_users editor
+    ['sb-pc',         null],                        // Stream budget editor
+    ['rev-pc',        'All streams'],               // Revenue tab filter
+    ['rev-add-pc',    '— select stream —'],         // Add Revenue modal
+  ];
+  TARGETS.forEach(function(spec) {
+    var sel = document.getElementById(spec[0]);
+    if (!sel) return;
+    var prev = sel.value;
+    sel.innerHTML = '';
+    if (spec[1] !== null) {
+      var opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = spec[1];
+      // 'rev-add-pc' wants its blank disabled+selected (required field)
+      if (spec[0] === 'rev-add-pc') {
+        opt.disabled = true;
+        opt.selected = true;
+      }
+      sel.appendChild(opt);
+    }
+    pcs.forEach(function(pc) {
+      var code = (pc.code || '').trim();
+      if (!code) return;
+      var name = (pc.name || '').trim();
+      var opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code + ' · ' + (name || code);
+      sel.appendChild(opt);
+    });
+    // Restore the prior value so re-loading the schema mid-session
+    // doesn't blow away what the operator had selected.
+    if (prev) {
+      var hit = Array.prototype.find.call(sel.options, function(o){ return o.value === prev; });
+      if (hit) sel.value = prev;
+    }
   });
 }
 function populateExportPcFilter() {
@@ -11028,6 +11085,11 @@ function openRevenueAddModal() {
     '  <button class="btn btn-primary" onclick="submitRevenueAdd()">💾 Save document</button>' +
     '</div>';
   document.getElementById('revenue-modal-overlay').classList.add('active');
+  // 2026-06-30 — rev-add-pc is built dynamically each open with a
+  // hardcoded fallback list. After the modal renders, replace its
+  // options from the canonical ledger schema so any newly-added PC
+  // shows up without a code edit.
+  try { populatePcSelectsFromSchema(); } catch (_) {}
 }
 
 // 📎 Revenue Add modal — auto-fill from parsed file (2026-06-29).

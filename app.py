@@ -2833,12 +2833,20 @@ def stats():
 
 @app.route("/api/ledger-schema", methods=["GET"])
 def ledger_schema():
-    """Return the chart of accounts."""
+    """Return the chart of accounts.
+
+    2026-06-30 — no-store so the browser never reuses a stale schema
+    after we resync profit_centers from pc_codes on boot. Operator was
+    seeing only 7 streams from an old cached response even after the
+    backend was already serving 9.
+    """
     try:
         with open(config.LEDGER_FILE, "r", encoding="utf-8") as f:
-            return jsonify(json.load(f))
+            resp = jsonify(json.load(f))
     except FileNotFoundError:
         return jsonify({"error": "Schema not found"}), 404
+    resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
 
 
 @app.route("/api/actuals", methods=["GET"])
