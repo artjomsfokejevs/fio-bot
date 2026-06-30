@@ -38,6 +38,8 @@ __all__ = [
     "delete_row",
     "monday_of",
     "import_tsv",
+    "import_from_gsheet_url",
+    "gsheet_url_to_export_url",
     "derive_actuals",
     "parse_amount",
 ]
@@ -686,3 +688,113 @@ def derive_actuals(weeks_before: int = 26,
         "weeks_rebuilt":  len(rows_out),
         "rows":           rows_out,
     }
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Google Sheet URL → import (2026-06-30).
+#
+# Operator wanted "Chrome MCP" integration to skip the copy-paste step.
+# The realistic shape: accept a published Google Sheet URL, fetch the
+# sheet's TSV export, run the same import_tsv pipeline. No new auth
+# in v1 — only PUBLISHED sheets (File → Share → Anyone with the link
+# can view) are reachable from the server.
+#
+# Supported URL forms (all coerce to /export?format=tsv&gid=N):
+#   1. https://docs.google.com/spreadsheets/d/<KEY>/edit#gid=<GID>
+#   2. https://docs.google.com/spreadsheets/d/<KEY>/edit?gid=<GID>
+#   3. https://docs.google.com/spreadsheets/d/<KEY>/edit
+#      (no gid → defaults to gid=0, the first tab)
+#   4. Already-exported …/export?format=tsv|csv&gid=… URL (passes through)
+#
+# Returns the same payload as import_tsv plus 'source_url' for the
+# operator's audit-log breadcrumb.
+# ────────────────────────────────────────────────────────────────────────
+
+_GS_KEY_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
+_GS_GID_RE = re.compile(r"[#&?]gid=(\d+)")
+
+
+def gsheet_url_to_export_url(url: str, *, fmt: str = "tsv") -> str:
+    """Turn any Google Sheets URL the operator can paste into a clean
+    server-fetchable export URL. Raises ValueError if the URL isn't
+    recognisable as a Sheets link."""
+    if not url or not isinstance(url, str):
+        raise ValueError("url is required")
+    url = url.strip()
+    if not url:
+        raise ValueError("url is required")
+    # Already an export URL → trust the format param the caller chose
+    if "/export" in url and ("format=tsv" in url or "format=csv" in url):
+        return url
+    m = _GS_KEY_RE.search(url)
+    if not m:
+        raise ValueError(
+            "URL does not look like a Google Sheets link. Expected "
+            "'https://docs.google.com/spreadsheets/d/<KEY>/edit...'"
+        )
+    key = m.group(1)
+    gid_m = _GS_GID_RE.search(url)
+    gid = gid_m.group(1) if gid_m else "0"
+    if fmt not in ("tsv", "csv"):
+        fmt = "tsv"
+    return (
+        f"https://docs.google.com/spreadsheets/d/{key}/export?format={fmt}&gid={gid}"
+    )
+
+
+def import_from_gsheet_url(url: str, *,
+                            default_row_type: str = "forecast",
+                            by: Optional[str] = None,
+                            dry_run: bool = False,
+                            fmt: str = "tsv",
+                            timeout: float = 12.0) -> Dict[str, Any]:
+    """Fetch a published Google Sheet and import it via import_tsv.
+
+    Errors surface the exact failure mode (URL not a Sheet · sheet not
+    published · network/timeout · sheet empty) so the operator never sees
+    a generic 500.
+    """
+    import urllib.request
+    import urllib.error
+
+    export_url = gsheet_url_to_export_url(url, fmt=fmt)
+    req = urllib.request.Request(
+        export_url,
+        headers={"User-Agent": "Keel/1.0 (cashflow importer)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403, 404):
+            raise ValueError(
+                "Sheet not publicly accessible. In Google Sheets: "
+                "File → Share → 'Anyone with the link can view', then retry."
+            )
+        raise ValueError(f"fetch failed: HTTP {exc.code} on {export_url}")
+    except urllib.error.URLError as exc:
+        raise ValueError(f"network error fetching the Sheet: {exc.reason}")
+    except TimeoutError:
+        raise ValueError(f"Sheet fetch timed out after {timeout}s")
+
+    # If Google bounced us to an HTML login page, content-type will be html
+    if "text/html" in content_type:
+        raise ValueError(
+            "Sheet returned an HTML page (probably a sign-in redirect). "
+            "Confirm the sheet is published with 'Anyone with the link'."
+        )
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("utf-8", errors="ignore")
+    if not text.strip():
+        raise ValueError("Sheet fetched OK but is empty (0 rows).")
+
+    out = import_tsv(text=text, default_row_type=default_row_type,
+                      by=by, dry_run=dry_run)
+    out["source_url"] = url
+    out["export_url"] = export_url
+    out["fetched_bytes"] = len(raw)
+    return out
