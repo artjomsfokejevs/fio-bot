@@ -150,6 +150,49 @@ def _seed_data_volume() -> None:
 
 _seed_data_volume()
 
+
+def _sync_pcs_from_canonical() -> None:
+    """Rewrite profit_centers[] in ledger_schema.json from the canonical
+    services.pc_codes list every boot.
+
+    2026-06-30 — operator reported the Profit Center dropdown was missing
+    streams (CF MyPeak Finance, MN Mountly, SP Skipasser were absent while
+    legacy BK SR PK lingered). Root: ledger_schema.json was seeded once
+    from an old snapshot and never refreshed when pc_codes.py was updated.
+    This sync makes pc_codes.CANONICAL the single source of truth for
+    every dropdown that reads ledgerSchema.profit_centers. Other ledger-
+    schema sections (codes[], rules) are NOT touched — they remain
+    operator-editable.
+    """
+    try:
+        from services import pc_codes as _pc
+    except ImportError:
+        return
+    if not os.path.exists(config.LEDGER_FILE):
+        return
+    try:
+        with open(config.LEDGER_FILE, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+    canonical_pcs = [
+        {"code": code, "name": (_pc.label_of(code) or code).upper()}
+        for code in sorted(_pc.CANONICAL.keys())
+    ]
+    if schema.get("profit_centers") == canonical_pcs:
+        return  # already in sync
+    schema["profit_centers"] = canonical_pcs
+    try:
+        with open(config.LEDGER_FILE, "w", encoding="utf-8") as f:
+            json.dump(schema, f, indent=2, ensure_ascii=False)
+        logger.info("Synced profit_centers[] in ledger_schema.json from pc_codes (%d streams)",
+                    len(canonical_pcs))
+    except OSError:
+        logger.exception("Failed to write synced ledger_schema.json")
+
+
+_sync_pcs_from_canonical()
+
 # Initialise SQLite at import time so gunicorn workers have tables.
 # init_db() is idempotent (CREATE TABLE IF NOT EXISTS + ALTER for migrations).
 db.init_db()

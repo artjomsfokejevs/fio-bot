@@ -56,3 +56,48 @@ def test_revolut_field_mappings_resolve_real_columns():
             f"Field `{field_name}` maps to {candidates} — none of them "
             f"appear in the real Revolut export headers."
         )
+
+
+# ────────────────────────────────────────────────────────────────────────
+# 2026-06-30 — Finom Business CSV format (operator hit "0 rows imported"
+# because the Revolut Personal detector required a bare 'amount' column
+# but Finom uses 'Payment amount').
+# ────────────────────────────────────────────────────────────────────────
+
+def test_finom_csv_detected_and_imported():
+    """Real Finom export headers + a couple of representative rows."""
+    from services.card_audit import detect_format, import_statement
+    headers = ["Completed date","Time completed","Status","Transaction type",
+               "Counterparty name","Counterparty BIC","Counterparty IBAN",
+               "Reference","Tags","Transaction payer","Card number",
+               "Original currency","Original amount","Payment currency",
+               "Payment amount","Wallet balance after transaction",
+               "Wallet name","Wallet IBAN","Supporting documents","Transaction Id"]
+    spec = detect_format(headers)
+    assert spec["id"] == "finom", f"Expected finom, got {spec['id']}"
+
+    csv_text = (
+        "Completed date,Time completed,Status,Transaction type,Counterparty name,"
+        "Counterparty BIC,Counterparty IBAN,Reference,Tags,Transaction payer,"
+        "Card number,Original currency,Original amount,Payment currency,Payment amount,"
+        "Wallet balance after transaction,Wallet name,Wallet IBAN,"
+        "Supporting documents,Transaction Id\n"
+        "27.06.2026,09:53,Completed,Card,FACEBK *5MDQ5VMQG2,,,N/A,SERVICES,Holder,"
+        "***0265,EUR,-298.68,EUR,-298.68,20509.17,Mountly (RSA),NL24FNOM0542742838,N/A,T1\n"
+        "22.06.2026,10:08,Completed,International,Caisse AVS,POFICHBE,CH3730000001100070006,"
+        "Ref 39,N/A,,,CHF,-3984.45,EUR,-4334.22,109.74,Main,NL70FNOM0542742883,N/A,T2\n"
+    )
+    res = import_statement(csv_text.encode("utf-8"), "Finom_pytest.csv",
+                            imported_by="pytest_finom")
+    assert res.get("total_rows") == 2
+    assert res.get("inserted") == 2
+
+    # Cleanup
+    from services import db
+    conn = db.get_connection()
+    try:
+        conn.execute("DELETE FROM card_transactions WHERE batch_id = ?",
+                     (res["batch_id"],))
+        conn.commit()
+    finally:
+        conn.close()

@@ -116,6 +116,34 @@ _FORMAT_SPECS: List[Dict[str, Any]] = [
         "amount_sign": "natural",
     },
     {
+        # 2026-06-30 — Finom Business statement. Same column family as
+        # Revolut Personal (Completed date / Time completed / Status /
+        # Transaction type / Counterparty name / BIC / IBAN / Reference)
+        # but uses "Payment amount" + "Payment currency" instead of bare
+        # "Amount", and has wallet-specific columns ("Wallet name",
+        # "Wallet IBAN", "Wallet balance after transaction"). Without
+        # this spec, Finom CSVs fall through to Generic CSV and the
+        # importer can't find a date column it understands.
+        # Real export the operator pasted on 2026-06-30:
+        #   27.06.2026,09:53,Completed,Card,FACEBK *5MDQ5VMQG2,,…
+        "id": "finom",
+        "label": "Finom Business",
+        "signature": {"completed date", "status", "payment amount"},
+        "extra_signature_any": {"wallet name", "wallet iban",
+                                "wallet balance after transaction",
+                                "payment currency", "transaction id"},
+        "fields": {
+            "date":        ["completed date", "date"],
+            "description": ["counterparty name", "reference", "description"],
+            "amount":      ["payment amount", "original amount", "amount"],
+            "currency":    ["payment currency", "original currency", "currency"],
+            "counterparty":["counterparty name", "transaction payer"],
+            "reference":   ["reference", "counterparty iban", "transaction id"],
+        },
+        "default_currency": "EUR",
+        "amount_sign": "natural",
+    },
+    {
         # 2026-06-24 FB-C — Stripe signature was {description, amount, currency}
         # which collided with generic bank CSVs. Now requires a Stripe-specific
         # column to avoid false positives.

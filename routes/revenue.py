@@ -105,6 +105,40 @@ def get_revenue(doc_id: str) -> Any:
     })
 
 
+# 2026-06-30 — Revenue file-serve route. The Add Revenue modal already
+# persists the attached PDF/image at doc.file_path (FB-A), but until this
+# endpoint existed the detail modal could only show the metadata — the
+# operator had to know where the file was on disk to look at it.
+@revenue_bp.route("/revenue/<doc_id>/file", methods=["GET"])
+def revenue_get_file(doc_id: str) -> Any:
+    err = _require(*_READ_ROLES)
+    if err:
+        return err
+    doc = rev_svc.get_doc(doc_id)
+    if not doc:
+        return jsonify({"error": "not_found"}), 404
+    file_path = doc.get("file_path")
+    if not file_path:
+        return jsonify({"error": "no_file_attached",
+                        "message": "This revenue document has no attached "
+                                    "file. Upload one via the Add Revenue "
+                                    "modal."}), 404
+    import os as _os
+    from flask import send_file as _send_file
+    if not _os.path.isfile(file_path):
+        return jsonify({"error": "file_missing_on_disk",
+                        "expected_path": file_path}), 404
+    ext = (doc.get("file_type") or "").lower()
+    mime = {
+        "pdf":  "application/pdf",
+        "jpg":  "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }.get(ext, "application/octet-stream")
+    return _send_file(file_path, mimetype=mime, as_attachment=False,
+                       download_name=_os.path.basename(file_path))
+
+
 @revenue_bp.route("/revenue", methods=["POST"])
 def create_revenue() -> Any:
     err = _require(*_WRITE_ROLES) or _require_cap("create_revenue")
