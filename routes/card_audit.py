@@ -24,6 +24,7 @@ from flask import Blueprint, Response, jsonify, request
 
 import config as _cfg
 from services import db, card_audit, bt4you_sync as bts
+from services.http_helpers import content_disposition as _content_disposition
 
 logger = logging.getLogger(__name__)
 
@@ -1005,7 +1006,7 @@ def card_audit_batch_export(batch_id: str) -> Any:
         w.writerow(t)
     fname = f"fio_card_audit_batch_{batch_id[:12]}.csv"
     return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+                    headers={"Content-Disposition": _content_disposition(fname)})
 
 
 @card_audit_bp.route("/export", methods=["GET"])
@@ -1035,7 +1036,7 @@ def card_audit_export() -> Any:
         w.writerow(r)
     fname = f"fio_card_audit_{period}{'_' + department if department else ''}.csv"
     return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+                    headers={"Content-Disposition": _content_disposition(fname)})
 
 
 @card_audit_bp.route("/non-matching/print", methods=["GET"])

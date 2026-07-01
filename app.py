@@ -763,7 +763,7 @@ def erp_export_build(format_id: str):
         data, 200,
         {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": 'attachment; filename="%s"' % filename,
+            "Content-Disposition": _content_disposition(filename),
             "X-Export-Rows": str(count),
             "X-Export-Period": period,
             "X-Export-PC": pc or "ALL",
@@ -2531,7 +2531,7 @@ def accounting_export():
     from flask import Response as _Resp
     return _Resp(
         csv_text, mimetype="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers={"Content-Disposition": _content_disposition(fname)},
     )
 
 
@@ -4087,7 +4087,7 @@ def export_by_legal_entity():
         fname_parts.append(period)
     fname = "_".join(fname_parts) + ".csv"
     return _Resp(buf.getvalue(), mimetype="text/csv",
-                 headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+                 headers={"Content-Disposition": _content_disposition(fname)})
 
 
 # 2026-06-24 FB-J — Costpocket-style bulk export. ZIP with:
@@ -4102,18 +4102,12 @@ def export_by_legal_entity():
 # .xlsx and .pdf. Both share the same builder in
 # services/bookkeeper_report.py.
 def _content_disposition(filename: str) -> str:
-    """Build a Content-Disposition header safe for HTTP transport.
-
-    2026-07-01 fix — gunicorn's h11 parser rejects any header byte outside
-    ISO-8859-1, and Latvian month names like "Jūnijs" contain U+016B (ū).
-    Sending them raw returns 400 "Invalid HTTP Header" and the proxy shows
-    502. RFC 5987 solves this: an ASCII fallback for old clients plus a
-    filename* value in UTF-8 percent-encoded form for modern browsers.
+    """Delegate to services.http_helpers.content_disposition — kept as a
+    module-level alias so route bodies stay readable and B34 recognises
+    the helper name. Full doc in services/http_helpers.py.
     """
-    from urllib.parse import quote
-    ascii_fallback = filename.encode("ascii", "replace").decode("ascii").replace("?", "_")
-    encoded = quote(filename, safe="")
-    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
+    from services.http_helpers import content_disposition
+    return content_disposition(filename)
 
 
 def _bookkeeper_report_common():
@@ -4432,7 +4426,7 @@ def export_bulk_zip():
         fname_parts.append(period)
     zip_name = "_".join(fname_parts) + ".zip"
     return _Resp(zbuf.getvalue(), mimetype="application/zip",
-                 headers={"Content-Disposition": f'attachment; filename="{zip_name}"'})
+                 headers={"Content-Disposition": _content_disposition(zip_name)})
 
 
 # ---------------------------------------------------------------------------

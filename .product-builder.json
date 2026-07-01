@@ -12,5 +12,7 @@
   "_b33_comment": "B33 detector — HTML/JS <option value='X'> lists that reference SOME but not ALL codes from a canonical set are drifted hardcoded dropdowns. Source of truth is services/pc_codes.CANONICAL. See PRODUCT_BUILDER 2026-06-30 retro AA150.",
   "canonical_code_sets": {
     "profit_center": ["AA", "AG", "AH", "AL", "CF", "MN", "MT", "RR", "SP"]
-  }
+  },
+  "_b34_comment": "B34 detector — inline Content-Disposition literals with an interpolated filename will 502 the moment the filename contains a non-ASCII byte (h11 rejects it). Route through the RFC 5987 helper _content_disposition() instead. See PRODUCT_BUILDER 2026-07-01 retro AA153.",
+  "content_disposition_helper": "_content_disposition"
 }
