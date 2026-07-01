@@ -1,35 +1,39 @@
-"""Bookkeeper 'Izdevumu atskaite' (expense report) — XLSX + PDF export.
+"""Bookkeeper 'Expense Report' — XLSX + PDF export.
 
-Format per operator's sample (Latvia bookkeeping):
+2026-07-01 — operator asked for the whole program (filenames, labels,
+sheet titles, headers) to be in English. The layout still mirrors the
+Latvian accountant's sample, but every visible string is English.
 
-    IZDEVUMU ATSKAITE                                    <COMPANY>
-    Atskaites nosaukums: <MONTH>, <YEAR>                 <COUNTRY>
+Format:
+
+    EXPENSE REPORT                                    <COMPANY>
+    Report title: <MONTH> <YEAR>                      <COUNTRY>
     ID: <auto>
-    Nozīņoja: <uploader>
-    Bankas konts / IBAN: <account>
-    Sākuma datums: <period start>  Beigu datums: <period end>
+    Submitted by: <uploader>
+    Bank account / IBAN: <account>
+    Start date: <period start>   End date: <period end>
 
-    ── Maksāts ar: <payment source group> ──
-      Izmaksu tips: <ledger code + label>
-      Nr. <group-id>
-      ┌───┬──────────┬────────────┬──────────┬─────────┬──────────┬──────────┬───────┬───────┬──────┬────────┐
-      │ # │ Izrakstīts │ Maksāts ar │ Komentārs │ Piegādātājs │ Dok. Nr. │ Atsauces Nr. │ Valūta │ Netto │ PVN  │ Summa  │
-      ├───┼──────────┼────────────┼──────────┼─────────┼──────────┼──────────┼───────┼───────┼──────┼────────┤
+    ── Paid with: <payment source group> ──
+      Expense type: <ledger code + label>
+      No. <group-id>
+      ┌───┬──────────┬──────────┬───────────┬──────────┬─────────┬───────────┬──────────┬──────┬──────┬──────┐
+      │ # │ Issued   │ Paid via │ Comment   │ Supplier │ Doc No. │ Reference │ Currency │ Net  │ VAT  │ Total│
+      ├───┼──────────┼──────────┼───────────┼──────────┼─────────┼───────────┼──────────┼──────┼──────┼──────┤
       │ … per-doc rows … │
-      └────────────────────────────────────────────────────────────────────────────────────────────┘
-      Starpsumma                                                       EUR   NNN   NNN    NNN
-    (…more Izmaksu tips groups…)
+      └───────────────────────────────────────────────────────────────────────────────────────────────────┘
+      Subtotal                                             EUR  NNN  NNN  NNN
+    (…more Expense type groups…)
 
-    Kopā samaksāts par uzņēmuma līdzekļiem   EUR   TOTAL  TOTAL  TOTAL
-    Kopā samaksāts par uzņēmuma līdzekļiem   USD   TOTAL  TOTAL  TOTAL
+    Total paid from company funds   EUR   TOTAL  TOTAL  TOTAL
+    Total paid from company funds   USD   TOTAL  TOTAL  TOTAL
 
 Grouping order (matches the operator's PDF):
   1. Payment source (payment_method → human label)
-  2. Ledger code + label (Izmaksu tips)
+  2. Ledger code + label (Expense type)
   3. Per-doc rows sorted by payment_executed_at ASC
 
 Every group has a subtotal row. Report ends with a grand total per
-currency across ALL groups.
+payment source per currency.
 """
 from __future__ import annotations
 
@@ -46,34 +50,33 @@ logger = logging.getLogger(__name__)
 __all__ = ["build_report_data", "generate_xlsx", "generate_pdf"]
 
 
-# Human labels for our payment_method enum values, aligned to the
-# operator's Latvian PDF wording.
-_PAYMENT_SOURCE_LABEL_LV = {
-    "bank_transfer":     "Uzņēmuma līdzekļiem",
-    "wire":              "Uzņēmuma līdzekļiem",
-    "sepa":              "Uzņēmuma līdzekļiem",
-    "card":              "Uzņēmuma līdzekļiem",   # company card
-    "company_card":      "Uzņēmuma līdzekļiem",
-    "personal_card":     "Personīgiem līdzekļiem",
-    "cash":              "Skaidrā naudā",
-    "netting":           "Ieskaits",
-    "":                  "Uzņēmuma līdzekļiem",   # unknown → default bucket
-    None:                "Uzņēmuma līdzekļiem",
+# Human labels for our payment_method enum values (English).
+_PAYMENT_SOURCE_LABEL_EN = {
+    "bank_transfer":     "Company funds",
+    "wire":              "Company funds",
+    "sepa":              "Company funds",
+    "card":              "Company funds",   # company card
+    "company_card":      "Company funds",
+    "personal_card":     "Personal funds",
+    "cash":              "Cash",
+    "netting":           "Netting",
+    "":                  "Company funds",   # unknown → default bucket
+    None:                "Company funds",
 }
 
-# Per-row "Maksāts ar" column (transaction-level): friendly Latvian
-# label for each concrete payment channel.
-_TX_METHOD_LABEL_LV = {
-    "bank_transfer": "pārskaitījumu",
-    "wire":          "pārskaitījumu",
-    "sepa":          "pārskaitījumu",
-    "card":          "uzņēmuma karti",
-    "company_card":  "uzņēmuma karti",
-    "personal_card": "personīgo karti",
-    "cash":          "skaidrā naudā",
-    "netting":       "ieskaitu",
-    "":              "pārskaitījumu",
-    None:            "pārskaitījumu",
+# Per-row "Paid via" column (transaction-level): friendly English label
+# for each concrete payment channel.
+_TX_METHOD_LABEL_EN = {
+    "bank_transfer": "bank transfer",
+    "wire":          "bank transfer",
+    "sepa":          "bank transfer",
+    "card":          "company card",
+    "company_card":  "company card",
+    "personal_card": "personal card",
+    "cash":          "cash",
+    "netting":       "netting",
+    "":              "bank transfer",
+    None:            "bank transfer",
 }
 
 
@@ -157,38 +160,38 @@ def build_report_data(*,
       {
         "company": <legal_entity or PC>,
         "country": "Latvia" | "Estonia" | ...,
-        "period_label": "Jūnijs, 2026",
-        "period_start": "2026-06-01",
-        "period_end":   "2026-06-30",
-        "report_id":    "370799",
-        "uploader":     "Artjoms Fokejevs (email)",
+        "period_label": "June 2026",
+        "period_start": "01/06/2026",
+        "period_end":   "30/06/2026",
+        "report_id":    "202606-007",
+        "uploader":     "Artjoms Fokejevs",
         "iban":         "LV..",
         "sources": [
           {
-            "label": "Uzņēmuma līdzekļiem",
+            "label": "Company funds",
             "groups": [
               {
                 "ledger_code": "4_1_Degviela",
                 "ledger_label": "4_1_Degviela · Fuel",
                 "group_id":     "202606-001",
                 "rows": [
-                  { "n": 1, "issue_date": "2026-05-31", "tx_method": "pārskaitījumu",
+                  { "n": 1, "issue_date": "31/05/2026", "tx_method": "bank transfer",
                     "comment": "", "vendor": "Circle K Latvia SIA",
                     "doc_number": "40290503", "reference": "",
                     "currency": "EUR", "net": 81.49, "vat": 17.11, "total": 98.60 },
-                  …
+                  ...
                 ],
-                "subtotal": { "currency": "EUR", "net": 81.49, "vat": 17.11, "total": 98.60 },
+                "subtotals": [{ "currency": "EUR", "net": ..., "vat": ..., "total": ... }],
               },
-              …
+              ...
             ],
-            "totals_by_currency": { "EUR": {net, vat, total}, "USD": {…} },
+            "totals_by_currency": { "EUR": {net, vat, total}, "USD": {...} },
           },
-          …
+          ...
         ],
         "grand_totals_by_source_and_currency": {
-          "Uzņēmuma līdzekļiem": {"EUR": {…}, "USD": {…}},
-          …
+          "Company funds": {"EUR": {...}, "USD": {...}},
+          ...
         },
       }
     """
@@ -213,7 +216,7 @@ def build_report_data(*,
     finally:
         conn.close()
 
-    # Meta — pick the most-common uploader as "Nozīņoja"
+    # Meta — pick the most-common uploader as "Submitted by"
     from collections import Counter
     up_counter = Counter((r.get("uploaded_by") or "").strip() for r in rows if r.get("uploaded_by"))
     uploader = up_counter.most_common(1)[0][0] if up_counter else ""
@@ -223,7 +226,6 @@ def build_report_data(*,
     ibans_seen = [pa for pa, _ in pa_counter.most_common()]
     iban = ""
     if ibans_seen:
-        # Try to resolve first one to a real IBAN string via paying_accounts
         try:
             first = ibans_seen[0]
             pa_id = int(first) if str(first).isdigit() else None
@@ -231,15 +233,14 @@ def build_report_data(*,
         except (TypeError, ValueError):
             iban = str(ibans_seen[0]) if ibans_seen[0] else ""
 
-    # Period label — Latvian month name (fallback to numeric)
-    _lv_months = ["Janvāris","Februāris","Marts","Aprīlis","Maijs","Jūnijs",
-                   "Jūlijs","Augusts","Septembris","Oktobris","Novembris","Decembris"]
+    # Period label — English month name (ASCII, so filename-safe)
+    _en_months = ["January", "February", "March", "April", "May", "June",
+                   "July", "August", "September", "October", "November", "December"]
     try:
         year, month = period.split("-")
         month_i = int(month)
-        period_label = f"{_lv_months[month_i-1]}, {year}"
+        period_label = f"{_en_months[month_i-1]} {year}"
         pd_start = f"{year}-{month.zfill(2)}-01"
-        # last day
         import calendar
         last = calendar.monthrange(int(year), month_i)[1]
         pd_end = f"{year}-{month.zfill(2)}-{last:02d}"
@@ -253,7 +254,7 @@ def build_report_data(*,
     grouped: Dict[str, Dict[str, List[Dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
     for r in rows:
         method = (r.get("payment_method") or "").strip().lower()
-        source_lbl = _PAYMENT_SOURCE_LABEL_LV.get(method, "Uzņēmuma līdzekļiem")
+        source_lbl = _PAYMENT_SOURCE_LABEL_EN.get(method, "Company funds")
         ledger = r.get("ledger_code") or "—"
         grouped[source_lbl][ledger].append(r)
 
@@ -275,8 +276,8 @@ def build_report_data(*,
                 issue_iso = v[:10]
                 break
         method = (r.get("payment_method") or "").strip().lower()
-        tx_label = _TX_METHOD_LABEL_LV.get(method, "pārskaитījumu")
-        # Prefer DD/MM/YYYY per operator's PDF
+        tx_label = _TX_METHOD_LABEL_EN.get(method, "bank transfer")
+        # Prefer DD/MM/YYYY per operator's PDF sample
         issue_disp = issue_iso
         try:
             d = datetime.strptime(issue_iso, "%Y-%m-%d")
@@ -380,7 +381,7 @@ def generate_xlsx(data: Dict[str, Any]) -> bytes:
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Izdevumu atskaite"
+    ws.title = "Expense Report"
 
     thin = Side(style="thin", color="D0D0D0")
     box = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -394,7 +395,7 @@ def generate_xlsx(data: Dict[str, Any]) -> bytes:
     header_fill   = PatternFill("solid", fgColor="F1F5F9")
 
     # Header block
-    ws["A1"] = "Izdevumu atskaite"
+    ws["A1"] = "Expense Report"
     ws["A1"].font = title_font
     ws["J1"] = data.get("company", "")
     ws["J1"].font = company_font
@@ -403,36 +404,36 @@ def generate_xlsx(data: Dict[str, Any]) -> bytes:
     ws["J2"].font = small_muted
     ws["J2"].alignment = Alignment(horizontal="right")
 
-    ws["A3"] = "Atskaites nosaukums:"; ws["A3"].font = small_bold
+    ws["A3"] = "Report title:";        ws["A3"].font = small_bold
     ws["B3"] = data.get("period_label", "")
     ws["A4"] = "ID:";                  ws["A4"].font = small_bold
     ws["B4"] = data.get("report_id", "")
-    ws["A5"] = "Nozīņoja:";            ws["A5"].font = small_bold
+    ws["A5"] = "Submitted by:";        ws["A5"].font = small_bold
     ws["B5"] = data.get("uploader", "")
-    ws["A6"] = "Bankas konts (IBAN):"; ws["A6"].font = small_bold
+    ws["A6"] = "Bank account (IBAN):"; ws["A6"].font = small_bold
     ws["B6"] = data.get("iban", "")
-    ws["A7"] = "Sākuma datums:";       ws["A7"].font = small_bold
+    ws["A7"] = "Start date:";          ws["A7"].font = small_bold
     ws["B7"] = data.get("period_start", "")
-    ws["D7"] = "Beigu datums:";        ws["D7"].font = small_bold
+    ws["D7"] = "End date:";            ws["D7"].font = small_bold
     ws["E7"] = data.get("period_end", "")
 
     row = 9
     for source in data.get("sources", []):
-        ws.cell(row=row, column=1, value="Maksāts ar:").font = small_bold
+        ws.cell(row=row, column=1, value="Paid with:").font = small_bold
         ws.cell(row=row, column=2, value=source["label"]).font = subhead_font
         row += 2
 
         for grp in source.get("groups", []):
-            ws.cell(row=row, column=1, value="Izmaksu tips:").font = small_bold
+            ws.cell(row=row, column=1, value="Expense type:").font = small_bold
             ws.cell(row=row, column=2, value=grp["ledger_label"]).font = subhead_font
             row += 1
-            ws.cell(row=row, column=1, value="Nr.").font = small_bold
+            ws.cell(row=row, column=1, value="No.").font = small_bold
             ws.cell(row=row, column=2, value=grp["group_id"]).font = Font(name="Calibri", size=10)
             row += 1
 
-            headers = ["#", "Izrakstīts", "Maksāts ar", "Komentārs",
-                        "Piegādātājs", "Dokumenta Nr.", "Atsauces Nr.",
-                        "Valūta", "Netto", "PVN", "Summa"]
+            headers = ["#", "Issued", "Paid via", "Comment",
+                        "Supplier", "Document No.", "Reference No.",
+                        "Currency", "Net", "VAT", "Total"]
             for c, h in enumerate(headers, start=1):
                 cell = ws.cell(row=row, column=c, value=h)
                 cell.font = header_font
@@ -456,7 +457,7 @@ def generate_xlsx(data: Dict[str, Any]) -> bytes:
                 row += 1
 
             for sub in grp.get("subtotals", []):
-                ws.cell(row=row, column=7, value="Starpsumma").font = small_bold
+                ws.cell(row=row, column=7, value="Subtotal").font = small_bold
                 ws.cell(row=row, column=8, value=sub["currency"]).font = small_bold
                 for c, k in ((9, "net"), (10, "vat"), (11, "total")):
                     cell = ws.cell(row=row, column=c, value=sub[k])
@@ -469,11 +470,11 @@ def generate_xlsx(data: Dict[str, Any]) -> bytes:
         row += 1
 
     # Grand totals per source per currency
-    ws.cell(row=row, column=1, value="Kopā samaksāts:").font = subhead_font
+    ws.cell(row=row, column=1, value="Grand totals:").font = subhead_font
     row += 1
     for src, by_ccy in (data.get("grand_totals_by_source_and_currency") or {}).items():
         for ccy, vals in by_ccy.items():
-            ws.cell(row=row, column=2, value=f"par {src.lower()}").font = small_bold
+            ws.cell(row=row, column=2, value=f"Total paid from {src.lower()}").font = small_bold
             ws.cell(row=row, column=8, value=ccy).font = small_bold
             for c, k in ((9, "net"), (10, "vat"), (11, "total")):
                 cell = ws.cell(row=row, column=c, value=vals[k])
@@ -539,7 +540,7 @@ def generate_pdf(data: Dict[str, Any]) -> bytes:
     story: List[Any] = []
     # Header row (title left, company right) via a 2-col table
     hdr = Table([
-        [Paragraph("<b>Izdevumu atskaite</b>", title_st),
+        [Paragraph("<b>Expense Report</b>", title_st),
          Paragraph(data.get("company", ""), company_st)],
         ["", Paragraph(data.get("country", ""), country_st)],
     ], colWidths=[110 * mm, 65 * mm])
@@ -547,29 +548,29 @@ def generate_pdf(data: Dict[str, Any]) -> bytes:
     story.append(hdr)
 
     meta_lines = [
-        f"<b>Atskaites nosaukums:</b> {data.get('period_label','')}",
+        f"<b>Report title:</b> {data.get('period_label','')}",
         f"<b>ID:</b> {data.get('report_id','')}",
-        f"<b>Nozīņoja:</b> {data.get('uploader','')}",
-        f"<b>Bankas konts</b>",
+        f"<b>Submitted by:</b> {data.get('uploader','')}",
+        f"<b>Bank account</b>",
         f"&nbsp;&nbsp;<b>IBAN:</b> {data.get('iban','')}",
-        f"<b>Sākuma datums:</b> {data.get('period_start','')}  &nbsp;&nbsp;"
-        f"<b>Beigu datums:</b> {data.get('period_end','')}",
+        f"<b>Start date:</b> {data.get('period_start','')}  &nbsp;&nbsp;"
+        f"<b>End date:</b> {data.get('period_end','')}",
     ]
     for ln in meta_lines:
         story.append(Paragraph(ln, meta_st))
     story.append(Spacer(1, 8))
 
     col_widths = [8*mm, 20*mm, 20*mm, 28*mm, 30*mm, 22*mm, 20*mm, 12*mm, 14*mm, 12*mm, 14*mm]
-    header_row = ["#", "Izrakstīts", "Maksāts ar", "Komentārs",
-                   "Piegādātājs", "Dokumenta Nr.", "Atsauces Nr.",
-                   "Valūta", "Netto", "PVN", "Summa"]
+    header_row = ["#", "Issued", "Paid via", "Comment",
+                   "Supplier", "Document No.", "Reference No.",
+                   "Currency", "Net", "VAT", "Total"]
 
     for source in data.get("sources", []):
-        story.append(Paragraph(f"<b>Maksāts ar:</b> {source['label']}", subhead_st))
+        story.append(Paragraph(f"<b>Paid with:</b> {source['label']}", subhead_st))
 
         for grp in source.get("groups", []):
-            story.append(Paragraph(f"<b>Izmaksu tips:</b> {grp['ledger_label']}", subhead_st))
-            story.append(Paragraph(f"Nr. {grp['group_id']}", group_meta_st))
+            story.append(Paragraph(f"<b>Expense type:</b> {grp['ledger_label']}", subhead_st))
+            story.append(Paragraph(f"No. {grp['group_id']}", group_meta_st))
 
             table_data: List[List[Any]] = [header_row]
             for rv in grp.get("rows", []):
@@ -589,7 +590,7 @@ def generate_pdf(data: Dict[str, Any]) -> bytes:
             # Subtotal rows per currency
             for sub in grp.get("subtotals", []):
                 table_data.append([
-                    "", "", "", "", "", "", "Starpsumma",
+                    "", "", "", "", "", "", "Subtotal",
                     sub["currency"],
                     f"{sub['net']:.2f}",
                     f"{sub['vat']:.2f}",
@@ -619,11 +620,11 @@ def generate_pdf(data: Dict[str, Any]) -> bytes:
 
     # Grand totals block
     story.append(Spacer(1, 8))
-    story.append(Paragraph("<b>Kopā samaksāts:</b>", subhead_st))
+    story.append(Paragraph("<b>Grand totals:</b>", subhead_st))
     for src, by_ccy in (data.get("grand_totals_by_source_and_currency") or {}).items():
         for ccy, vals in by_ccy.items():
             grand = [[
-                f"Kopā samaksāts par {src.lower()}",
+                f"Total paid from {src.lower()}",
                 ccy,
                 f"{vals['net']:.2f}",
                 f"{vals['vat']:.2f}",

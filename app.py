@@ -4095,10 +4095,11 @@ def export_by_legal_entity():
 #   - specification.csv with full metadata (vendor, amount, dates, ledger, status)
 #   - README.txt with summary
 # Filtered by Legal Entity + Period. Designed for handover to external accounting.
-# 2026-06-30 — bookkeeper "Izdevumu atskaite" (expense report) in the
-# format the operator's LV accountant expects: per-payment-source →
-# per-expense-type sections with subtotals + per-currency grand totals.
-# Two output formats: .xlsx and .pdf. Both share the same builder in
+# 2026-06-30 — bookkeeper "Expense Report" in the layout the operator's
+# accountant expects: per-payment-source → per-expense-type sections
+# with subtotals + per-currency grand totals. All visible strings and
+# filenames are in English (2026-07-01 update). Two output formats:
+# .xlsx and .pdf. Both share the same builder in
 # services/bookkeeper_report.py.
 def _content_disposition(filename: str) -> str:
     """Build a Content-Disposition header safe for HTTP transport.
@@ -4149,7 +4150,7 @@ def bookkeeper_report_xlsx():
         return err
     from services import bookkeeper_report as _bk
     xlsx_bytes = _bk.generate_xlsx(data)
-    fname = f"Izdevumu_atskaite_{data.get('company','')}_{data.get('period_label','').replace(', ','_')}.xlsx".replace(" ", "_")
+    fname = f"Expense_Report_{data.get('company','')}_{data.get('period_label','')}.xlsx".replace(" ", "_")
     return (
         xlsx_bytes, 200,
         {
@@ -4170,7 +4171,7 @@ def bookkeeper_report_pdf():
         pdf_bytes = _bk.generate_pdf(data)
     except ImportError:
         return jsonify({"error": "reportlab not installed on server"}), 503
-    fname = f"Izdevumu_atskaite_{data.get('company','')}_{data.get('period_label','').replace(', ','_')}.pdf".replace(" ", "_")
+    fname = f"Expense_Report_{data.get('company','')}_{data.get('period_label','')}.pdf".replace(" ", "_")
     return (
         pdf_bytes, 200,
         {

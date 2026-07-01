@@ -66,14 +66,14 @@ def test_build_report_groups_by_source_and_ledger():
     _seed("pytest_bk_3", amount=6.90, ledger="4_3_Taksi",
           method="card", vendor="MODULAN SIA")
     data = bk.build_report_data(period="2026-06", legal_entity="ALPS2ALPS_OU")
-    assert data["period_label"] == "Jūnijs, 2026"
+    assert data["period_label"] == "June 2026"
     assert data["row_count"] == 3
-    # All 3 payment methods (bank_transfer + card) fall under one Latvian
-    # bucket ("Uzņēmuma līdzekļiem"), and are split by ledger inside.
+    # All 3 payment methods (bank_transfer + card) fall under one
+    # bucket ("Company funds"), and are split by ledger inside.
     sources = data["sources"]
     assert len(sources) == 1
     src = sources[0]
-    assert src["label"] == "Uzņēmuma līdzekļiem"
+    assert src["label"] == "Company funds"
     ledgers = {g["ledger_code"] for g in src["groups"]}
     assert ledgers == {"4_1_Degviela", "4_3_Taksi"}
 
@@ -92,7 +92,7 @@ def test_build_report_subtotals_and_grand_totals():
     assert subs_x["EUR"]["net"] == pytest.approx(120.0)
     assert subs_x["EUR"]["vat"] == pytest.approx(30.0)
     assert subs_x["EUR"]["total"] == pytest.approx(150.0)
-    grand = data["grand_totals_by_source_and_currency"]["Uzņēmuma līdzekļiem"]
+    grand = data["grand_totals_by_source_and_currency"]["Company funds"]
     assert grand["EUR"]["total"] == pytest.approx(150.0)
     assert grand["USD"]["total"] == pytest.approx(30.0)
 
@@ -106,7 +106,7 @@ def test_build_report_row_view_shapes():
     row = data["sources"][0]["groups"][0]["rows"][0]
     assert row["n"] == 1
     assert row["issue_date"] == "31/05/2026"
-    assert row["tx_method"] == "pārskaitījumu"
+    assert row["tx_method"] == "bank transfer"
     assert row["vendor"] == "Circle K Latvia SIA"
     assert row["net"] == pytest.approx(81.49)
     assert row["vat"] == pytest.approx(17.11)
@@ -124,14 +124,24 @@ def test_generate_xlsx_produces_valid_workbook():
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx))
     ws = wb.active
-    assert ws["A1"].value == "Izdevumu atskaite"
+    assert ws["A1"].value == "Expense Report"
     # Header row of the first data table should live somewhere on the sheet
     found_hdr = False
     for row in ws.iter_rows(values_only=True):
-        if row and row[0] == "#" and "Izrakstīts" in row and "Summa" in row:
+        if row and row[0] == "#" and "Issued" in row and "Total" in row:
             found_hdr = True
             break
-    assert found_hdr, "Izdevumu atskaite table header row not found"
+    assert found_hdr, "Expense Report table header row not found"
+
+    # All visible strings in the sheet must be ASCII / English — no
+    # residual Latvian tokens like "Izdevumu" or "Jūnijs".
+    forbidden = ("Izdevumu", "atskaite", "Jūnijs", "Uzņēmuma", "Starpsumma",
+                  "Piegādātājs", "pārskaitījumu", "Maksāts")
+    for row in ws.iter_rows(values_only=True):
+        for cell in row:
+            if isinstance(cell, str):
+                for tok in forbidden:
+                    assert tok not in cell, f"Latvian token '{tok}' leaked into XLSX cell: {cell!r}"
 
 
 def test_generate_pdf_produces_valid_pdf():

@@ -9219,16 +9219,16 @@ function loadByLegalEntity() {
       var _zipTooltip = _selPeriod
         ? 'ZIP with invoice files + specification.csv/xlsx for period ' + _selPeriod + '. Change period via the dropdown at the top.'
         : 'ZIP with invoice files + specification.csv/xlsx — ALL periods. Pick a period at the top to scope to one month.';
-      // 2026-06-30 — bookkeeper-formatted expense report (Izdevumu
-      // atskaite) available as Excel and PDF. Both share the same
-      // builder; XLSX is diff-friendly, PDF matches the operator's LV
-      // accountant's layout 1:1.
+      // 2026-06-30 — bookkeeper-formatted Expense Report available as
+      // Excel and PDF. Both share the same builder; XLSX is
+      // diff-friendly, PDF matches the operator's accountant layout 1:1.
+      // 2026-07-01: all labels + filenames in English.
       var _bkPeriodParam = _selPeriod ? ('&period=' + encodeURIComponent(_selPeriod)) : '';
       var _bkXlsxUrl = '/api/accounting/bookkeeper-report.xlsx?legal_entity=' + encodeURIComponent(entityCode) + _bkPeriodParam;
       var _bkPdfUrl  = '/api/accounting/bookkeeper-report.pdf?legal_entity='  + encodeURIComponent(entityCode) + _bkPeriodParam;
       var _bkTooltip = _selPeriod
-        ? 'Bookkeeper-formatted expense report for ' + _selPeriod + ' (Izdevumu atskaite)'
-        : 'Bookkeeper-formatted expense report — pick a period at the top';
+        ? 'Bookkeeper-formatted Expense Report for ' + _selPeriod
+        : 'Bookkeeper-formatted Expense Report — pick a period at the top';
       var dlBtn = g.doc_count > 0
         ? '<div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">' +
             '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;" onclick="downloadByLegalEntity(\'' + esc(entityCode).replace(/\x27/g, "\\\x27") + '\')" title="CSV with all metadata (no invoice files)' + _periodLbl + '">📥 CSV' + _periodLbl + '</button>' +
