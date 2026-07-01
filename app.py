@@ -4100,6 +4100,21 @@ def export_by_legal_entity():
 # per-expense-type sections with subtotals + per-currency grand totals.
 # Two output formats: .xlsx and .pdf. Both share the same builder in
 # services/bookkeeper_report.py.
+def _content_disposition(filename: str) -> str:
+    """Build a Content-Disposition header safe for HTTP transport.
+
+    2026-07-01 fix — gunicorn's h11 parser rejects any header byte outside
+    ISO-8859-1, and Latvian month names like "Jūnijs" contain U+016B (ū).
+    Sending them raw returns 400 "Invalid HTTP Header" and the proxy shows
+    502. RFC 5987 solves this: an ASCII fallback for old clients plus a
+    filename* value in UTF-8 percent-encoded form for modern browsers.
+    """
+    from urllib.parse import quote
+    ascii_fallback = filename.encode("ascii", "replace").decode("ascii").replace("?", "_")
+    encoded = quote(filename, safe="")
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
+
+
 def _bookkeeper_report_common():
     user = _current_user_name()
     if not user:
@@ -4139,7 +4154,7 @@ def bookkeeper_report_xlsx():
         xlsx_bytes, 200,
         {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Content-Disposition": _content_disposition(fname),
             "X-Report-Rows": str(data.get("row_count", 0)),
         },
     )
@@ -4160,7 +4175,7 @@ def bookkeeper_report_pdf():
         pdf_bytes, 200,
         {
             "Content-Type": "application/pdf",
-            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Content-Disposition": _content_disposition(fname),
             "X-Report-Rows": str(data.get("row_count", 0)),
         },
     )
