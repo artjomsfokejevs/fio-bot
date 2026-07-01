@@ -4095,6 +4095,77 @@ def export_by_legal_entity():
 #   - specification.csv with full metadata (vendor, amount, dates, ledger, status)
 #   - README.txt with summary
 # Filtered by Legal Entity + Period. Designed for handover to external accounting.
+# 2026-06-30 — bookkeeper "Izdevumu atskaite" (expense report) in the
+# format the operator's LV accountant expects: per-payment-source →
+# per-expense-type sections with subtotals + per-currency grand totals.
+# Two output formats: .xlsx and .pdf. Both share the same builder in
+# services/bookkeeper_report.py.
+def _bookkeeper_report_common():
+    user = _current_user_name()
+    if not user:
+        return None, jsonify({
+            "error": "not_signed_in",
+            "hint": "Append ?as=<Your Full Name> to the URL for a direct-link download.",
+        }), 401
+    err = _require_capability("export_bulk")
+    if err:
+        return None, err, 401
+    period = (request.args.get("period") or "").strip()
+    if not period or len(period) != 7:
+        return None, jsonify({"error": "period (YYYY-MM) required"}), 400
+    legal_entity = (request.args.get("legal_entity") or "").strip() or None
+    profit_center = (request.args.get("profit_center") or "").strip() or None
+    from services import bookkeeper_report as _bk
+    try:
+        data = _bk.build_report_data(
+            period=period,
+            legal_entity=legal_entity,
+            profit_center=profit_center,
+        )
+    except ValueError as exc:
+        return None, jsonify({"error": str(exc)}), 400
+    return data, None, 200
+
+
+@app.route("/api/accounting/bookkeeper-report.xlsx", methods=["GET"])
+def bookkeeper_report_xlsx():
+    data, err, _ = _bookkeeper_report_common()
+    if err:
+        return err
+    from services import bookkeeper_report as _bk
+    xlsx_bytes = _bk.generate_xlsx(data)
+    fname = f"Izdevumu_atskaite_{data.get('company','')}_{data.get('period_label','').replace(', ','_')}.xlsx".replace(" ", "_")
+    return (
+        xlsx_bytes, 200,
+        {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "X-Report-Rows": str(data.get("row_count", 0)),
+        },
+    )
+
+
+@app.route("/api/accounting/bookkeeper-report.pdf", methods=["GET"])
+def bookkeeper_report_pdf():
+    data, err, _ = _bookkeeper_report_common()
+    if err:
+        return err
+    from services import bookkeeper_report as _bk
+    try:
+        pdf_bytes = _bk.generate_pdf(data)
+    except ImportError:
+        return jsonify({"error": "reportlab not installed on server"}), 503
+    fname = f"Izdevumu_atskaite_{data.get('company','')}_{data.get('period_label','').replace(', ','_')}.pdf".replace(" ", "_")
+    return (
+        pdf_bytes, 200,
+        {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "X-Report-Rows": str(data.get("row_count", 0)),
+        },
+    )
+
+
 @app.route("/api/accounting/export-bulk-zip", methods=["GET"])
 def export_bulk_zip():
     # 2026-06-24 FB-L — bulk export is privileged (full PDFs leave the system).
