@@ -57,6 +57,33 @@ def test_file_import_accepts_tsv(client):
     assert body["dry_run"] is True
 
 
+def test_file_import_skips_decorative_preamble_rows(client):
+    """2026-07-01 — the operator's Amitours Cash Timeline CSV export has
+    5 rows of decorative KPI preamble before the real header row (row 6).
+    Importer must auto-detect the header instead of erroring out with
+    'missing required header(s)' when the first row is empty."""
+    csv = (
+        "AMITOURS - UNIFIED CASH TIMELINE,,,Actuals from TxData,,,\n"
+        ",,,AP,,AR,Overdue\n"
+        ",,,b2c_liability,,ar_eur,overdue_eur\n"
+        ",,,€388805,,€130764,€20641\n"
+        ",,,,,,\n"
+        "Period,End Date,Type,B2C revenue plan\n"
+        "W40,10/12/2026,Forecast,\"€41,500\"\n"
+    ).encode("utf-8")
+    resp = client.post(
+        "/api/cashflow/weekly/import-file",
+        data={"file": (io.BytesIO(csv), "cash_timeline.csv"),
+              "default_row_type": "forecast",
+              "dry_run": "1"},
+        headers=_HDR,
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200, resp.get_json()
+    body = resp.get_json()
+    assert body["rows_imported"] == 1
+
+
 def test_file_import_accepts_csv(client):
     csv = ("Period,End Date,Type,B2C revenue plan\n"
             "W41,10/12/2026,Forecast,\"€41,500\"\n").encode("utf-8")

@@ -440,31 +440,55 @@ def import_tsv(text: str, *,
         return {"rows_seen": 0, "rows_imported": 0, "rows_skipped": 0,
                 "skipped_examples": [], "unknown_columns": [],
                 "rows": [], "dry_run": dry_run}
-    headers_raw = parsed_rows[0]
-    headers = [_norm_header(h) for h in headers_raw]
+    # 2026-07-01 — operators export sheets with a decorative preamble
+    # (title / snapshot / KPIs) BEFORE the real header row. e.g. the
+    # Amitours "Cash Timeline" CSV has 5 rows of preamble then the header
+    # 'Period,End Date,Type,...' on row 6. Auto-detect the header row by
+    # scanning up to the first 20 rows and picking the first one whose
+    # normalised headers cover BOTH required fields.
+    required = {"_end_date", "_row_type"}
+    header_row_idx = 0
     mapped: Dict[int, str] = {}
     unknown: List[str] = []
-    for idx, h in enumerate(headers):
-        if not h:
-            continue
-        if h in _HEADER_MAP:
-            mapped[idx] = _HEADER_MAP[h]
-        else:
-            unknown.append(headers_raw[idx].strip() or f"col{idx}")
-
-    required = {"_end_date", "_row_type"}
+    for candidate_idx in range(min(20, len(parsed_rows))):
+        cand_raw = parsed_rows[candidate_idx]
+        cand_headers = [_norm_header(h) for h in cand_raw]
+        cand_mapped: Dict[int, str] = {}
+        cand_unknown: List[str] = []
+        for idx, h in enumerate(cand_headers):
+            if not h:
+                continue
+            if h in _HEADER_MAP:
+                cand_mapped[idx] = _HEADER_MAP[h]
+            else:
+                cand_unknown.append(cand_raw[idx].strip() or f"col{idx}")
+        if required.issubset(set(cand_mapped.values())):
+            header_row_idx = candidate_idx
+            mapped = cand_mapped
+            unknown = cand_unknown
+            break
     if not required.issubset(set(mapped.values())):
+        # Report what the FIRST row actually looked like so the operator
+        # can eyeball the mismatch, not the empty result of a preamble scan.
+        first_headers = [_norm_header(h) for h in parsed_rows[0]]
+        first_mapped = sorted({_HEADER_MAP[h] for h in first_headers if h in _HEADER_MAP})
         raise ValueError(
             "missing required header(s); need 'End Date' + 'Type'. "
-            f"Got: {sorted(set(mapped.values()))}"
+            f"Got: {first_mapped} (scanned {min(20, len(parsed_rows))} rows "
+            "for a matching header)."
         )
+    headers_raw = parsed_rows[header_row_idx]
+    # Skip past the header row for the data-loop below
+    parsed_rows = parsed_rows[header_row_idx:]
 
     rows_seen = 0
     rows_imported = 0
     skipped: List[Dict[str, Any]] = []
     upserted_rows: List[Dict[str, Any]] = []
 
-    for ln_no, cells in enumerate(parsed_rows[1:], start=2):
+    # ln_no reflects the real 1-indexed CSV line so skip-example
+    # messages point the operator at the right row in their source file.
+    for ln_no, cells in enumerate(parsed_rows[1:], start=header_row_idx + 2):
         rows_seen += 1
         raw_line = sep.join(cells)  # reconstructed for skip-example display
         rec: Dict[str, Any] = {}
