@@ -8,5 +8,9 @@
   ],
   "_b32_comment": "B32 detector — SPA uses X-FIO-User header (set by the fetch wrapper). Any browser navigation (window.location/window.open/location.assign) to /api/ must wrap the URL in _withIdentity so the GET-only ?as= shortcut survives. See PRODUCT_BUILDER 2026-06-29 retro V129.",
   "auth_header_scheme": "X-FIO-User",
-  "identity_url_helpers": ["_withIdentity"]
+  "identity_url_helpers": ["_withIdentity"],
+  "_b33_comment": "B33 detector — HTML/JS <option value='X'> lists that reference SOME but not ALL codes from a canonical set are drifted hardcoded dropdowns. Source of truth is services/pc_codes.CANONICAL. See PRODUCT_BUILDER 2026-06-30 retro AA150.",
+  "canonical_code_sets": {
+    "profit_center": ["AA", "AG", "AH", "AL", "CF", "MN", "MT", "RR", "SP"]
+  }
 }
