@@ -11688,7 +11688,62 @@ async function renderCashflowWeeklyCard() {
       return;
     }
 
-    var html = '<table style="width:100%;border-collapse:separate;border-spacing:0;font-size:11px;font-family:ui-monospace,monospace;min-width:1800px;">';
+    // 2026-07-01 (task #156) — plan-vs-fact summary strip. Fetches in
+    // parallel with the main table so the operator sees period rollups
+    // (Inflow, Outflow, Net) + top-5 biggest variances above the raw
+    // rows. Rendered async — if it fails the table below still shows.
+    var _pvfUrl = '/api/cashflow/weekly/plan-vs-fact?weeks_before=' + win.wb + '&weeks_after=' + win.wa;
+    fetch(_pvfUrl, {headers: {'X-FIO-User': (window.currentUser || '')}})
+      .then(function(r){ return r.json(); })
+      .then(function(pvf){
+        var strip = document.getElementById('cw-plan-vs-fact');
+        if (!strip) return;
+        if (!pvf || pvf.error) { strip.innerHTML = ''; return; }
+        var r = pvf.rollup || {};
+        var big = pvf.biggest_variances || [];
+        var kpi = function(label, fact, plan, variance, invert){
+          var vColor = '#64748b';
+          var vSign = variance >= 0 ? '+' : '';
+          if (Math.abs(variance) >= 5000) {
+            var good = invert ? (variance < 0) : (variance > 0);
+            vColor = good ? '#166534' : '#991b1b';
+          }
+          return '<div style="flex:1;min-width:170px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;">' +
+            '<div style="font-size:9.5px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.05em;">' + label + '</div>' +
+            '<div style="display:flex;align-items:baseline;gap:8px;margin-top:2px;">' +
+            '  <span style="font-size:15px;font-weight:700;">' + fmtEUR(fact) + '</span>' +
+            '  <span style="font-size:10px;color:#94a3b8;">plan ' + fmtEUR(plan) + '</span>' +
+            '</div>' +
+            '<div style="font-size:11px;color:' + vColor + ';font-weight:600;margin-top:2px;">Δ ' + vSign + fmtEUR(variance) + '</div>' +
+            '</div>';
+        };
+        var s = '<div style="margin-bottom:14px;">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">▲ Plan vs fact — window ' +
+          esc(pvf.window_start||'') + ' → ' + esc(pvf.window_end||'') + '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+          kpi('Inflow (B2C+B2B)',    r.inflow_fact,  r.inflow_plan,  r.inflow_variance,  false) +
+          kpi('Outflow (burn+COGS+PF)', r.outflow_fact, r.outflow_plan, r.outflow_variance, true) +
+          kpi('Net cash',            r.net_fact,     r.net_plan,     r.net_variance,     false) +
+          '</div>';
+        if (big.length) {
+          s += '<div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">' +
+            '<div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:4px;">🎯 Biggest variances (top 5)</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;">';
+          big.forEach(function(b){
+            var color = b.variance >= 0 ? '#166534' : '#991b1b';
+            s += '<div><span style="font-family:monospace;color:var(--muted);">' + esc(b.week_start) + '</span> ' +
+              '<b>' + esc(b.metric) + '</b> ' +
+              '<span style="color:' + color + ';font-weight:700;">' + (b.variance>=0?'+':'') + fmtEUR(b.variance) + '</span></div>';
+          });
+          s += '</div></div>';
+        }
+        s += '</div>';
+        strip.innerHTML = s;
+      })
+      .catch(function(){ /* strip is optional */ });
+
+    var html = '<div id="cw-plan-vs-fact"></div>' +
+      '<table style="width:100%;border-collapse:separate;border-spacing:0;font-size:11px;font-family:ui-monospace,monospace;min-width:1800px;">';
     // Header
     html += '<thead><tr>';
     CW_COLS.forEach(function(c){
@@ -12096,23 +12151,56 @@ async function renderCashflowProjectionCard() {
           '</div>';
       });
       html += '</div></div>';
-      html += '<table style="width:100%;font-size:12px;margin-top:14px;border-collapse:collapse;">' +
-        '<thead><tr>' +
+      // 2026-07-01 — plan overlay from Weekly Cashflow Timeline (task #156).
+      // Fact columns come from document pipeline; Plan columns come from
+      // the operator's imported forecast/estimate/plug rows. Variance
+      // background: red if fact worse than plan (less AR, more AP),
+      // green if better. Threshold: |Δ| ≥ €5,000 to avoid noise.
+      var _hasPlan = weeks.some(function(w){ return (w.plan_row_count || 0) > 0; });
+      html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:18px;">' +
+        '<strong style="font-size:13px;">Week-by-week (fact vs plan)</strong>' +
+        (_hasPlan
+          ? '<span style="font-size:11px;color:var(--muted);">Plan from imported Weekly Cashflow Timeline · red = variance vs plan</span>'
+          : '<span style="font-size:11px;color:var(--muted);">No plan imported yet — <a href="#" onclick="showTab(\'cashflow-weekly\');return false;">import Weekly Cashflow Timeline</a> to overlay plan</span>') +
+        '</div>';
+      html += '<table style="width:100%;font-size:11.5px;margin-top:6px;border-collapse:collapse;">' +
+        '<thead><tr style="background:#f8fafc;">' +
         '<th style="text-align:left;padding:4px;">Week</th>' +
-        '<th style="text-align:right;padding:4px;">AR in</th>' +
-        '<th style="text-align:right;padding:4px;">AP out</th>' +
-        '<th style="text-align:right;padding:4px;">Net</th>' +
-        '<th style="text-align:right;padding:4px;">Running</th>' +
+        '<th style="text-align:right;padding:4px;color:#166534;">AR fact</th>' +
+        '<th style="text-align:right;padding:4px;color:#64748b;">AR plan</th>' +
+        '<th style="text-align:right;padding:4px;">Δ AR</th>' +
+        '<th style="text-align:right;padding:4px;color:#991b1b;">AP fact</th>' +
+        '<th style="text-align:right;padding:4px;color:#64748b;">AP plan</th>' +
+        '<th style="text-align:right;padding:4px;">Δ AP</th>' +
+        '<th style="text-align:right;padding:4px;">Net fact</th>' +
+        '<th style="text-align:right;padding:4px;color:#64748b;">Net plan</th>' +
+        '<th style="text-align:right;padding:4px;">Running fact</th>' +
+        '<th style="text-align:right;padding:4px;color:#64748b;">Running plan</th>' +
         '</tr></thead><tbody>';
+      var _VAR_THRESHOLD = 5000;  // ignore variance chatter below €5k
+      var _sigVarColor = function(v, better) {
+        if (Math.abs(v) < _VAR_THRESHOLD) return '';
+        // For AR: positive Δ (fact > plan) is good → green
+        // For AP: positive Δ (fact > plan) is bad → red
+        var good = better === 'up' ? v > 0 : v < 0;
+        return 'background:' + (good ? '#dcfce7' : '#fee2e2') + ';';
+      };
       weeks.forEach(function(w){
         var rb = w.running_balance || 0;
+        var rp = w.plan_running_balance || 0;
         var rc = rb >= 0 ? '#166534' : '#991b1b';
-        html += '<tr>' +
+        html += '<tr style="border-top:1px solid #f1f5f9;">' +
           '<td style="padding:4px;font-family:monospace;">' + esc(w.week_start || '') + '</td>' +
           '<td style="padding:4px;text-align:right;color:#166534;">' + fmtEUR(w.ar_in) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#94a3b8;">' + fmtEUR(w.plan_ar_in) + '</td>' +
+          '<td style="padding:4px;text-align:right;' + _sigVarColor(w.ar_variance||0, 'up') + '">' + fmtEUR(w.ar_variance) + '</td>' +
           '<td style="padding:4px;text-align:right;color:#991b1b;">' + fmtEUR(w.ap_out) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#94a3b8;">' + fmtEUR(w.plan_ap_out) + '</td>' +
+          '<td style="padding:4px;text-align:right;' + _sigVarColor(w.ap_variance||0, 'down') + '">' + fmtEUR(w.ap_variance) + '</td>' +
           '<td style="padding:4px;text-align:right;">' + fmtEUR(w.net) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#94a3b8;">' + fmtEUR(w.plan_net) + '</td>' +
           '<td style="padding:4px;text-align:right;font-weight:700;color:' + rc + ';">' + fmtEUR(rb) + '</td>' +
+          '<td style="padding:4px;text-align:right;color:#64748b;">' + fmtEUR(rp) + '</td>' +
           '</tr>';
       });
       html += '</tbody></table>';

@@ -28,7 +28,85 @@ __all__ = [
     "opening_balance_for",
     "set_opening_balance",
     "list_opening_balances",
+    "plan_by_week",
 ]
+
+
+# 2026-07-01 — the operator uploads the Amitours Weekly Cashflow Timeline
+# CSV, which lands in cashflow_weekly with row_type in
+# ('forecast','estimate','plug'). We overlay those planned inflows /
+# outflows on top of the 13-week projection so operators see plan vs fact
+# side by side and can spot variances the same week they happen.
+#
+# Column mapping — cashflow_weekly numeric fields → plan-AR vs plan-AP
+# buckets. We treat b2c/b2b revenue plans + financing_inflow + holdback +
+# portfolio_inflows as inflows; all *_plan burn/COGS/marketing +
+# financing_outflow + outstanding_ap_intercompany as outflows.  Signs in
+# the sheet are already negative for outflows, so we take abs() on the AP
+# side to keep both series positive-magnitude (net = ar - ap).
+_PLAN_AR_FIELDS = (
+    "b2c_revenue_plan",
+    "b2b_revenue_plan",
+    "financing_inflow",
+    "holdback",
+    "portfolio_inflows",
+)
+_PLAN_AP_FIELDS = (
+    "a2a_burn_plan",
+    "a2a_cogs_plan",
+    "a2a_cogs_ap",
+    "marketing_plan",
+    "portfolio_burn_plan",
+    "holding_royalty",
+    "financing_outflow",
+    "outstanding_ap_intercompany",
+)
+
+
+def plan_by_week(week_starts: List[str]) -> Dict[str, Dict[str, float]]:
+    """Read cashflow_weekly for the given Monday-anchored week list and
+    aggregate every plan-tagged row into a per-week {ar, ap, net} bag.
+
+    Multiple planning rows can land on the same week (forecast + plug + …);
+    we sum them so the operator's total picture is preserved.
+    """
+    if not week_starts:
+        return {}
+    placeholders = ",".join("?" for _ in week_starts)
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            f"SELECT * FROM cashflow_weekly "
+            f"WHERE week_start IN ({placeholders}) "
+            f"AND row_type IN ('forecast','estimate','plug')",
+            tuple(week_starts),
+        ).fetchall()
+    finally:
+        conn.close()
+    by_week: Dict[str, Dict[str, float]] = {
+        w: {"ar": 0.0, "ap": 0.0, "net": 0.0, "row_count": 0} for w in week_starts
+    }
+    for r in rows:
+        d = dict(r)
+        w = d.get("week_start")
+        if w not in by_week:
+            continue
+        by_week[w]["row_count"] += 1
+        for f in _PLAN_AR_FIELDS:
+            try:
+                by_week[w]["ar"] += float(d.get(f) or 0)
+            except (TypeError, ValueError):
+                pass
+        for f in _PLAN_AP_FIELDS:
+            try:
+                by_week[w]["ap"] += abs(float(d.get(f) or 0))
+            except (TypeError, ValueError):
+                pass
+    for w, v in by_week.items():
+        v["ar"] = round(v["ar"], 2)
+        v["ap"] = round(v["ap"], 2)
+        v["net"] = round(v["ar"] - v["ap"], 2)
+    return by_week
 
 
 def _week_starts(start: datetime, weeks: int) -> List[str]:
@@ -233,18 +311,28 @@ def project(weeks: int = 13, pc: Optional[str] = None,
     week_starts = _week_starts(datetime.utcnow(), weeks)
     in_by_week = _ar_inflows_by_week(week_starts, pc)
     out_by_week = _ap_outflows_by_week(week_starts, pc)
+    # 2026-07-01 — overlay the operator's imported plan so each row shows
+    # both fact and plan side by side, letting the UI colour variances.
+    # Plan is entity-wide (Amitours unified), so we do not scope it by PC.
+    plan_bw = plan_by_week(week_starts)
     opening = (opening_override
                if opening_override is not None
                else opening_balance_for(pc))
 
     series: List[Dict[str, Any]] = []
     running = opening
+    running_plan = opening
     runway: Optional[int] = None
     for idx, w in enumerate(week_starts):
         ar = round(in_by_week.get(w, 0.0), 2)
         ap = round(out_by_week.get(w, 0.0), 2)
         net = ar - ap
         running = round(running + net, 2)
+        p = plan_bw.get(w) or {"ar": 0.0, "ap": 0.0, "net": 0.0, "row_count": 0}
+        plan_ar = round(p["ar"], 2)
+        plan_ap = round(p["ap"], 2)
+        plan_net = round(p["net"], 2)
+        running_plan = round(running_plan + plan_net, 2)
         if running < 0 and runway is None:
             runway = idx + 1
         series.append({
@@ -253,6 +341,17 @@ def project(weeks: int = 13, pc: Optional[str] = None,
             "ap_out": ap,
             "net": round(net, 2),
             "running_balance": running,
+            # Plan overlay (from Weekly Cashflow Timeline import)
+            "plan_ar_in":  plan_ar,
+            "plan_ap_out": plan_ap,
+            "plan_net":    plan_net,
+            "plan_running_balance": running_plan,
+            "plan_row_count":       int(p["row_count"]),
+            # Fact − plan variance. Positive = fact beat plan (good on AR,
+            # bad on AP). UI flips the sign on AP variance for red/green.
+            "ar_variance":  round(ar - plan_ar, 2),
+            "ap_variance":  round(ap - plan_ap, 2),
+            "net_variance": round(net - plan_net, 2),
         })
     return {
         "weeks": weeks,
@@ -261,4 +360,6 @@ def project(weeks: int = 13, pc: Optional[str] = None,
         "series": series,
         "runway_weeks": runway,
         "ending_balance_eur": series[-1]["running_balance"] if series else round(opening, 2),
+        "ending_balance_plan_eur": (series[-1]["plan_running_balance"]
+                                    if series else round(opening, 2)),
     }

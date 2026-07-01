@@ -437,6 +437,24 @@ def cashflow_weekly_totals() -> Any:
     return jsonify(_cw.totals(weeks_before=wb, weeks_after=wa))
 
 
+@revenue_bp.route("/cashflow/weekly/plan-vs-fact", methods=["GET"])
+def cashflow_weekly_plan_vs_fact() -> Any:
+    """Dashboard payload for the ▲ Plan-vs-fact card on the Weekly Cashflow
+    Timeline tab. Bucket-per-week deltas + top-5 variances + KPI rollups.
+    2026-07-01 (task #156).
+    """
+    err = _require(*_READ_ROLES)
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    try:
+        wb = int(request.args.get("weeks_before") or 8)
+        wa = int(request.args.get("weeks_after") or 13)
+    except ValueError:
+        return jsonify({"error": "weeks_before / weeks_after must be integers"}), 400
+    return jsonify(_cw.plan_vs_fact_summary(weeks_before=wb, weeks_after=wa))
+
+
 @revenue_bp.route("/cashflow/weekly", methods=["POST"])
 def cashflow_weekly_upsert() -> Any:
     """Upsert one forecast / estimate / plug row.

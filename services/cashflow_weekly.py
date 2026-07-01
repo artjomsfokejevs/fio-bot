@@ -175,6 +175,149 @@ def totals(weeks_before: int = 8, weeks_after: int = 13) -> Dict[str, Any]:
     }
 
 
+def plan_vs_fact_summary(weeks_before: int = 8,
+                          weeks_after: int = 13) -> Dict[str, Any]:
+    """Dashboard payload — side-by-side plan vs fact across the window,
+    per-week deltas, and top-5 variances so the operator sees where the
+    business is drifting off plan the moment they open the tab.
+
+    2026-07-01 — feeds the ▲ Plan-vs-fact card on the Weekly Cashflow
+    Timeline tab.
+    """
+    listing = list_weeks(weeks_before=weeks_before, weeks_after=weeks_after)
+    rows = listing["rows"]
+
+    # Bucket rows by week; a week can carry multiple rows (forecast +
+    # actual + plug), so per-week aggregation keeps intent clear.
+    from collections import defaultdict
+    per_week: Dict[str, Dict[str, float]] = defaultdict(
+        lambda: {
+            "b2c_fact": 0.0, "b2c_plan": 0.0,
+            "b2b_fact": 0.0, "b2b_plan": 0.0,
+            "burn_fact": 0.0, "burn_plan": 0.0,
+            "cogs_fact": 0.0, "cogs_plan": 0.0,
+            "mktg_plan": 0.0,
+            "pf_burn_fact": 0.0, "pf_burn_plan": 0.0,
+            "row_types": set(),
+        }
+    )
+    for r in rows:
+        w = r.get("week_start") or ""
+        f = r.get("fields") or {}
+        b = per_week[w]
+        for pair in (("b2c_fact", "b2c_revenue_fact"),
+                     ("b2c_plan", "b2c_revenue_plan"),
+                     ("b2b_fact", "b2b_revenue_fact"),
+                     ("b2b_plan", "b2b_revenue_plan"),
+                     ("burn_fact", "a2a_burn_fact"),
+                     ("burn_plan", "a2a_burn_plan"),
+                     ("cogs_fact", "a2a_cogs_fact"),
+                     ("cogs_plan", "a2a_cogs_plan"),
+                     ("mktg_plan", "marketing_plan"),
+                     ("pf_burn_fact", "portfolio_burn_fact"),
+                     ("pf_burn_plan", "portfolio_burn_plan")):
+            try:
+                b[pair[0]] += float(f.get(pair[1]) or 0)
+            except (TypeError, ValueError):
+                pass
+        b["row_types"].add(r.get("row_type") or "")
+
+    weeks_out: List[Dict[str, Any]] = []
+    for w in sorted(per_week.keys()):
+        b = per_week[w]
+        b2c_var  = round(b["b2c_fact"] - b["b2c_plan"], 2)
+        b2b_var  = round(b["b2b_fact"] - b["b2b_plan"], 2)
+        burn_var = round(abs(b["burn_fact"]) - abs(b["burn_plan"]), 2)
+        cogs_var = round(abs(b["cogs_fact"]) - abs(b["cogs_plan"]), 2)
+        pf_var   = round(abs(b["pf_burn_fact"]) - abs(b["pf_burn_plan"]), 2)
+        weeks_out.append({
+            "week_start":   w,
+            "row_types":    sorted(b["row_types"]),
+            "b2c_fact":     round(b["b2c_fact"], 2),
+            "b2c_plan":     round(b["b2c_plan"], 2),
+            "b2c_variance": b2c_var,
+            "b2b_fact":     round(b["b2b_fact"], 2),
+            "b2b_plan":     round(b["b2b_plan"], 2),
+            "b2b_variance": b2b_var,
+            "burn_fact":    round(b["burn_fact"], 2),
+            "burn_plan":    round(b["burn_plan"], 2),
+            "burn_variance": burn_var,  # positive = overspending burn
+            "cogs_fact":    round(b["cogs_fact"], 2),
+            "cogs_plan":    round(b["cogs_plan"], 2),
+            "cogs_variance": cogs_var,
+            "mktg_plan":    round(b["mktg_plan"], 2),
+            "pf_burn_fact": round(b["pf_burn_fact"], 2),
+            "pf_burn_plan": round(b["pf_burn_plan"], 2),
+            "pf_burn_variance": pf_var,
+        })
+
+    # Top-5 biggest variances by absolute impact (b2c/b2b + burn + cogs
+    # + pf) — these are the "where did we drift" bullets the operator
+    # reads first.
+    biggest: List[Dict[str, Any]] = []
+    for w in weeks_out:
+        for metric, label in (
+            ("b2c_variance", "B2C revenue"),
+            ("b2b_variance", "B2B revenue"),
+            ("burn_variance", "A2A burn"),
+            ("cogs_variance", "A2A COGS"),
+            ("pf_burn_variance", "Portfolio burn"),
+        ):
+            v = w[metric]
+            if v == 0:
+                continue
+            biggest.append({
+                "week_start": w["week_start"],
+                "metric":     label,
+                "variance":   v,
+                "abs":        abs(v),
+            })
+    biggest.sort(key=lambda x: x["abs"], reverse=True)
+    biggest = biggest[:5]
+
+    # Window totals (plan vs fact) — power the KPI strip on top.
+    def _t(k):
+        return round(sum(w[k] for w in weeks_out), 2)
+    totals_out = {
+        "b2c_fact":  _t("b2c_fact"),  "b2c_plan":  _t("b2c_plan"),
+        "b2b_fact":  _t("b2b_fact"),  "b2b_plan":  _t("b2b_plan"),
+        "burn_fact": _t("burn_fact"), "burn_plan": _t("burn_plan"),
+        "cogs_fact": _t("cogs_fact"), "cogs_plan": _t("cogs_plan"),
+        "mktg_plan": _t("mktg_plan"),
+        "pf_burn_fact": _t("pf_burn_fact"),
+        "pf_burn_plan": _t("pf_burn_plan"),
+    }
+    # Total inflow / outflow rollups
+    inflow_fact  = round(totals_out["b2c_fact"] + totals_out["b2b_fact"], 2)
+    inflow_plan  = round(totals_out["b2c_plan"] + totals_out["b2b_plan"], 2)
+    outflow_fact = round(abs(totals_out["burn_fact"]) + abs(totals_out["cogs_fact"])
+                          + abs(totals_out["pf_burn_fact"]), 2)
+    outflow_plan = round(abs(totals_out["burn_plan"]) + abs(totals_out["cogs_plan"])
+                          + abs(totals_out["pf_burn_plan"]) + abs(totals_out["mktg_plan"]), 2)
+
+    return {
+        "window_start": listing["window_start"],
+        "window_end":   listing["window_end"],
+        "today_monday": listing["today_monday"],
+        "weeks": weeks_out,
+        "totals": totals_out,
+        "rollup": {
+            "inflow_fact":  inflow_fact,
+            "inflow_plan":  inflow_plan,
+            "inflow_variance": round(inflow_fact - inflow_plan, 2),
+            "outflow_fact": outflow_fact,
+            "outflow_plan": outflow_plan,
+            "outflow_variance": round(outflow_fact - outflow_plan, 2),
+            "net_fact":     round(inflow_fact - outflow_fact, 2),
+            "net_plan":     round(inflow_plan - outflow_plan, 2),
+            "net_variance": round((inflow_fact - outflow_fact)
+                                   - (inflow_plan - outflow_plan), 2),
+        },
+        "biggest_variances": biggest,
+        "row_count": len(rows),
+    }
+
+
 def upsert_row(*, week_start: str, row_type: str,
                 fields: Optional[Dict[str, Any]] = None,
                 week_label: Optional[str] = None,
