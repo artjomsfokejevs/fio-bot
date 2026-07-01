@@ -3577,15 +3577,33 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
         <button class="modal-close" onclick="closeCashflowImportModal()">×</button>
       </div>
       <div class="modal-body" style="padding:18px 22px;overflow:auto;flex:1;min-height:0;">
-        <!-- 2026-06-30 — Two ways to import: paste OR Sheet URL. The URL
-             path saves the operator from copy-pasting every week; it
-             fetches the published Sheet server-side and runs the same
-             import_tsv pipeline. -->
-        <div style="background:#fffbeb;border:1px solid var(--keel-amber);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
-          <div style="font-size:11px;color:#854d0e;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">🔗 Option 1 — Import from Google Sheet URL</div>
+        <!-- 2026-06-30 — 4 import paths, ordered by "how private is your
+             sheet". File upload works for ANY sheet (private included);
+             URL only for published sheets; MCP callout for operators who
+             have Claude in Chrome with Sheets read access; paste is the
+             manual fallback. -->
+
+        <!-- Option 1 — file upload (works for private sheets) -->
+        <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+          <div style="font-size:11px;color:#166534;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">📥 Option 1 — Upload a file (works for PRIVATE sheets)</div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
-            Paste the Sheet link (any tab). The sheet must be <b>shared with "Anyone with the link can view"</b>.
-            Keel will fetch the right tab, normalise cells, and upsert non-Actual rows. <a href="https://support.google.com/docs/answer/9331169" target="_blank" rel="noopener" style="color:var(--keel-amber-dark);">How to share</a>.
+            In Google Sheets: <b>File → Download → CSV / TSV / XLSX</b>, then drop the file below.
+            No sharing needed — the file never leaves your Fly workspace.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="cw-import-file" type="file" accept=".csv,.tsv,.xlsx,.xls,.txt"
+                   style="flex:1;min-width:260px;font-size:12px;">
+            <button class="btn btn-ghost btn-sm" onclick="submitCashflowFile(true)" style="font-size:12px;">🔍 Preview</button>
+            <button class="btn btn-primary btn-sm" onclick="submitCashflowFile(false)" style="font-size:12px;">📥 Import file</button>
+          </div>
+        </div>
+
+        <!-- Option 2 — Sheet URL (public sheets only) -->
+        <div style="background:#fffbeb;border:1px solid var(--keel-amber);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+          <div style="font-size:11px;color:#854d0e;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">🔗 Option 2 — Import from PUBLIC Google Sheet URL</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+            Only works if the sheet is <b>"Anyone with the link can view"</b>. For private financial data, use Option 1 or Option 3 instead.
+            <a href="https://support.google.com/docs/answer/9331169" target="_blank" rel="noopener" style="color:var(--keel-amber-dark);">How to share</a>.
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <input id="cw-import-url" type="url"
@@ -3596,13 +3614,31 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           </div>
         </div>
 
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">📋 Option 2 — Paste raw TSV/CSV</div>
+        <!-- Option 3 — MCP playbook (Claude-side read + POST) -->
+        <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+          <div style="font-size:11px;color:#5b21b6;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">🤖 Option 3 — Ask Claude via Chrome MCP (private sheets, no download)</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.5;">
+            If Claude (Chrome MCP) can already see your open Google Sheet tab, paste this prompt into your Claude chat:
+          </div>
+          <pre id="cw-mcp-prompt" style="margin:8px 0 0 0;padding:10px;background:#fff;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-family:ui-monospace,monospace;white-space:pre-wrap;color:var(--text);">Read the currently-open Google Sheet tab (Amitours Unified Cash Timeline).
+Extract the rows into TSV (tab-separated) with header row.
+Then POST to https://fio-amitours.fly.dev/api/cashflow/weekly/import-tsv
+with X-FIO-User: &lt;your full name&gt;, Content-Type: application/json, and body:
+{"text": "&lt;TSV here&gt;", "default_row_type": "forecast", "dry_run": true}
+Show me the response (rows_imported / rows_skipped / unknown_columns).
+If dry-run looks correct, retry with dry_run: false.</pre>
+          <button class="btn btn-ghost btn-sm" onclick="copyMcpPrompt()" style="margin-top:6px;font-size:11px;">📋 Copy prompt</button>
+          <a href="/docs/cashflow-private-import" target="_blank" style="margin-left:8px;font-size:11px;color:#5b21b6;">Long-term option: GCP service-account setup ↗</a>
+        </div>
+
+        <!-- Option 4 — raw paste fallback -->
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">📋 Option 4 — Paste raw TSV/CSV</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
           Copy a block of rows from your <b>AMITOURS — UNIFIED CASH TIMELINE</b> sheet (including the header row).
           Required columns: <code>End Date</code> + <code>Type</code>. Cells like <code>€1,234.56</code>, <code>(€500)</code>, <code>—</code> are normalised automatically.
           Rows marked <code>Actual</code> are skipped — use <b>🔄 Recompute actuals</b> on the card header instead.
         </div>
-        <textarea id="cw-import-text" placeholder="Period&#x9;End Date&#x9;Type&#x9;B2C revenue plan&#x9;A2A burn plan&#x10;W26&#x9;6/29/2026&#x9;Forecast&#x9;€50,000&#x9;(€30,000)" style="width:100%;min-height:200px;font-family:ui-monospace,monospace;font-size:11px;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;"></textarea>
+        <textarea id="cw-import-text" placeholder="Period&#x9;End Date&#x9;Type&#x9;B2C revenue plan&#x9;A2A burn plan&#x10;W26&#x9;6/29/2026&#x9;Forecast&#x9;€50,000&#x9;(€30,000)" style="width:100%;min-height:160px;font-family:ui-monospace,monospace;font-size:11px;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical;"></textarea>
         <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
             Default row type:
@@ -3611,7 +3647,7 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
               <option value="estimate">estimate</option>
               <option value="plug">plug</option>
             </select>
-            <span style="color:var(--muted);font-size:11px;">(applied to rows where <code>Type</code> column is blank, and to URL imports)</span>
+            <span style="color:var(--muted);font-size:11px;">(applied to blank Type cells + URL / file / paste imports)</span>
           </label>
           <div style="display:flex;gap:8px;">
             <button class="btn btn-ghost btn-sm" onclick="submitCashflowImport(true)">🔍 Preview (dry-run)</button>
@@ -11697,6 +11733,8 @@ function openCashflowImportModal() {
   document.getElementById('cw-import-text').value = '';
   var urlInput = document.getElementById('cw-import-url');
   if (urlInput) urlInput.value = '';
+  var fileInput = document.getElementById('cw-import-file');
+  if (fileInput) fileInput.value = '';
   document.getElementById('cw-import-result').innerHTML = '';
   ov.classList.add('active');
 }
@@ -11704,6 +11742,76 @@ function closeCashflowImportModal() {
   var ov = document.getElementById('cw-import-overlay');
   if (ov) ov.classList.remove('active');
 }
+// 📥 Cashflow import — file-upload path (works for private sheets, 2026-06-30)
+async function submitCashflowFile(dryRun) {
+  var fileInput = document.getElementById('cw-import-file');
+  var defType = document.getElementById('cw-import-default-type').value;
+  var result = document.getElementById('cw-import-result');
+  if (!fileInput || !fileInput.files || !fileInput.files.length) {
+    result.innerHTML = '<span style="color:#dc2626;">⚠ Pick a file first.</span>';
+    return;
+  }
+  var file = fileInput.files[0];
+  result.innerHTML = '⏳ ' + (dryRun ? 'Previewing' : 'Importing') + ' <b>' + esc(file.name) + '</b>…';
+  var fd = new FormData();
+  fd.append('file', file);
+  fd.append('default_row_type', defType);
+  fd.append('dry_run', dryRun ? '1' : '0');
+  try {
+    var res = await fetch('/api/cashflow/weekly/import-file', {
+      method: 'POST',
+      headers: {'X-FIO-User': (window.currentUser || '')},
+      body: fd,
+    }).then(function(r){ return r.json(); });
+    if (res.error) {
+      result.innerHTML = '<span style="color:#dc2626;">⚠ ' + esc(res.error) + '</span>';
+      return;
+    }
+    var html = '<div style="padding:10px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;">' +
+               '<b>' + (dryRun ? 'Preview' : 'Imported') + ' from file:</b> ' +
+               res.rows_imported + ' / ' + res.rows_seen + ' row(s) ' +
+               (dryRun ? 'will be written' : 'written') +
+               ' · ' + esc(res.filename || '') + ' · ' + (res.file_bytes || 0) + ' bytes' +
+               '</div>';
+    if (res.unknown_columns && res.unknown_columns.length) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;color:#854d0e;font-size:11px;">' +
+              '⚠ Unknown columns ignored: <code>' + res.unknown_columns.map(esc).join(', ') + '</code></div>';
+    }
+    if (res.skipped_examples && res.skipped_examples.length) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px;">' +
+              '<b>' + res.rows_skipped + ' row(s) skipped</b> — examples:<ul style="margin:4px 0 0 18px;">';
+      res.skipped_examples.forEach(function(s){
+        html += '<li>line ' + s.line + ': ' + esc(s.reason) + '</li>';
+      });
+      html += '</ul></div>';
+    }
+    result.innerHTML = html;
+    if (!dryRun) {
+      renderCashflowWeeklyCard();
+      renderCashflowOverviewCard();
+    }
+  } catch (e) {
+    result.innerHTML = '<span style="color:#dc2626;">⚠ File import failed: ' + esc(e.message || String(e)) + '</span>';
+  }
+}
+
+// 📋 Copy the MCP playbook prompt to clipboard so the operator can paste
+// it into their Claude session without retyping.
+function copyMcpPrompt() {
+  var pre = document.getElementById('cw-mcp-prompt');
+  if (!pre) return;
+  var txt = pre.textContent || '';
+  // Substitute the actual signed-in user so the operator gets a
+  // ready-to-run prompt with their identity already inline.
+  var who = (window.currentUser || '').trim();
+  if (who) txt = txt.replace('<your full name>', who);
+  navigator.clipboard.writeText(txt).then(function(){
+    showToast('✓ MCP prompt copied — paste into your Claude session', 'success');
+  }).catch(function(){
+    showToast('Copy failed — select and copy manually', 'error');
+  });
+}
+
 // 🔗 Cashflow import — Google Sheet URL path (2026-06-30)
 async function submitCashflowGsheetUrl(dryRun) {
   var url = (document.getElementById('cw-import-url').value || '').trim();

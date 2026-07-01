@@ -491,6 +491,75 @@ def cashflow_weekly_import_tsv() -> Any:
     return jsonify(out), 201 if not body.get("dry_run") else 200
 
 
+@revenue_bp.route("/cashflow/weekly/import-file", methods=["POST"])
+def cashflow_weekly_import_file() -> Any:
+    """Upload a TSV/CSV/XLSX file exported from the operator's planning
+    sheet. No Google API auth needed — the operator downloads the sheet
+    locally (File → Download → CSV/TSV/XLSX) and uploads the file here.
+    Works for private sheets that can't be exposed via 'Anyone with the link'.
+
+    Multipart form-data with field name 'file'. Optional fields:
+      default_row_type (forecast|estimate|plug, default forecast)
+      dry_run          ('1' or '0', default '0')
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("approve_budget")
+    if err:
+        return err
+    from services import cashflow_weekly as _cw
+    if "file" not in request.files:
+        return jsonify({"error": "file is required (multipart field 'file')"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "empty filename"}), 400
+    fname = f.filename.lower()
+    ext = fname.rsplit(".", 1)[1] if "." in fname else ""
+    drt = (request.form.get("default_row_type") or "forecast").strip()
+    if drt not in _cw.WRITABLE_ROW_TYPES:
+        return jsonify({"error": "default_row_type must be one of "
+                                  + str(list(_cw.WRITABLE_ROW_TYPES))}), 400
+    dry_run = (request.form.get("dry_run") or "0").strip() in ("1", "true", "yes")
+
+    raw = f.read()
+    text: Optional[str] = None
+    if ext in ("tsv", "csv", "txt"):
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8", errors="ignore")
+    elif ext in ("xlsx", "xls"):
+        # Use openpyxl (already a dep). Read the FIRST sheet → TSV.
+        try:
+            import openpyxl  # type: ignore
+            import io as _io
+            wb = openpyxl.load_workbook(_io.BytesIO(raw), data_only=True)
+            ws = wb.active
+            lines = []
+            for row in ws.iter_rows(values_only=True):
+                lines.append("\t".join(
+                    "" if v is None else str(v)
+                    for v in row
+                ))
+            text = "\n".join(lines)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"xlsx parse failed: {exc}"}), 400
+    else:
+        return jsonify({"error": f"unsupported file type .{ext} — use .tsv, .csv, or .xlsx",
+                        "filename": f.filename}), 400
+
+    if not text or not text.strip():
+        return jsonify({"error": "file is empty after decode",
+                        "filename": f.filename}), 400
+
+    try:
+        out = _cw.import_tsv(text=text, default_row_type=drt,
+                              by=_user(), dry_run=dry_run)
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "filename": f.filename}), 400
+    out["filename"] = f.filename
+    out["file_bytes"] = len(raw)
+    return jsonify(out), 201 if not dry_run else 200
+
+
 @revenue_bp.route("/cashflow/weekly/import-gsheet-url", methods=["POST"])
 def cashflow_weekly_import_gsheet_url() -> Any:
     """Fetch a published Google Sheet and upsert via import_tsv.

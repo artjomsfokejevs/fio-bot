@@ -427,9 +427,20 @@ def import_tsv(text: str, *,
 
     # Detect separator — operators paste from Sheets (TAB) or download
     # as CSV (comma). Pick the one with more occurrences on the first line.
+    # 2026-06-30 — for comma-separated input use the csv module so quoted
+    # cells like `"€41,500"` don't split on the embedded comma. TSV rarely
+    # has quoted cells but csv handles both dialects safely.
+    import csv as _csv
+    import io as _io
     first = lines[0]
     sep = "\t" if first.count("\t") >= first.count(",") and "\t" in first else ","
-    headers_raw = first.split(sep)
+    reader = _csv.reader(_io.StringIO("\n".join(lines)), delimiter=sep)
+    parsed_rows = list(reader)
+    if not parsed_rows:
+        return {"rows_seen": 0, "rows_imported": 0, "rows_skipped": 0,
+                "skipped_examples": [], "unknown_columns": [],
+                "rows": [], "dry_run": dry_run}
+    headers_raw = parsed_rows[0]
     headers = [_norm_header(h) for h in headers_raw]
     mapped: Dict[int, str] = {}
     unknown: List[str] = []
@@ -453,9 +464,9 @@ def import_tsv(text: str, *,
     skipped: List[Dict[str, Any]] = []
     upserted_rows: List[Dict[str, Any]] = []
 
-    for ln_no, raw_line in enumerate(lines[1:], start=2):
+    for ln_no, cells in enumerate(parsed_rows[1:], start=2):
         rows_seen += 1
-        cells = raw_line.split(sep)
+        raw_line = sep.join(cells)  # reconstructed for skip-example display
         rec: Dict[str, Any] = {}
         for idx, col in mapped.items():
             if idx >= len(cells):

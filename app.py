@@ -2831,6 +2831,23 @@ def stats():
     return jsonify(db.get_stats())
 
 
+# 2026-06-30 — serve markdown files from docs/ as plain text so operators
+# can link to setup guides straight from the UI (e.g. the "long-term
+# GCP service-account" callout on the cashflow import modal).
+@app.route("/docs/<name>", methods=["GET"])
+def serve_docs(name: str):
+    """Return docs/<name>.md as text/plain if the file exists."""
+    import re as _re
+    if not _re.match(r"^[A-Za-z0-9_-]+$", name):
+        return "Invalid doc name", 400
+    docs_dir = os.path.join(os.path.dirname(__file__), "docs")
+    path = os.path.join(docs_dir, name + ".md")
+    if not os.path.isfile(path):
+        return "Not found", 404
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read(), 200, {"Content-Type": "text/markdown; charset=utf-8"}
+
+
 @app.route("/api/ledger-schema", methods=["GET"])
 def ledger_schema():
     """Return the chart of accounts.
