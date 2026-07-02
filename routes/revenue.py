@@ -768,9 +768,19 @@ def set_doc_wrong_pc_flag(doc_id: str) -> Any:
         return err
     body = request.get_json(silent=True) or {}
     flag = bool(body.get("wrong_pc_flag"))
+    # 2026-07-02 — inline "should be XX" picker sends the corrected PC
+    # alongside the flag so bookkeepers see BOTH the flag and the
+    # operator's proposed correction (feeds ML training pairs).
+    should_be = body.get("wrong_pc_should_be")
+    should_be = (should_be or "").strip().upper() if isinstance(should_be, str) else None
     from services import db as _db
+    from services import pc_codes as _pc
     import json as _json
     from datetime import datetime as _dt
+    # Validate the corrected PC lives in the canonical set to avoid
+    # storing free-text drift ("Alps 2 Alps" vs "AA").
+    if should_be and _pc.to_canonical(should_be) is None:
+        return jsonify({"error": f"unknown profit center: {should_be}"}), 400
     conn = _db.get_connection()
     try:
         row = conn.execute("SELECT parsed_json FROM documents WHERE id = ?", (doc_id,)).fetchone()
@@ -786,16 +796,22 @@ def set_doc_wrong_pc_flag(doc_id: str) -> Any:
             gov["wrong_pc_flag"] = True
             gov["wrong_pc_by"] = _user() or "unknown"
             gov["wrong_pc_at"] = _dt.utcnow().isoformat()
+            if should_be:
+                gov["wrong_pc_should_be"] = should_be
+            else:
+                gov.pop("wrong_pc_should_be", None)
         else:
             gov.pop("wrong_pc_flag", None)
             gov.pop("wrong_pc_by", None)
             gov.pop("wrong_pc_at", None)
+            gov.pop("wrong_pc_should_be", None)
         conn.execute("UPDATE documents SET parsed_json = ? WHERE id = ?",
                      (_json.dumps(parsed, ensure_ascii=False), doc_id))
         conn.commit()
     finally:
         conn.close()
-    return jsonify({"doc_id": doc_id, "wrong_pc_flag": flag})
+    return jsonify({"doc_id": doc_id, "wrong_pc_flag": flag,
+                     "wrong_pc_should_be": should_be if flag else None})
 
 
 @revenue_bp.route("/cashflow/by-ledger", methods=["GET"])

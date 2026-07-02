@@ -176,6 +176,29 @@ _ADDRESS_HINTS = (
 )
 
 
+def _normalise_digit_runs(text: str) -> str:
+    """Collapse whitespace / thin-spaces inside digit groups so a VAT
+    number like "LV 4540 3022 922" or "LV45 403 022 922" survives OCR
+    that put stray spaces between the digits.
+
+    2026-07-02 op-feedback — parser missed LV45403022922 on the Sipalto
+    invoice because the PDF text layer split the VAT with spaces
+    ("LV  45 40 30 22 92 2"). We normalise a copy of the text before
+    running the strict VAT regexes; original text is kept for
+    downstream extraction (address hints, IBAN with spaces).
+    """
+    # Collapse runs of whitespace between digits: "45 40 30 22 92 2" → "454030229 2"
+    # then repeat until stable (handles "1 2 3 4" → "1234").
+    prev = None
+    cur = text
+    while prev != cur:
+        prev = cur
+        cur = re.sub(r"(\d)[ \t  ]+(\d)", r"\1\2", cur)
+    # Also collapse whitespace between country prefix and digits
+    cur = re.sub(r"\b([A-Z]{2})[ \t  ]+(\d)", r"\1\2", cur)
+    return cur
+
+
 def _extract_vat_details(text: str) -> Dict[str, Any]:
     """Extract VAT, registration number, IBAN, postal code, address hints from raw text.
 
@@ -184,17 +207,21 @@ def _extract_vat_details(text: str) -> Dict[str, Any]:
     """
     out: Dict[str, Any] = {}
 
+    # Run VAT-format regexes against a whitespace-normalised copy so
+    # broken OCR spacing does not sink an otherwise obvious VAT.
+    search_text = _normalise_digit_runs(text)
+
     # 1. EU VAT
     for pattern, country in _VAT_PATTERNS:
-        m = re.search(pattern, text, re.IGNORECASE)
+        m = re.search(pattern, search_text, re.IGNORECASE)
         if m:
             out["vat_number"] = (country + m.group(2)).upper().replace(" ", "").replace("-", "")
             out["vat_country"] = country
             break
 
-    # 2. Latvian Reg.Nr. specifically
+    # 2. Latvian Reg.Nr. specifically — also on normalised text
     for pattern in _LV_REG_PATTERNS:
-        m = re.search(pattern, text)
+        m = re.search(pattern, search_text)
         if m:
             digits = m.group(1)
             if digits.startswith("LV"):

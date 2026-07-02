@@ -8318,17 +8318,32 @@ function renderDetails(doc) {
   // through the group). This checkbox stores a note on the doc so the
   // bookkeeper can filter for docs the operator hand-corrected — feeds
   // future ML training signal.
-  // Read from top level (fast-path) or from parsed_json.governance (persisted)
-  var _wrongPcState = doc.wrong_pc_flag
-    || (doc.parsed_json && doc.parsed_json.governance && doc.parsed_json.governance.wrong_pc_flag)
-    || false;
+  // 2026-07-02 — added inline "Should be" PC picker so the operator
+  // captures the correction in one step instead of check → hunt for
+  // Override → change → submit. Same state persists to governance.
+  var _gov = (doc.parsed_json && doc.parsed_json.governance) || {};
+  var _wrongPcState = doc.wrong_pc_flag || _gov.wrong_pc_flag || false;
+  var _wrongPcShouldBe = doc.wrong_pc_should_be || _gov.wrong_pc_should_be || '';
   var _wrongPcChecked = _wrongPcState ? ' checked' : '';
-  html += '<div class="edit-row" style="margin-top:6px;align-items:center;">' +
+  var _CANON = ['AA','AG','AH','AL','CF','MN','MT','RR','SP'];
+  var _shouldBeOpts = ['<option value="">— pick the correct stream —</option>']
+    .concat(_CANON.map(function(code) {
+      var name = (typeof PC_LABELS !== 'undefined' && PC_LABELS[code]) || code;
+      var sel = code === _wrongPcShouldBe ? ' selected' : '';
+      return '<option value="' + code + '"' + sel + '>' + code + ' — ' + name + '</option>';
+    })).join('');
+  html += '<div class="edit-row" style="margin-top:6px;flex-direction:column;align-items:stretch;gap:6px;">' +
     '<label for="edit-wrong-pc-' + esc(doc.id) + '" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#991b1b;cursor:pointer;">' +
     '<input type="checkbox" id="edit-wrong-pc-' + esc(doc.id) + '"' + _wrongPcChecked +
     ' onchange="markWrongPc(\'' + esc(doc.id) + '\', this.checked)">' +
     '🔴 Claude picked the wrong stream — flag for review' +
     '</label>' +
+    '<div id="edit-wrong-pc-should-wrap-' + esc(doc.id) + '" style="display:' + (_wrongPcState ? 'flex' : 'none') + ';align-items:center;gap:6px;padding-left:22px;font-size:11px;">' +
+    '<span style="color:var(--muted);white-space:nowrap;">Should be:</span>' +
+    '<select id="edit-wrong-pc-should-' + esc(doc.id) + '" style="flex:1;font-size:11px;padding:4px 6px;" ' +
+    'onchange="setWrongPcShouldBe(\'' + esc(doc.id) + '\', this.value)">' +
+    _shouldBeOpts + '</select>' +
+    '</div>' +
     '</div>';
 
   // G-ui3 (2026-06-26) — intercompany counterparty PC selector.
@@ -12383,15 +12398,49 @@ async function saveCounterpartyPc(docId, counterpartyPc) {
 // Stores a flag on parsed_json.governance so bookkeepers can filter
 // operator-corrected docs; also feeds the "operator override" signal
 // into future ML training runs.
+// 2026-07-02 — reveals the "Should be" picker inline; when the operator
+// picks a code we auto-sync the Override PC dropdown so the correction
+// is applied in one flow (setWrongPcShouldBe → markWrongPc(checked=true) →
+// syncModalPC(code)).
 async function markWrongPc(docId, checked) {
+  var wrap = document.getElementById('edit-wrong-pc-should-wrap-' + docId);
+  if (wrap) wrap.style.display = checked ? 'flex' : 'none';
+  var shouldBeSel = document.getElementById('edit-wrong-pc-should-' + docId);
+  var shouldBe = (shouldBeSel && shouldBeSel.value) || '';
   try {
     var res = await fetch('/api/documents/' + encodeURIComponent(docId) + '/wrong-pc-flag', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-FIO-User': (window.currentUser || '')},
-      body: JSON.stringify({wrong_pc_flag: !!checked}),
+      body: JSON.stringify({wrong_pc_flag: !!checked, wrong_pc_should_be: shouldBe || null}),
     }).then(function(r){ return r.json(); });
     if (res.error) { showToast(res.error, 'error'); return; }
     showToast(checked ? '🔴 Flagged — bookkeeper will review' : 'Cleared', 'success');
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
+}
+
+// Pick the "should be" PC — persist AND move the Override PC dropdown
+// so the correction is captured in a single click.
+async function setWrongPcShouldBe(docId, code) {
+  var checkbox = document.getElementById('edit-wrong-pc-' + docId);
+  var checked = !!(checkbox && checkbox.checked);
+  try {
+    var res = await fetch('/api/documents/' + encodeURIComponent(docId) + '/wrong-pc-flag', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-FIO-User': (window.currentUser || '')},
+      body: JSON.stringify({wrong_pc_flag: checked, wrong_pc_should_be: code || null}),
+    }).then(function(r){ return r.json(); });
+    if (res.error) { showToast(res.error, 'error'); return; }
+    if (code) {
+      // Also drive the main Override PC dropdown so the correction lands.
+      var editPc = document.getElementById('edit-pc');
+      if (editPc) {
+        editPc.value = code;
+        if (typeof syncModalPC === 'function') syncModalPC(code);
+      }
+      showToast('Should be ' + code + ' — Override PC updated', 'success');
+    }
   } catch (e) {
     showToast('Save failed: ' + e.message, 'error');
   }
