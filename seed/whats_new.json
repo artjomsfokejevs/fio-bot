@@ -3,6 +3,25 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-07-01-op-feedback-batch-2",
+      "date": "2026-07-01",
+      "title": "🧾 Expense Report XLSX+PDF · 📊 Plan vs fact · 🗓 Weekly Timeline preamble import · 🇪🇺 VIES tri-state · 🔴 Wrong-stream flag · 💳 Paying-account entity filter · 📎 Chase title format",
+      "summary": "Batch of shipped fixes from operator screenshots + notes: bookkeeper Expense Report (Latvian layout, English strings + ASCII filename), preamble-tolerant Cash Timeline CSV importer (5 decorative rows before header are now skipped), plan-vs-fact overlay + KPI strip, VIES tri-state (unverified ≠ invalid — no more scary 'VAT invalid' on real vendors when EU registry is transiently down), 🔴 wrong-stream flag on the classification panel, paying-account picker grouped by legal entity (Alps2Alps entity shows Alps2Alps accounts, others under a warning bucket), Asana chase title now built as 'amount · vendor · card ••last-4'. RFC 5987 Content-Disposition wired into all 7 download routes (no more 502 on non-ASCII filenames).",
+      "highlights": [
+        "🧾 Accounting → Excel / PDF Expense Report — one builder, two formats. All labels + filenames in English (Expense_Report_ALPS2ALPS_OU_June_2026.pdf). Layout matches operator's Latvian accountant sample.",
+        "🗓 Weekly Cashflow Timeline importer — now auto-detects the real header row past any decorative preamble (title / KPI snapshot / blank rows before 'Period,End Date,Type,…'). Amitours Cash Timeline CSV imports cleanly.",
+        "📊 Plan-vs-fact overlay on the 13-week projection — extra columns AR plan / Δ / AP plan / Δ / Net plan / Running plan. Variance highlighted only when |Δ| ≥ €5K to avoid noise.",
+        "📊 Weekly Timeline tab now shows a KPI strip (Inflow / Outflow / Net cash, fact vs plan) + top-5 biggest variances at a glance.",
+        "🇪🇺 VIES robustness — tri-state {valid, invalid, unverified}. Transient MS_UNAVAILABLE / TIMEOUT no longer stamps a real vendor as invalid. New warning 'vat_unverified_transient' nudges the operator to re-check manually.",
+        "🔴 Wrong-stream flag on Upload → classification panel — checkbox '🔴 Claude picked the wrong stream — flag for review' persists to parsed_json.governance. Bookkeeper filters + future ML training use this signal.",
+        "💳 Paying-account picker on Mark-paid — grouped by legal entity. Alps2Alps invoice → Alps2Alps accounts first, untagged accounts under a separate section, ⚠ accounts of OTHER entities in a warning section instead of being hidden or mixed in.",
+        "📎 Asana chase task title — single-tx format now: '📄 Missing invoice — €31.07 · <vendor> · card ••1234'. No more '?' fields.",
+        "🌍 RFC 5987 Content-Disposition helper wired into all 7 download routes. Latvian / Cyrillic / Greek / Chinese in filenames no longer 502s on gunicorn/h11. New Product Builder review-check B34 keeps future routes clean.",
+        "🔧 PC dropdown hardening — AH still meant 'Mountly' in one leftover picker (Approve → Assign PC). Fixed. B33 canonical-code drift check extended to catch object-literal shorthand (`code:`) in addition to `<option value=` — clean run on fio-bot repo.",
+        "⚠ Follow-ups on operator's list: bank-statement matching quality + Finom parser (send us pdf/csv samples), archive of uploaded statements needs a screenshot, wrong-stream flag deserves an inline PC-picker (should be XX) in a next iteration."
+      ]
+    },
+    {
       "version": "2026-06-27-keel-fixes",
       "date": "2026-06-27",
       "title": "🚢 Rebrand → Keel · 🔄 Full regenerate button · 🔐 export_bulk bug · 🧠 Chase task: AI hints",

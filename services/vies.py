@@ -109,13 +109,41 @@ def lookup_vat(vat: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         logger.info("VIES returned non-JSON for %s", vat_clean)
         return None
 
-    # The REST endpoint returns: {countryCode, vatNumber, valid, name, address, ...}
+    # The REST endpoint returns: {countryCode, vatNumber, valid, name,
+    # address, actionSucceed, userError, ...}
+    #
+    # 2026-07-01 op-feedback — VIES sometimes returns `valid=false` when a
+    # member state's system is temporarily unreachable or rate-limited:
+    #   userError ∈ {"MS_UNAVAILABLE", "SERVICE_UNAVAILABLE", "TIMEOUT",
+    #                "SERVER_BUSY", "MS_MAX_CONCURRENT_REQ"}
+    # Treating those as "definitely invalid" burns real vendors with a
+    # scary "VAT invalid" badge (screenshot: LV45403022922 verified fine
+    # via the VIES web form, but our REST call returned false). Only
+    # treat `valid=false` as authoritative when `actionSucceed=true` AND
+    # no user-error code is set. Everything else is `unverified` — the
+    # UI can nudge the operator to re-check manually instead of lying.
+    action_ok = payload.get("actionSucceed", True)   # older REST omits this key
+    user_err = str(payload.get("userError") or "").strip().upper()
+    _TRANSIENT = {"MS_UNAVAILABLE", "SERVICE_UNAVAILABLE", "TIMEOUT",
+                   "SERVER_BUSY", "MS_MAX_CONCURRENT_REQ", "GLOBAL_MAX_CONCURRENT_REQ"}
     if not payload.get("valid"):
+        if user_err in _TRANSIENT or not action_ok:
+            # Transient failure — do NOT cache "invalid" and do not lie.
+            logger.info("VIES transient failure for %s (%s) — treating as unverified",
+                         vat_clean, user_err or "no actionSucceed")
+            return {
+                "vat":     vat_clean,
+                "valid":   None,           # ← tri-state: None = unverified
+                "country": country,
+                "name":    None,
+                "address": None,
+                "vies_error": user_err or "action_not_succeed",
+            }
         result = {
-            "vat": vat_clean,
-            "valid": False,
+            "vat":     vat_clean,
+            "valid":   False,
             "country": country,
-            "name": None,
+            "name":    None,
             "address": None,
         }
         _save_cache(vat_clean, result)
@@ -163,10 +191,24 @@ def vies_enrich_vendor(vendor: Dict[str, Any]) -> Dict[str, Any]:
         # Network/format failure -- don't lie about verification
         return vendor
 
-    vendor["vies_verified"] = bool(result.get("valid"))
+    # 2026-07-01 — tri-state: True=verified, False=definitively invalid,
+    # None=transient VIES failure (do not scare the operator with a
+    # "VAT invalid" badge for a real vendor).
+    is_valid = result.get("valid")
+    vendor["vies_verified"] = True if is_valid is True else False
     vendor["vies_country"] = result.get("country")
+    if is_valid is None:
+        vendor["vies_verification_status"] = "unverified"
+        vendor["vies_error"] = result.get("vies_error")
+        warns = vendor.setdefault("warnings", [])
+        # Distinct from vat_invalid — surfaces a *different* nudge in the
+        # UI ("re-check on VIES.europa.eu manually").
+        if "vat_unverified_transient" not in warns:
+            warns.append("vat_unverified_transient")
+        return vendor
 
-    if result.get("valid"):
+    if is_valid:
+        vendor["vies_verification_status"] = "valid"
         if result.get("name") and not vendor.get("name"):
             vendor["name"] = result["name"]
         # Always store official VIES values separately so we never overwrite human edits
@@ -175,6 +217,7 @@ def vies_enrich_vendor(vendor: Dict[str, Any]) -> Dict[str, Any]:
         if result.get("address") and not vendor.get("address"):
             vendor["address"] = result["address"]
     else:
+        vendor["vies_verification_status"] = "invalid"
         warns = vendor.setdefault("warnings", [])
         if "vat_invalid_per_vies" not in warns:
             warns.append("vat_invalid_per_vies")

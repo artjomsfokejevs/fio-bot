@@ -752,6 +752,52 @@ def set_doc_counterparty_pc(doc_id: str) -> Any:
     return jsonify({"doc_id": doc_id, "counterparty_pc": cp})
 
 
+@revenue_bp.route("/documents/<doc_id>/wrong-pc-flag", methods=["POST"])
+def set_doc_wrong_pc_flag(doc_id: str) -> Any:
+    """Operator flags Claude's suggested PC as wrong.
+
+    2026-07-01 op-feedback — stores {wrong_pc_flag: bool, wrong_pc_by,
+    wrong_pc_at} inside parsed_json.governance so:
+      · Bookkeepers can filter by hand-corrected docs when auditing.
+      · Future ML training pipelines see the operator's disagreement
+        signal (positive samples for "PC prediction was wrong on this
+        doc").
+    """
+    err = _require(*_WRITE_ROLES) or _require_cap("post_to_pnl")
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    flag = bool(body.get("wrong_pc_flag"))
+    from services import db as _db
+    import json as _json
+    from datetime import datetime as _dt
+    conn = _db.get_connection()
+    try:
+        row = conn.execute("SELECT parsed_json FROM documents WHERE id = ?", (doc_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "doc not found"}), 404
+        raw = row["parsed_json"] or "{}"
+        try:
+            parsed = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except (ValueError, TypeError):
+            parsed = {}
+        gov = parsed.setdefault("governance", {})
+        if flag:
+            gov["wrong_pc_flag"] = True
+            gov["wrong_pc_by"] = _user() or "unknown"
+            gov["wrong_pc_at"] = _dt.utcnow().isoformat()
+        else:
+            gov.pop("wrong_pc_flag", None)
+            gov.pop("wrong_pc_by", None)
+            gov.pop("wrong_pc_at", None)
+        conn.execute("UPDATE documents SET parsed_json = ? WHERE id = ?",
+                     (_json.dumps(parsed, ensure_ascii=False), doc_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"doc_id": doc_id, "wrong_pc_flag": flag})
+
+
 @revenue_bp.route("/cashflow/by-ledger", methods=["GET"])
 def cashflow_by_ledger() -> Any:
     err = _require(*_READ_ROLES) or _require_cap("view_revenue")

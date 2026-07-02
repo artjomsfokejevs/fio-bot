@@ -6278,12 +6278,24 @@ function markDocPaid(docId) {
   // Pull active paying accounts; filter to entity if applicable
   api('GET', '/api/paying-accounts?active=true').then(function(d) {
     var all = (d && d.accounts) || [];
-    var filtered = docLegalEntity
-      ? all.filter(function(a) { return !a.legal_entity || a.legal_entity === docLegalEntity; })
+    // 2026-07-01 op-feedback — operator picked Alps2Alps as the paying
+    // entity but the dropdown still offered accounts of Amitours Group,
+    // Mountly, etc. Old filter let ANY untagged account through. Split
+    // into two buckets so the picker shows entity-scoped first and
+    // untagged/mismatched accounts get a visible "not tagged" section.
+    var scoped = docLegalEntity
+      ? all.filter(function(a) { return a.legal_entity === docLegalEntity; })
       : all;
-    openMarkPaidModal(docId, doc, filtered, all, {
+    var untagged = docLegalEntity
+      ? all.filter(function(a) { return !a.legal_entity; })
+      : [];
+    var mismatched = docLegalEntity
+      ? all.filter(function(a) { return a.legal_entity && a.legal_entity !== docLegalEntity; })
+      : [];
+    openMarkPaidModal(docId, doc, scoped, all, {
       origCcy: origCcy, origAmt: origAmt, eurAmt: eurAmt, fx: fx,
       canChooseOrig: canChooseOrig, docLegalEntity: docLegalEntity,
+      untagged: untagged, mismatched: mismatched,
     });
   }).catch(function(err) {
     showToast('Failed to load paying accounts: ' + (err && err.message || err), 'error');
@@ -6325,14 +6337,35 @@ function openMarkPaidModal(docId, doc, accounts, allAccounts, meta) {
     // Skip the dropdown entirely
     accountPicker = '<input type="hidden" id="mp-account" value="">';
   } else {
-    var accountOpts = ['<option value="">— pick account —</option>']
-      .concat(accounts.map(function(a) {
-        return '<option value="' + esc(a.label) + '">' + esc(a.label) +
-               (a.currency ? ' (' + esc(a.currency) + ')' : '') + '</option>';
-      })).join('');
+    // 2026-07-01 op-feedback — group by "tagged to this entity" vs
+    // "untagged / mismatched" so the operator picks the right bucket at
+    // a glance instead of seeing accounts of other legal entities mixed in.
+    var _optForAcc = function(a) {
+      return '<option value="' + esc(a.label) + '">' + esc(a.label) +
+             (a.currency ? ' (' + esc(a.currency) + ')' : '') + '</option>';
+    };
+    var scopedOpts = accounts.map(_optForAcc).join('');
+    var untaggedOpts = (meta.untagged || []).map(_optForAcc).join('');
+    var mismatchedOpts = (meta.mismatched || []).map(function(a) {
+      return '<option value="' + esc(a.label) + '">' + esc(a.label) +
+             ' — ⚠ ' + esc(a.legal_entity) +
+             (a.currency ? ' (' + esc(a.currency) + ')' : '') + '</option>';
+    }).join('');
+    var parts = ['<option value="">— pick account —</option>'];
+    if (scopedOpts) {
+      parts.push('<optgroup label="' +
+        (meta.docLegalEntity ? esc(meta.docLegalEntity) + ' accounts' : 'Accounts') +
+        '">' + scopedOpts + '</optgroup>');
+    }
+    if (untaggedOpts) {
+      parts.push('<optgroup label="Untagged accounts (fix in Admin)">' + untaggedOpts + '</optgroup>');
+    }
+    if (mismatchedOpts) {
+      parts.push('<optgroup label="⚠ Accounts of OTHER entities">' + mismatchedOpts + '</optgroup>');
+    }
     accountPicker =
       '<select id="mp-account" class="fio-select" style="width:100%;font-size:13px;padding:8px 10px;margin-bottom:14px;">' +
-        accountOpts +
+        parts.join('') +
       '</select>';
   }
 
@@ -8279,6 +8312,25 @@ function renderDetails(doc) {
   html += '</select>';
   html += '</div>';
 
+  // 2026-07-01 op-feedback — "Wrong stream" flag. Operator sees Claude's
+  // suggested PC is wrong (e.g. Sipalto-Ltd routed to Amitours Holding
+  // when it should be Alps2Alps because all A2A operational costs run
+  // through the group). This checkbox stores a note on the doc so the
+  // bookkeeper can filter for docs the operator hand-corrected — feeds
+  // future ML training signal.
+  // Read from top level (fast-path) or from parsed_json.governance (persisted)
+  var _wrongPcState = doc.wrong_pc_flag
+    || (doc.parsed_json && doc.parsed_json.governance && doc.parsed_json.governance.wrong_pc_flag)
+    || false;
+  var _wrongPcChecked = _wrongPcState ? ' checked' : '';
+  html += '<div class="edit-row" style="margin-top:6px;align-items:center;">' +
+    '<label for="edit-wrong-pc-' + esc(doc.id) + '" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#991b1b;cursor:pointer;">' +
+    '<input type="checkbox" id="edit-wrong-pc-' + esc(doc.id) + '"' + _wrongPcChecked +
+    ' onchange="markWrongPc(\'' + esc(doc.id) + '\', this.checked)">' +
+    '🔴 Claude picked the wrong stream — flag for review' +
+    '</label>' +
+    '</div>';
+
   // G-ui3 (2026-06-26) — intercompany counterparty PC selector.
   // When set, this doc is excluded from the consolidated P&L raw expense
   // (it's a shared-service charge from another PC, not an external cost).
@@ -8747,14 +8799,16 @@ function renderModalActions(doc) {
   }
 
   var pcOptions = '<option value="">-- Select Profit Center --</option>';
-  var pcList = [
-    {code: 'AA', name: 'Alps2Alps'},
-    {code: 'SR', name: 'Skipasser'}, {code: 'AH', name: 'Mountly'},
-    {code: 'CF', name: 'MyPeak Finance'}, {code: 'AL', name: 'ALVEDA'}
-  ];
-  pcList.forEach(function(pc) {
-    var sel = pc.code === prePC ? ' selected' : '';
-    pcOptions += '<option value="' + pc.code + '"' + sel + '>' + pc.code + ' — ' + pc.name + '</option>';
+  // 2026-07-01 op-feedback — this list previously hardcoded
+  // AH=Mountly (drifted). Source of truth is PC_LABELS (synced with
+  // services/pc_codes.py). AA155-class drift caught in operator feedback
+  // (screenshot showed "AH — Mountly" in the PROFIT CENTER OVERRIDE
+  // dropdown while the header pill said "AH — AMITOURS HOLDING OÜ").
+  var _CANONICAL_PC_ORDER = ['AA','AG','AH','AL','CF','MN','MT','RR','SP'];
+  _CANONICAL_PC_ORDER.forEach(function(code) {
+    var name = (typeof PC_LABELS !== 'undefined' && PC_LABELS[code]) || code;
+    var sel = code === prePC ? ' selected' : '';
+    pcOptions += '<option value="' + code + '"' + sel + '>' + code + ' — ' + name + '</option>';
   });
 
   var disabledAttr = prePC ? '' : ' disabled';
@@ -10102,9 +10156,20 @@ async function openChaseTaskCreatorForTxIds(txIds, overrideTitle, overrideBody) 
   });
   var pc = Object.keys(pcCount).sort(function(a,b){ return pcCount[b]-pcCount[a]; })[0] || '?';
   var pcName = (PC_LABELS && PC_LABELS[pc]) || pc;
+  // 2026-07-01 op-feedback — operator asked for the title format:
+  //    <amount> · <vendor> · (if card) last-4
+  // The single-tx case now builds a rich title instead of relying on
+  // server-side task_title which was showing "?" fields.
+  function _titleForOne(it) {
+    var amt = '€' + Number(it.amount_eur || 0).toFixed(2);
+    var who = (it.counterparty || it.description || '').trim() || '—';
+    var last4 = _extractLast4(it);
+    var extra = last4 ? ' · card ••' + last4 : '';
+    return '📄 Missing invoice — ' + amt + ' · ' + who + extra;
+  }
   var defaultTitle = overrideTitle ||
     (items.length === 1
-      ? items[0].task_title
+      ? _titleForOne(items[0])
       : '📄 [' + pc + '] Missing invoices · ' + items.length + ' tx · €' + total.toFixed(2));
   // Try to pick the most-suggested person as a hint for the assignee dropdown
   var personCounts = {};
@@ -12310,6 +12375,24 @@ async function saveCounterpartyPc(docId, counterpartyPc) {
     setTimeout(function(){ if (status) status.textContent = ''; }, 2500);
   } catch (e) {
     if (status) status.textContent = '⚠';
+    showToast('Save failed: ' + e.message, 'error');
+  }
+}
+
+// 🔴 Flag doc's suggested PC as wrong (2026-07-01 op-feedback).
+// Stores a flag on parsed_json.governance so bookkeepers can filter
+// operator-corrected docs; also feeds the "operator override" signal
+// into future ML training runs.
+async function markWrongPc(docId, checked) {
+  try {
+    var res = await fetch('/api/documents/' + encodeURIComponent(docId) + '/wrong-pc-flag', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-FIO-User': (window.currentUser || '')},
+      body: JSON.stringify({wrong_pc_flag: !!checked}),
+    }).then(function(r){ return r.json(); });
+    if (res.error) { showToast(res.error, 'error'); return; }
+    showToast(checked ? '🔴 Flagged — bookkeeper will review' : 'Cleared', 'success');
+  } catch (e) {
     showToast('Save failed: ' + e.message, 'error');
   }
 }
