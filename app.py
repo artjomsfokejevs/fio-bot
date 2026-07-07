@@ -2081,6 +2081,126 @@ def confirm_payment(doc_id: str):
     return jsonify({"status": "confirmed_to_pay", "document": db.get_document(doc_id)})
 
 
+@app.route("/api/documents/bulk-confirm-payment", methods=["POST"])
+def bulk_confirm_payment():
+    """Holding CEO ticks 'approve to pay this week' on N invoices at once.
+
+    2026-07-02 — bulk equivalent of /confirm-payment. Same guards, same
+    audit log, same X-alarm hooks per doc; single shared `note` (e.g.
+    "Pay Wednesday") is stamped on every doc so the CEO can process a
+    batch of 10 invoices in one click instead of ten. Returns a per-doc
+    result array so the UI can toast successes and surface failures.
+
+    Body: {doc_ids: [str, ...], note: str | null}
+    Returns: {
+      confirmed: [{doc_id, status, ...}, ...],
+      failed:    [{doc_id, error, current_status}, ...],
+      summary:   {total, confirmed_count, failed_count, total_amount_eur},
+      note: str
+    }
+    """
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_HOLDING_CEO)
+    if err:
+        return err
+    err = _require_capability("approve_payment")
+    if err:
+        return err
+
+    body = request.get_json(silent=True) or {}
+    doc_ids = body.get("doc_ids") or []
+    if not isinstance(doc_ids, list) or not doc_ids:
+        return jsonify({"error": "doc_ids (non-empty array) required"}), 400
+    # Cap at 100 per call so a runaway click doesn't lock the DB for
+    # multiple seconds; a batch that big is a signal to re-scope anyway.
+    if len(doc_ids) > 100:
+        return jsonify({"error": f"batch too large: {len(doc_ids)} > 100"}), 400
+    note = (body.get("note") or "").strip() or None
+    confirmed_by = body.get("confirmed_by") or _current_user_name() or "user"
+    now = datetime.utcnow().isoformat()
+
+    confirmed: List[Dict[str, Any]] = []
+    failed: List[Dict[str, Any]] = []
+    total_amount_eur = 0.0
+
+    for doc_id in doc_ids:
+        if not isinstance(doc_id, str) or not doc_id:
+            failed.append({"doc_id": doc_id, "error": "invalid id"})
+            continue
+        doc = db.get_document(doc_id)
+        if not doc:
+            failed.append({"doc_id": doc_id, "error": "not found"})
+            continue
+        pc_err = _require_pc_scope(doc.get("profit_center"))
+        if pc_err:
+            failed.append({"doc_id": doc_id, "error": "pc_scope_denied",
+                            "profit_center": doc.get("profit_center")})
+            continue
+        if doc.get("status") not in ("budget_validated", "approved", "posted"):
+            failed.append({"doc_id": doc_id,
+                            "error": "not budget-validated",
+                            "current_status": doc.get("status")})
+            continue
+
+        db.update_document(doc_id, {
+            "status": "confirmed_to_pay",
+            "confirmed_to_pay_at": now,
+            "confirmed_to_pay_by": confirmed_by,
+            "confirmed_to_pay_note": note,
+        })
+        db.insert_audit_log(doc_id, "payment_confirmed", {
+            "by": confirmed_by, "at": now, "note": note or "",
+            "bulk": True, "batch_size": len(doc_ids),
+        })
+        # Best-effort notification per doc (never blocks the bulk response)
+        try:
+            from services import notifications as _notif
+            _notif.create(
+                kind="ceo_approved_invoice",
+                title="✅ CEO approved invoice: " + (doc.get("vendor") or "—") +
+                      " · %.2f %s" % (float(doc.get("amount") or 0),
+                                         doc.get("currency") or "EUR"),
+                body=(note or "").strip() or None,
+                recipient_role="bookkeeper",
+                doc_id=doc_id,
+                href="/?doc=" + doc_id,
+                severity="info",
+                created_by=confirmed_by,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("ceo_approved_invoice notif (bulk) failed for %s", doc_id)
+        # Best-effort X-alarm — same as single-doc confirm-payment.
+        try:
+            from services import xalarm as _xa
+            _xa.fire_if_overrun(doc_id=doc_id,
+                                 triggering_action="bulk_confirm_payment",
+                                 actor=confirmed_by)
+        except Exception:  # noqa: BLE001
+            logger.exception("xalarm bulk fire_if_overrun failed for %s", doc_id)
+
+        try:
+            total_amount_eur += float(doc.get("amount_eur") or doc.get("amount") or 0)
+        except (TypeError, ValueError):
+            pass
+        confirmed.append({
+            "doc_id":     doc_id,
+            "status":     "confirmed_to_pay",
+            "vendor":     doc.get("vendor"),
+            "amount_eur": doc.get("amount_eur") or doc.get("amount"),
+        })
+
+    return jsonify({
+        "confirmed": confirmed,
+        "failed":    failed,
+        "note":      note,
+        "summary": {
+            "total":            len(doc_ids),
+            "confirmed_count":  len(confirmed),
+            "failed_count":     len(failed),
+            "total_amount_eur": round(total_amount_eur, 2),
+        },
+    })
+
+
 @app.route("/api/documents/<doc_id>/mark-paid", methods=["POST"])
 def mark_paid(doc_id: str):
     """Bookkeeper records that payment was executed.

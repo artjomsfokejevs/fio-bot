@@ -2695,6 +2695,43 @@ table thead th.cp-actions { background: #f8fafc; z-index: 3; }
           <tbody id="cp-rows"><tr><td class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <!-- 2026-07-02 — Bulk-approve action bar for Holding CEO in the
+           Awaiting CEO stage. Hidden by default; slides up from bottom
+           whenever ≥1 row is selected. Renders count + total EUR + a
+           single shared note ("Pay Wednesday") applied to every doc in
+           the batch. -->
+      <div id="cp-bulk-bar" style="display:none;position:sticky;bottom:0;margin-top:14px;
+                                     background:linear-gradient(180deg,#ffffff,#f8fafc);
+                                     border:2px solid #f59e0b;border-radius:10px;
+                                     box-shadow:0 -4px 12px rgba(0,0,0,0.08);
+                                     padding:14px 16px;z-index:20;">
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+          <div style="min-width:160px;">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.04em;">Selected</div>
+            <div style="font-size:20px;font-weight:700;color:#92400e;">
+              <span id="cp-bulk-count">0</span>
+              <span style="font-size:12px;color:var(--muted);font-weight:500;"> invoice(s)</span>
+            </div>
+            <div id="cp-bulk-total" style="font-size:13px;color:#92400e;font-weight:600;"></div>
+          </div>
+          <div style="flex:1;min-width:260px;">
+            <label for="cp-bulk-note" style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.04em;">Shared note (stamped on every invoice)</label>
+            <input type="text" id="cp-bulk-note" placeholder='e.g. "Pay Wednesday" · "Batch OK for Aug 1"'
+              style="width:100%;font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-top:2px;"
+              maxlength="240">
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="btn btn-ghost btn-sm" onclick="cpBulkClear()" title="Deselect everything">Clear</button>
+            <button id="cp-bulk-approve-btn" class="btn btn-success"
+              style="font-size:14px;padding:10px 18px;background:#059669;color:#fff;border-color:#059669;font-weight:600;"
+              onclick="cpBulkApproveToPay()">
+              ✓ Approve <span id="cp-bulk-btn-count">0</span> to pay
+            </button>
+          </div>
+        </div>
+        <div id="cp-bulk-preview" style="margin-top:10px;font-size:11px;color:var(--muted);"></div>
+      </div>
     </div>
   </div>
 
@@ -5640,7 +5677,20 @@ function loadConfirmPaymentPanel() {
     catch (e) { console.error('renderCPStatusCounts failed', e); }
     try { renderCPTotals((d && d.documents) || []); }
     catch (e) { console.error('renderCPTotals failed', e); }
-    try { renderCPRows(_filterCPDocs((d && d.documents) || [])); }
+    // 2026-07-02 — prune bulk selection to what's actually still in the
+    // current stage + filter, then re-sync the bar so the sticky count
+    // stays honest after every reload.
+    if (window._CP_BULK_SELECTED && window._CP_BULK_SELECTED.size) {
+      if (CP_STAGE !== 'awaiting_ceo') {
+        window._CP_BULK_SELECTED.clear();
+      } else {
+        var _visibleIds = new Set(((d && d.documents) || []).map(function(x) { return x.id; }));
+        Array.from(window._CP_BULK_SELECTED).forEach(function(id) {
+          if (!_visibleIds.has(id)) window._CP_BULK_SELECTED.delete(id);
+        });
+      }
+    }
+    try { renderCPRows(_filterCPDocs((d && d.documents) || [])); if (typeof cpBulkSyncBar === 'function') cpBulkSyncBar(); }
     catch (e) {
       console.error('renderCPRows failed', e);
       rowsEl.innerHTML = '<tr><td colspan="13" class="empty-state" style="color:var(--red);">UI error: ' + esc(e.message || String(e)) + '</td></tr>';
@@ -5949,9 +5999,27 @@ function renderCPRows(docs) {
     // 2026-06-07 P1.6: payment_comment column added to awaiting_payment.
     // 2026-06-07 P2.2: Desired payment date + state pill column added to
     //                  awaiting_ceo + awaiting_payment.
+    // 2026-07-02 — bulk-select checkbox in the leftmost column of
+    // awaiting_ceo only. Enables Holding CEO to approve N invoices to
+    // pay with one shared note (e.g. "Pay Wednesday"). Guarded by the
+    // same role + capability check as the per-row Approve button so
+    // non-CEOs never see a dead checkbox.
+    var _cpBulkAllowed = (CP_STAGE === 'awaiting_ceo'
+                          && (ME.role === 'admin' || ME.role === 'holding_ceo')
+                          && meCan('approve_payment'));
+    var _bulkChecked = (window._CP_BULK_SELECTED && window._CP_BULK_SELECTED.has(d.id)) ? ' checked' : '';
+    var bulkCell = _cpBulkAllowed
+      ? '<input type="checkbox" class="cp-bulk-row" data-doc-id="' + esc(d.id) + '"' + _bulkChecked +
+        ' onchange="cpBulkToggle(\'' + esc(d.id) + '\', this.checked)" ' +
+        'title="Include in bulk Approve-to-pay" style="cursor:pointer;">'
+      : '';
+
+    var awaitingCeoCells = _cpBulkAllowed
+      ? [bulkCell, dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, desiredDateCell, budgetCell, actionsCell]
+      : [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, desiredDateCell, budgetCell, actionsCell];
     var cellsByStage = {
       'budget_check':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, purposeCell, actionsCell],
-      'awaiting_ceo':     [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, desiredDateCell, budgetCell, actionsCell],
+      'awaiting_ceo':     awaitingCeoCells,
       'awaiting_payment': [dateCell, streamCell, vendorCell, ledgerCell, amountCell, legalEntityCell, desiredDateCell, ceoCell, paymentCommentCell, actionsCell],
       'paid':             [dateCell, streamCell, vendorCell, amountCell, legalEntityCell, ceoCell, paidCell, deltaCell, actionsCell],
     };
@@ -5980,7 +6048,14 @@ function _cpColumnHeaders() {
     ]);
   }
   if (CP_STAGE === 'awaiting_ceo') {
-    return common.concat([
+    // 2026-07-02 — bulk-approve UX. Checkbox column (with select-all in
+    // the header) only appears if the current user is admin or CEO with
+    // approve_payment capability, so viewers don't see dead controls.
+    var _canBulk = (ME.role === 'admin' || ME.role === 'holding_ceo') && meCan('approve_payment');
+    var _bulkHdr = _canBulk
+      ? [{ label: '<input type="checkbox" id="cp-bulk-select-all" onchange="cpBulkToggleAll(this.checked)" title="Select / deselect all filtered rows" style="cursor:pointer;">', cls: 'cp-bulk-col' }]
+      : [];
+    return _bulkHdr.concat(common).concat([
       { label: 'Ledger' },
       { label: 'Amount' },
       { label: 'Legal Entity' },             // P1.5 (2026-06-07)
@@ -6260,6 +6335,115 @@ function confirmPayment(docId) {
       showToast('Failed: ' + (d.error || 'unknown'), 'error');
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 2026-07-02 — Bulk Approve-to-pay for Holding CEO in the Awaiting CEO
+// stage. Instead of clicking "Approve to pay" 10× (each opening a
+// prompt), the CEO ticks 10 checkboxes, types "Pay Wednesday" once, and
+// hits ✓ Approve 10 to pay. The shared note is stamped on every doc.
+// State lives on window._CP_BULK_SELECTED so it survives table re-renders
+// as long as the doc still shows up in the current filter view.
+// ─────────────────────────────────────────────────────────────────────
+window._CP_BULK_SELECTED = window._CP_BULK_SELECTED || new Set();
+
+function cpBulkToggle(docId, checked) {
+  if (checked) window._CP_BULK_SELECTED.add(docId);
+  else         window._CP_BULK_SELECTED.delete(docId);
+  cpBulkSyncBar();
+}
+
+function cpBulkToggleAll(checked) {
+  // Only toggle rows currently rendered (respects the active filter).
+  var visibleIds = [];
+  document.querySelectorAll('.cp-bulk-row').forEach(function(cb) {
+    var id = cb.getAttribute('data-doc-id');
+    if (!id) return;
+    cb.checked = !!checked;
+    visibleIds.push(id);
+    if (checked) window._CP_BULK_SELECTED.add(id);
+    else         window._CP_BULK_SELECTED.delete(id);
+  });
+  cpBulkSyncBar();
+}
+
+function cpBulkClear() {
+  window._CP_BULK_SELECTED.clear();
+  document.querySelectorAll('.cp-bulk-row').forEach(function(cb) { cb.checked = false; });
+  var all = document.getElementById('cp-bulk-select-all');
+  if (all) all.checked = false;
+  cpBulkSyncBar();
+}
+
+function cpBulkSyncBar() {
+  var bar = document.getElementById('cp-bulk-bar');
+  if (!bar) return;
+  var ids = Array.from(window._CP_BULK_SELECTED);
+  if (!ids.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'block';
+  var items = ids.map(function(id) {
+    return (CP_QUEUE_CACHE || []).find(function(d) { return d.id === id; });
+  }).filter(Boolean);
+  var totalEur = items.reduce(function(s, d) { return s + Number(d.amount_eur || d.amount || 0); }, 0);
+  var byCcy = {};
+  items.forEach(function(d) {
+    var ccy = (d.currency || 'EUR').toUpperCase();
+    byCcy[ccy] = (byCcy[ccy] || 0) + Number(d.amount || 0);
+  });
+  document.getElementById('cp-bulk-count').textContent = ids.length;
+  document.getElementById('cp-bulk-btn-count').textContent = ids.length;
+  document.getElementById('cp-bulk-total').textContent =
+    '≈ €' + totalEur.toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  var byCcyStr = Object.keys(byCcy).map(function(c) {
+    return c + ' ' + byCcy[c].toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }).join(' · ');
+  // Preview: up to first 5 vendor names + "…"
+  var preview = items.slice(0, 5).map(function(d) { return d.vendor || '—'; }).join(', ');
+  if (items.length > 5) preview += ', … +' + (items.length - 5) + ' more';
+  document.getElementById('cp-bulk-preview').textContent =
+    (byCcyStr ? 'By currency: ' + byCcyStr + '  ·  ' : '') + preview;
+}
+
+async function cpBulkApproveToPay() {
+  var ids = Array.from(window._CP_BULK_SELECTED);
+  if (!ids.length) return;
+  var note = (document.getElementById('cp-bulk-note').value || '').trim();
+  var confirmMsg = 'Approve ' + ids.length + ' invoice(s) to pay?' +
+                    (note ? '\nNote will be stamped on every invoice: "' + note + '"' : '');
+  if (!confirm(confirmMsg)) return;
+  var btn = document.getElementById('cp-bulk-approve-btn');
+  var origLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Approving ' + ids.length + '…';
+  try {
+    var res = await fetch('/api/documents/bulk-confirm-payment', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-FIO-User': (window.currentUser || '')},
+      body: JSON.stringify({
+        doc_ids: ids,
+        note: note || null,
+        confirmed_by: (ME && ME.signed_in_as) || null,
+      }),
+    }).then(function(r) { return r.json(); });
+    var s = res.summary || {confirmed_count: 0, failed_count: ids.length};
+    if (s.confirmed_count > 0) {
+      showToast('✓ Approved ' + s.confirmed_count + ' of ' + ids.length +
+                ' — total €' + (s.total_amount_eur || 0).toLocaleString('en', {minimumFractionDigits: 2}), 'success');
+    }
+    if (s.failed_count > 0) {
+      var reasons = (res.failed || []).slice(0, 3).map(function(f) {
+        return (f.doc_id || '?').slice(-6) + ': ' + (f.error || 'unknown');
+      }).join(' · ');
+      showToast('⚠ ' + s.failed_count + ' failed — ' + reasons, 'error');
+    }
+    cpBulkClear();
+    loadConfirmPaymentPanel();
+  } catch (e) {
+    showToast('Bulk approve failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origLabel;
+  }
 }
 
 function markDocPaid(docId) {
