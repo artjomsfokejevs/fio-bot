@@ -261,7 +261,15 @@ def _parse_date(s: Optional[str]) -> Optional[str]:
 
 
 def _make_id(source: str, batch_id: str, row: Dict[str, Any]) -> str:
-    payload = f"{source}|{row.get('posted_at','')}|{row.get('amount','')}|{row.get('description','')}".lower()
+    # 2026-07-08 (H1) — fold in the row's position within its import file
+    # (row_seq). Two genuinely-identical charges in one statement
+    # (2x EUR 4.50 Starbucks same day) now get DISTINCT ids and both
+    # survive; re-importing the same file yields the same row_seq -> same
+    # ids -> PK conflict -> idempotent skip. Excludes batch_id so re-import
+    # dedups across batches.
+    seq = row.get("row_seq", 0)
+    payload = (f"{source}|{row.get('posted_at','')}|{row.get('amount','')}|"
+               f"{row.get('description','')}|{seq}").lower()
     h = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:14]
     return f"ct_{h}"
 
@@ -501,6 +509,7 @@ def import_csv(
                     "match_reason":   None,
                     "notes":          None,
                     "raw_row":        json.dumps(raw_row, ensure_ascii=False)[:2000],
+                    "row_seq":        row_idx,   # H1: file position → distinct id for genuine dupes
                 }
                 row["id"] = _make_id(spec["id"], batch_id, row)
 
@@ -511,13 +520,14 @@ def import_csv(
                             period, amount, currency, amount_eur, fx_rate, fx_date,
                             description, counterparty, reference, card_holder,
                             department, profit_center, matched_invoice_id,
-                            match_status, match_confidence, match_reason, notes, raw_row)
+                            match_status, match_confidence, match_reason, notes, raw_row,
+                            row_seq)
                            VALUES (:id, :source, :batch_id, :imported_at, :imported_by,
                                    :posted_at, :period, :amount, :currency, :amount_eur,
                                    :fx_rate, :fx_date, :description, :counterparty,
                                    :reference, :card_holder, :department, :profit_center,
                                    :matched_invoice_id, :match_status, :match_confidence,
-                                   :match_reason, :notes, :raw_row)""",
+                                   :match_reason, :notes, :raw_row, :row_seq)""",
                         row,
                     )
                     inserted += 1

@@ -329,7 +329,7 @@ def _parse_image(file_path: str) -> Dict[str, Any]:
         media_type = media_map.get(ext, "application/octet-stream")
         b64 = base64.b64encode(raw).decode("utf-8")
 
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0, max_retries=1)
 
         content_block: List[Dict[str, Any]]
         if ext == "pdf":
@@ -387,7 +387,7 @@ def _parse_text_with_llm(text: str, filename: str) -> Dict[str, Any]:
     try:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0, max_retries=1)
         prompt = _extraction_prompt() + "\n\nDocument text:\n" + text[:8000]
 
         response = client.messages.create(

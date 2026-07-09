@@ -308,7 +308,8 @@ def project(weeks: int = 13, pc: Optional[str] = None,
     """
     if weeks < 1 or weeks > 52:
         raise ValueError("weeks must be between 1 and 52")
-    week_starts = _week_starts(datetime.utcnow(), weeks)
+    from services.clock import business_now
+    week_starts = _week_starts(business_now().replace(tzinfo=None), weeks)
     in_by_week = _ar_inflows_by_week(week_starts, pc)
     out_by_week = _ap_outflows_by_week(week_starts, pc)
     # 2026-07-01 — overlay the operator's imported plan so each row shows

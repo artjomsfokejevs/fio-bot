@@ -3358,7 +3358,7 @@ def analytics_ai_report():
 
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0, max_retries=1)
         resp = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1500,

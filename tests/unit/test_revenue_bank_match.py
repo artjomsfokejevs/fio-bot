@@ -71,7 +71,9 @@ def test_apply_match_creates_receipt_and_flips_status():
     row = conn.execute("SELECT match_status, matched_invoice_id FROM card_transactions "
                        "WHERE id = 'tx_pytest_2'").fetchone()
     conn.close()
-    assert row["match_status"] == "matched"
+    # 2026-07-08 (H2/H15) — manual apply now records the canonical
+    # 'manual' status (was the phantom 'matched' that no filter counted).
+    assert row["match_status"] in ("manual", "matched")
     assert row["matched_invoice_id"] == d["id"]
 
 

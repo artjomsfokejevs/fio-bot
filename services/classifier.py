@@ -358,7 +358,7 @@ def _classify_with_llm(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
             "profit_center can be null if unclear."
         ) % (codes_text, centers_text, json.dumps(parsed, default=str)[:3000])
 
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0, max_retries=1)
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1000,

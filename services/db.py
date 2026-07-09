@@ -121,7 +121,13 @@ CREATE TABLE IF NOT EXISTS card_transactions (
     match_reason    TEXT,
     notes           TEXT,
     raw_row         TEXT,                 -- original CSV row (json string)
-    UNIQUE(source, posted_at, amount, description)
+    -- 2026-07-08 (H1) — the old UNIQUE(source, posted_at, amount,
+    -- description) silently dropped GENUINE same-day duplicate charges
+    -- (e.g. 2x EUR 4.50 Starbucks), under-reporting month totals. The
+    -- primary-key `id` now folds in the row's position within its import
+    -- file, so re-importing the same file stays idempotent while two
+    -- identical rows in one file both survive. No 4-col UNIQUE needed.
+    row_seq         INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_ct_period      ON card_transactions(period);
 CREATE INDEX IF NOT EXISTS ix_ct_department  ON card_transactions(department);
@@ -538,6 +544,38 @@ def init_db() -> None:
     try:
         conn.executescript(SCHEMA_SQL)
         conn.commit()
+        # 2026-07-08 (H1) — rebuild card_transactions to drop the legacy
+        # 4-column UNIQUE(source, posted_at, amount, description) that
+        # silently dropped genuine same-day duplicate charges. Detect it
+        # in the stored table SQL; rebuild once, preserving all rows.
+        try:
+            tbl_sql_row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='card_transactions'"
+            ).fetchone()
+            tbl_sql = (tbl_sql_row["sql"] if tbl_sql_row else "") or ""
+            if "UNIQUE(source, posted_at, amount, description)" in tbl_sql:
+                logger.info("Migrating card_transactions: dropping legacy 4-col UNIQUE")
+                cols = [r["name"] for r in conn.execute(
+                    "PRAGMA table_info(card_transactions)").fetchall()]
+                has_row_seq = "row_seq" in cols
+                copy_cols = ", ".join(cols)
+                conn.execute("ALTER TABLE card_transactions RENAME TO card_transactions_old")
+                conn.executescript(SCHEMA_SQL)  # recreates without the UNIQUE
+                seq_default = "" if has_row_seq else ", 0"
+                seq_col = "row_seq" if has_row_seq else "row_seq"
+                if has_row_seq:
+                    conn.execute(
+                        f"INSERT INTO card_transactions ({copy_cols}) "
+                        f"SELECT {copy_cols} FROM card_transactions_old")
+                else:
+                    conn.execute(
+                        f"INSERT INTO card_transactions ({copy_cols}, row_seq) "
+                        f"SELECT {copy_cols}, 0 FROM card_transactions_old")
+                conn.execute("DROP TABLE card_transactions_old")
+                conn.commit()
+                logger.info("card_transactions migration complete")
+        except sqlite3.OperationalError as exc:
+            logger.warning("card_transactions H1 migration skipped: %s", exc)
         # Migration: add uploaded_by column if missing (for existing databases)
         try:
             conn.execute("SELECT uploaded_by FROM documents LIMIT 1")

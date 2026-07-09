@@ -148,10 +148,44 @@ def apply_match(tx_id: str, revenue_doc_id: str, *, by: Optional[str] = None,
     if not tx_row:
         raise ValueError(f"tx {tx_id} not found")
     tx = dict(tx_row)
+
+    # 2026-07-08 (H2) — double-apply guard. Without this, a double-click,
+    # a retried request, or auto_match_batch racing a manual click would
+    # insert TWO revenue_receipts for one bank credit — flipping the doc
+    # to `paid` on phantom money. A tx that is already matched (auto or
+    # manual) must not be matched again.
+    if (tx.get("match_status") or "").lower() in ("matched", "auto", "manual"):
+        raise ValueError(
+            "transaction %s is already matched (status=%s)"
+            % (tx_id, tx.get("match_status"))
+        )
     amt = float(tx.get("amount_eur") or tx.get("amount") or 0)
     if amt <= 0:
         raise ValueError("transaction amount must be > 0 for revenue match")
 
+    # Atomically claim the tx first (conditional UPDATE): if another
+    # request matched it between our SELECT and here, rowcount is 0 and we
+    # abort BEFORE writing a receipt.
+    method = "auto" if auto else "manual"
+    conn = db.get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE card_transactions SET match_status = ?, "
+            "match_confidence = 100, matched_invoice_id = ?, "
+            "match_reason = ? WHERE id = ? "
+            "AND (match_status IS NULL OR match_status NOT IN ('matched','auto','manual'))",
+            (method, revenue_doc_id,
+             "revenue match" + (" (auto)" if auto else ""),
+             tx_id),
+        )
+        conn.commit()
+        claimed = cur.rowcount > 0
+    finally:
+        conn.close()
+    if not claimed:
+        raise ValueError("transaction %s was matched concurrently" % tx_id)
+
+    # tx is now claimed — safe to record the receipt exactly once.
     receipt = _rr.add_receipt(
         revenue_doc_id, amount_eur=amt,
         received_at=tx.get("posted_at"),
@@ -160,21 +194,6 @@ def apply_match(tx_id: str, revenue_doc_id: str, *, by: Optional[str] = None,
         bank_statement_tx_id=tx_id,
         by=by or ("auto-match" if auto else None),
     )
-    # Mark the bank tx as matched on the receivable side. We re-use the
-    # existing matched_invoice_id column (no schema change needed).
-    conn = db.get_connection()
-    try:
-        conn.execute(
-            "UPDATE card_transactions SET match_status = 'matched', "
-            "match_confidence = 100, matched_invoice_id = ?, "
-            "match_reason = ? WHERE id = ?",
-            (revenue_doc_id,
-             "revenue match" + (" (auto)" if auto else ""),
-             tx_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
     return receipt
 
 

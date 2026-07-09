@@ -79,8 +79,13 @@ _ALL_NUMERIC_FIELDS = [f for g in FIELD_GROUPS.values() for f in g]
 
 def monday_of(d: Optional[date] = None) -> str:
     """Return the ISO YYYY-MM-DD of the Monday that anchors ``d``'s week.
-    Default ``d`` = today (UTC)."""
-    d = d or datetime.utcnow().date()
+    Default ``d`` = today in the business timezone (Europe/Riga).
+
+    2026-07-08 — was UTC, which shifted the current-week window back a
+    week during Riga's Mon 00:00-02:59 local (still Sun in UTC)."""
+    if d is None:
+        from services.clock import business_today
+        d = business_today()
     return (d - timedelta(days=d.weekday())).strftime("%Y-%m-%d")
 
 
@@ -543,20 +548,52 @@ def parse_amount(raw: Any) -> Optional[float]:
     return -v if negative else v
 
 
-def _coerce_end_date_to_monday(raw: Any) -> Optional[str]:
+def _infer_dayfirst(samples: List[str]) -> bool:
+    """Decide whether ambiguous slash/dot dates in THIS import are
+    day-first (d/m/Y, European) or month-first (m/d/Y, US).
+
+    2026-07-08 (H3) — the old fallback chain tried %m/%d/%Y BEFORE
+    %d/%m/%Y, so "4/5/2025" parsed as 5 April even though the operator's
+    Amitours Cash Timeline means 4 May. A blind flip would then break a
+    genuinely US sheet. Instead we infer ONE dialect per import: if any
+    date's first component is > 12 it must be day-first; if any second
+    component is > 12 it must be month-first. Default to day-first
+    (European) since the operators are in Riga.
+    """
+    day_first_votes = 0
+    month_first_votes = 0
+    for raw in samples:
+        m = re.match(r"^\s*(\d{1,2})[/.\-](\d{1,2})[/.\-]\d{2,4}\s*$", str(raw or ""))
+        if not m:
+            continue
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > 12 and b <= 12:
+            day_first_votes += 1
+        elif b > 12 and a <= 12:
+            month_first_votes += 1
+    if month_first_votes > day_first_votes:
+        return False
+    return True  # default + tie → day-first (European)
+
+
+def _coerce_end_date_to_monday(raw: Any, dayfirst: bool = True) -> Optional[str]:
     """The Sheet's 'End Date' column is the Sunday at the END of a week
     (e.g. 4/5/2025 means W ending May 4). We anchor to the ISO Monday
-    that starts the week containing that end-date, so cashflow_weekly's
-    week_start is consistent regardless of how the operator labelled
-    their column."""
+    that starts the week containing that end-date.
+
+    `dayfirst` selects the dialect for ambiguous slash/dot dates; the
+    importer infers it once per file via _infer_dayfirst()."""
     if raw is None:
         return None
     s = str(raw).strip()
     if not s:
         return None
-    # Try a few common spreadsheet date formats
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d.%m.%Y",
-                "%Y/%m/%d", "%d-%m-%Y"):
+    # ISO always first (unambiguous), then the ambiguous formats in the
+    # order the inferred dialect dictates.
+    ambiguous = (("%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%m/%d/%Y")
+                 if dayfirst else
+                 ("%m/%d/%Y", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y"))
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d") + ambiguous:
         try:
             d = datetime.strptime(s, fmt).date()
             break
@@ -651,6 +688,18 @@ def import_tsv(text: str, *,
     skipped: List[Dict[str, Any]] = []
     upserted_rows: List[Dict[str, Any]] = []
 
+    # 2026-07-08 (H3) — infer the date dialect ONCE for the whole file so
+    # ambiguous d/m vs m/d dates parse consistently (not row-by-row via a
+    # fallback chain that silently mis-parsed ~40% of rows).
+    _end_date_idxs = [i for i, col in mapped.items() if col == "_end_date"]
+    _date_samples: List[str] = []
+    if _end_date_idxs:
+        _edi = _end_date_idxs[0]
+        for _cells in parsed_rows[1:]:
+            if _edi < len(_cells) and _cells[_edi].strip():
+                _date_samples.append(_cells[_edi])
+    _dayfirst = _infer_dayfirst(_date_samples)
+
     # ln_no reflects the real 1-indexed CSV line so skip-example
     # messages point the operator at the right row in their source file.
     for ln_no, cells in enumerate(parsed_rows[1:], start=header_row_idx + 2):
@@ -664,7 +713,7 @@ def import_tsv(text: str, *,
             if col == "_row_type":
                 rec[col] = _ROW_TYPE_MAP.get(_norm_header(cell), _norm_header(cell))
             elif col == "_end_date":
-                rec[col] = _coerce_end_date_to_monday(cell)
+                rec[col] = _coerce_end_date_to_monday(cell, dayfirst=_dayfirst)
             elif col == "_period":
                 rec[col] = cell.strip()
             else:
