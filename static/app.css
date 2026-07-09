@@ -1,0 +1,1788 @@
+/* Keel app styles — extracted from index.html <style> block
+   (2026-07-09, modularization). Edit here, not inline. */
+:root {
+    /* 2026-06-27 Keel rebrand — BT4YOU.ai design tokens.
+       Source: BT4YOU_LANDING_BRAND project brand spec.
+       Keel = "Digital CFO" → amber primary, BT4YOU navy ink for surfaces. */
+    --bg: #f8fafc;                /* BT4YOU surface-soft */
+    --surface: #ffffff;
+    --card: #ffffff;
+    --border: #e2e8f0;            /* BT4YOU border */
+    --text: #0f172a;              /* BT4YOU ink */
+    --muted: #64748b;             /* BT4YOU muted */
+    --accent: #d97706;            /* Keel amber-dark (links, focus) */
+    --accent2: #b45309;
+    --green: #059669;
+    --red: #dc2626;
+    --yellow: #f59e0b;            /* Keel amber primary */
+    --brand-dark: #0b1228;        /* BT4YOU hero deep navy */
+    --brand-blue: #1e3a8a;        /* BT4YOU deep blue */
+    --brand-light: #fffbeb;       /* Keel amber background */
+    --keel-amber: #f59e0b;
+    --keel-amber-dark: #d97706;
+    --keel-amber-deep: #b45309;
+    --keel-amber-bg: #fffbeb;
+    --bt-violet: #6d28d9;
+    --font: 'Inter', system-ui, sans-serif;
+    --font-display: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, "SFMono-Regular", "Monaco", monospace;
+    /* Profit-center / brand stream colors (FIO Top-10 fix #7, 2026-06-07).
+       Single source of truth — STREAM_COLORS JS object reads from these via
+       getComputedStyle. Add a new brand here, it appears everywhere. */
+    --stream-aa: #0ea5e9;  /* Alps2Alps */
+    --stream-bk: #8b5cf6;  /* Skibookers */
+    --stream-sr: #f59e0b;  /* Skipasser */
+    --stream-mt: #10b981;  /* Mountly / AH */
+    --stream-cf: #ec4899;  /* MyPeak Finance / PK */
+    --stream-al: #6366f1;  /* Alveda */
+    --stream-ag: #94a3b8;  /* Amitours Group (default) */
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Keel rebrand 2026-06-27 — display serif for page headings (h1/h2),
+   matches BT4YOU Landing's Source Serif 4 hero treatment. */
+h1, h2, .table-header h2, .display-heading {
+  font-family: var(--font-display);
+  letter-spacing: -.01em;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--keel-amber-dark);
+}
+.btn.primary, button.primary {
+  background: linear-gradient(135deg, var(--keel-amber-dark) 0%, var(--keel-amber) 100%);
+  border-color: var(--keel-amber-dark);
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .35);
+}
+.btn.primary:hover, button.primary:hover {
+  filter: brightness(1.05);
+}
+
+/* Header — Keel rebrand 2026-06-27.
+   BT4YOU hero gradient (deep navy → brand blue) with a thin amber
+   underline so Keel reads as a distinct product within the suite. */
+.header {
+  background: linear-gradient(135deg, #0b1228 0%, #1e3a8a 55%, #2f6df6 100%);
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  height: 56px;
+  border-bottom: 2px solid var(--keel-amber);
+  box-shadow: 0 1px 0 rgba(245, 158, 11, .3);
+}
+.header > .header-left,
+.header > .header-right {
+  display: flex;
+  align-items: center;
+}
+/* Inner constraint so tabs + chip stay aligned to the 1400px content column */
+.header { gap: 0; }
+.header-left { padding-left: 20px; flex: 1 1 auto; min-width: 0; }
+.header-right { padding-right: 20px; flex: 0 0 auto; }
+@media (min-width: 1500px) {
+  .header { padding: 0 calc((100vw - 1480px) / 2); }
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-logo {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+.header-logo .subtitle {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  font-weight: 400;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-right .tagline {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  font-style: italic;
+}
+.header-right .bt4you-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  letter-spacing: 0.5px;
+}
+
+/* Header tabs — inline pills (Call QA / BT4YOU style).
+   2026-06-16: horizontal scroll + fade-mask to prevent overflow into the user chip.
+*/
+/* 2026-06-22 #86 — tabs wrapper with visible scroll arrows.
+   The earlier mask-image fade was too subtle — users didn't realise
+   tabs were scrollable and the rightmost tab still looked clipped. */
+.bt-tabs-wrap {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 14px;
+  position: relative;
+}
+.bt-tabs-arrow {
+  flex: 0 0 auto;
+  display: none;          /* JS toggles via .show class when overflowing */
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  border-radius: 14px;
+  transition: background-color .15s ease;
+}
+.bt-tabs-arrow:hover { background: rgba(255, 255, 255, 0.20); }
+.bt-tabs-arrow:disabled { opacity: 0.30; cursor: not-allowed; }
+.bt-tabs-arrow.show { display: inline-flex; }
+.bt-tabs-arrow-left  { margin-right: 4px; }
+.bt-tabs-arrow-right { margin-left: 4px; }
+
+.header-tabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;            /* lets flex item shrink below content size */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;   /* Firefox */
+  -ms-overflow-style: none;/* IE/Edge */
+}
+.header-tabs::-webkit-scrollbar { display: none; }  /* WebKit */
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.78);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 18px;
+  transition: background-color .15s ease, color .15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;          /* never compress tab text */
+}
+.tab-btn:hover {
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+}
+.tab-btn.active {
+  /* Keel rebrand — active tab carries amber accent so the navigation
+     reads as part of the Keel product, not the BT4YOU shell. */
+  background: linear-gradient(135deg, rgba(217,119,6,.95) 0%, rgba(245,158,11,.95) 100%);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .45);
+}
+/* Legacy .tab-bar (in case used elsewhere) — hidden in this layout */
+.tab-bar { display: none; }
+
+/* ──────────────────────────────────────────────────────────────────────
+   2026-06-16 brand-aligned utility classes (eliminate inline styling in
+   new panels — single source of truth for spacing, table, banner, forms).
+   ────────────────────────────────────────────────────────────────────── */
+.page-shell { max-width: 1280px; margin: 0 auto; padding: 24px 20px 64px; }
+.page-head { margin-bottom: 18px; }
+.page-title { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; margin: 0 0 4px; }
+.page-subtitle { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0; max-width: 780px; }
+
+.section-card + .section-card { margin-top: 14px; }
+
+.bt-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+.bt-banner-warn  { background: #fefce8; border-color: #fde68a; color: #92400e; }
+.bt-banner-info  { background: var(--brand-light); border-color: #bfdbfe; color: var(--brand-dark); }
+.bt-banner-success{ background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.bt-banner-error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+.bt-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 980px; }
+.bt-table thead { background: #f8fafc; border-bottom: 2px solid var(--border); }
+.bt-table th { padding: 9px 12px; text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.bt-table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.bt-table tbody tr:hover { background: #f8fafc; }
+.bt-table tbody tr:last-child td { border-bottom: none; }
+.ta-right { text-align: right; }
+.ta-center { text-align: center; }
+
+.form-grid { display: grid; gap: 10px; padding: 14px 16px 16px; }
+.form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Labelled-field component — pairs a small uppercase label with its
+   input so dropdowns/inputs never need placeholder-as-label. Used by
+   the Add Revenue Document modal (2026-06-27) and any future form
+   that needs production-grade spacing. */
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+.field-label .req { color: var(--keel-amber-dark); margin-left: 2px; }
+.field input, .field select, .field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  min-width: 0;
+}
+.field select { padding-right: 28px; }      /* room for the chevron */
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--keel-amber);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.field-section {
+  grid-column: 1 / -1;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 14px 0 -2px 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  letter-spacing: -.005em;
+}
+.field-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.field-section .field-section-hint {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 8px;
+}
+.form-grid input, .form-grid select, .form-grid textarea {
+  font-family: inherit; font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: #fff; color: var(--text);
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+  width: 100%;
+}
+.form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.grid-span-2 { grid-column: span 2; }
+.grid-span-3 { grid-column: span 3; }
+.grid-span-4 { grid-column: span 4; }
+
+.bt-log-list { padding: 12px 16px; font-size: 12px; color: var(--muted); }
+.bt-log-list > div { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.bt-log-list > div:last-child { border-bottom: none; }
+
+/* 2026-06-16 — typography scale (one source of truth so font sizes stop "jumping") */
+.bt-meta-cell { font-size: 12px; color: var(--muted); }
+.bt-mono { font-family: ui-monospace, "SFMono-Regular", "Monaco", "Consolas", monospace; }
+
+/* 2026-06-16 — pill (status chip) */
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+.pill-success { background: #dcfce7; color: #166534; }
+.pill-danger  { background: #fee2e2; color: #991b1b; }
+.pill-info    { background: var(--brand-light); color: var(--brand-dark); }
+.pill-warn    { background: #fef3c7; color: #92400e; }
+
+/* 2026-06-16 — extra-small button (compact row actions) */
+.btn-xs {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+/* 2026-06-16 — inline edit inputs inside .bt-table rows */
+.bt-inline-edit {
+  font-family: inherit; font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; color: var(--text);
+  outline: none; width: 100%;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.bt-inline-edit:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.bt-row-editing { background: var(--brand-light) !important; }
+.bt-row-editing td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
+
+/* ──────────────────────────────────────────────────────────────────────
+   2026-06-16 GLOBAL NORMALIZATION (Upload → Approve → Admin → all tabs)
+   Single source of truth for font / size / control heights — eliminates
+   "fonts jumping" across panels.
+   ────────────────────────────────────────────────────────────────────── */
+
+/* Actions cell — buttons MUST stay on one line + go side-by-side */
+.bt-table td.actions,
+table td.actions,
+.actions {
+  white-space: nowrap;
+  text-align: right;
+  vertical-align: middle;
+}
+.actions > * + * { margin-left: 6px; }   /* uniform spacing between buttons */
+.actions .btn { display: inline-flex; align-items: center; }
+
+/* Make all data tables share the same baseline.
+   Any table that doesn't already opt-in to .bt-table gets the same baseline
+   rules so font hierarchy stays consistent. */
+table { font-family: inherit; }
+table th { font-weight: 600; }
+
+/* Normalise every form control: same height, same border, same font.
+   Scoped to interactive controls only — won't override toggles or pill chips. */
+input[type="text"], input[type="email"], input[type="number"],
+input[type="search"], input[type="date"], input[type="month"],
+input[type="password"], input[type="url"], input[type="tel"],
+select, textarea {
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+textarea { line-height: 1.45; padding: 8px 10px; }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+input[disabled], select[disabled], textarea[disabled] {
+  background: #f8fafc;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+input::placeholder, textarea::placeholder { color: #9ca3af; }
+
+/* Buttons — same font, same line-height across all sizes */
+.btn {
+  font-family: inherit;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+/* Forms commonly use a "floating label" pattern — give those labels
+   a single, recognisable typographic treatment so they stop "jumping". */
+.field-label, label.field-label,
+.bt-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+/* .section-card + .section-card-header live at lines ~1347 — leave them.
+   Just add the form-light backdrop for the add-form area inside Admin cards. */
+.bt-card-form-row {
+  background: var(--brand-light);
+  padding: 14px 16px;
+  border-bottom: 1px solid #d6e1f5;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.bt-card-form-row label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.bt-card-form-row > button { align-self: end; }
+
+/* Filter bar — brand-aligned (used in Approve + Confirm-for-Payment) */
+.bt-filter-bar {
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 13px;
+}
+.bt-filter-bar input[type="search"],
+.bt-filter-bar input[type="date"],
+.bt-filter-bar select {
+  font-family: inherit; font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; color: var(--text);
+  outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.bt-filter-bar input[type="search"] { flex: 1 1 220px; min-width: 200px; }
+.bt-filter-bar input:focus, .bt-filter-bar select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .15);
+}
+.bt-filter-bar label { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+
+/* 2026-06-16 — Notification bell (Phase 2). Mirrors bt-status-pill but icon-only. */
+.bt-notif-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease;
+  padding: 0;
+}
+.bt-notif-bell:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.28);
+}
+.bt-notif-badge {
+  display: none;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  border: 1.5px solid var(--brand-dark);
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+/* Header status pill (mirror BT4YOU pattern) */
+.bt-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border: 1.5px solid rgba(134, 239, 172, 0.4);
+  white-space: nowrap;
+}
+.bt-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 4px #22c55e;
+}
+
+/* 2026-06-16 — brand lockup (title + subtitle next to logo mark) */
+.bt-brand-lockup { display: flex; flex-direction: column; line-height: 1.15; white-space: nowrap; flex-shrink: 0; }
+.bt-brand-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -.01em;
+}
+.bt-brand-subtitle {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255,255,255,.7);
+  margin-top: 1px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+/* Hide subtitle on narrow viewports to give tabs more room */
+@media (max-width: 1100px) {
+  .bt-brand-subtitle { display: none; }
+  .bt-brand-title { font-size: 14px; }
+}
+@media (max-width: 900px) {
+  .bt-brand-lockup { display: none; }
+}
+
+/* Logo mark — Keel amber accent chip with serif wordmark per BT4YOU spec */
+.bt-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -.01em;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .55), 0 8px 20px rgba(217, 119, 6, .25);
+}
+
+/* Footer — bot-family attribution */
+.bt-footer {
+  max-width: 1400px;
+  margin: 48px auto 0;
+  padding: 18px 32px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.bt-footer-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bt-footer .bot-name { font-weight: 700; color: var(--text); }
+.bt-footer .bot-family {
+  color: var(--keel-amber-dark);
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+.bt-footer .bot-sibling {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--brand-light);
+  color: var(--accent2);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.bt-footer-right { font-size: 11px; color: var(--muted); }
+
+/* Main container */
+.container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+/* Panel visibility */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Stats bar */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.stat-card .count {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+}
+.stat-card .label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.stat-pending .count { color: var(--yellow); }
+.stat-approved .count { color: var(--green); }
+.stat-rejected .count { color: var(--red); }
+.stat-posted .count { color: #0284c7; }
+
+/* Upload zone */
+.upload-zone {
+  background: var(--card);
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+  background: var(--brand-light);
+}
+.upload-zone .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+.upload-zone p { color: var(--muted); font-size: 14px; }
+.upload-zone .formats { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.upload-zone input { display: none; }
+
+/* Progress bar */
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 16px;
+  display: none;
+}
+.progress-bar .fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s;
+}
+
+/* Table — BT4YOU-style card with subtle top stripe + soft lift shadow */
+.table-wrapper {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, .04),
+    0 10px 30px rgba(217, 119, 6, .06);
+  position: relative;
+}
+.table-wrapper::before {
+  /* 3px brand stripe at the top — distinguishes the Keel surface */
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--keel-amber-dark) 0%, var(--keel-amber) 100%);
+  z-index: 1;
+}
+.table-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  /* Subtle horizontal divider feel; matches BT4YOU card top-stripe motif */
+  background: linear-gradient(180deg, #fffdf6 0%, #ffffff 100%);
+}
+.table-header h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
+.table-header-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.table-header select, .filter-select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+thead th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+tbody td {
+  padding: 12px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: #f8fafc; }
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Status badge */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-pending { background: rgba(217,119,6,0.1); color: var(--yellow); }
+.badge-parsed, .badge-classified { background: rgba(245, 158, 11, .12); color: var(--keel-amber-dark); }
+.badge-approved { background: rgba(5,150,105,0.1); color: var(--green); }
+.badge-rejected { background: rgba(220,38,38,0.1); color: var(--red); }
+.badge-posted { background: rgba(2,132,199,0.1); color: #0284c7; }
+
+/* Confidence bar */
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.confidence-bar .bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  min-width: 60px;
+}
+.confidence-bar .bar .fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.confidence-high .fill { background: var(--green); }
+.confidence-mid .fill { background: var(--yellow); }
+.confidence-low .fill { background: var(--red); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.92; filter: brightness(1.04); }
+/* Keel rebrand — .btn-primary uses amber gradient by default; legacy code
+   that uses .btn-primary inherits the new brand without further edits. */
+.btn-primary {
+  background: linear-gradient(135deg, var(--keel-amber-dark) 0%, var(--keel-amber) 100%);
+  color: white;
+  box-shadow: 0 1px 4px rgba(217, 119, 6, .35);
+}
+.btn-success { background: var(--green); color: white; }
+.btn-danger { background: var(--red); color: white; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--brand-light); color: var(--keel-amber-dark); border-color: var(--keel-amber); }
+.btn-sm { padding: 4px 10px; font-size: 11px; white-space: nowrap; }
+/* Confirm-for-Payment table: stage-aware columns + sticky Actions column on
+   the right so the call-to-action button stays visible during horizontal pan. */
+.cp-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cp-table { width: 100%; min-width: 720px; font-size: 13px; line-height: 1.45; }
+.cp-table th, .cp-table td { padding: 10px 12px; vertical-align: middle; }
+/* 2026-06-16 — kill the 10/11/12px font-size jumble in cp-table cells.
+   Primary cell content stays at table's 13px; secondary lines (VAT,
+   stream sub-label, meta dates, references) use a single 11px muted
+   stripe. Inline style="font-size:..." attributes inside .cp-table
+   are overridden so the typography stays consistent without rewriting
+   the renderCPRows() builder string-by-string. */
+.cp-table thead th {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  background: #f8fafc; border-bottom: 2px solid var(--border);
+}
+.cp-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+.cp-table tbody tr:last-child { border-bottom: none; }
+.cp-table tbody tr:hover { background: #f8fafc; }
+.cp-table tbody td { font-size: 13px; color: var(--text); }
+.cp-table td strong, .cp-table td b { font-weight: 600; font-size: 13px; color: var(--text); }
+/* Secondary line (VAT, sub-label, meta) — auto-detect via inline font-size 10/11/12 */
+.cp-table td [style*="font-size:10px"],
+.cp-table td [style*="font-size: 10px"],
+.cp-table td [style*="font-size:11px"],
+.cp-table td [style*="font-size: 11px"],
+.cp-table td [style*="font-size:12px"],
+.cp-table td [style*="font-size: 12px"] {
+  font-size: 11px !important;
+  color: var(--muted) !important;
+  line-height: 1.4 !important;
+}
+.cp-table td > div + div { margin-top: 2px; }
+/* Monospace stripes (VAT IDs, ledger codes) get tabular-mono treatment */
+.cp-table td [style*="font-family:monospace"],
+.cp-table td [style*="font-family:ui-monospace"] {
+  font-family: ui-monospace, "SFMono-Regular", "Monaco", "Consolas", monospace !important;
+  font-size: 11px !important;
+}
+/* Actions cell — both Budget OK + Already paid same height & same font */
+.cp-table td.cp-actions .btn,
+.cp-table td.cp-actions button {
+  font-size: 11px;
+  padding: 6px 10px;
+  line-height: 1.3;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.cp-table td.cp-actions { padding: 8px 10px; }
+.cp-table th.cp-actions, .cp-table td.cp-actions {
+  position: sticky;
+  right: 0;
+  background: #fff;
+  box-shadow: -6px 0 8px -8px rgba(0,0,0,0.18);
+  min-width: 120px;
+  text-align: right;
+}
+.cp-table thead th.cp-actions { background: #f8fafc; }
+/* Action cells in dense tables — keep buttons side-by-side on one line.
+   2026-06-23 — was `.actions { display: inline-flex }` which when applied
+   to <th class="actions"> / <td class="actions"> broke table-cell layout
+   (the cell collapsed to content width and floated outside the column).
+   FIX: scope the inline-flex layout to non-cell .actions wrappers (e.g.
+   <div class="actions">), and keep table cells as table-cell with right
+   alignment so buttons sit inline naturally inside the column.
+   (P104 — scoped attribute selectors as escape hatch.) */
+.actions:not(th):not(td) { display: inline-flex; gap: 6px; flex-wrap: nowrap;
+                            justify-content: flex-end; align-items: center; }
+.actions:not(th):not(td) .btn { flex: 0 0 auto; white-space: nowrap; }
+/* When .actions IS a table cell, keep buttons inline with right alignment. */
+th.actions, td.actions { text-align: right; white-space: nowrap; vertical-align: middle; }
+th.actions .btn, td.actions .btn { display: inline-flex; align-items: center;
+                                     margin-left: 6px; vertical-align: middle; }
+th.actions .btn:first-child, td.actions .btn:first-child { margin-left: 0; }
+/* Actions column reserves enough room for View+Approve+Reject so the
+   rightmost button is never clipped on borderline-narrow viewports.
+   2026-06-08 (Top-7 P1.2/P1.3) — the blanket `td:last-child` sticky
+   rule was overreach: it visually detached the trash icon on Upload
+   and boxed the Actions on Approve. Sticky-right is now opt-in via
+   the `.cp-actions` class only (Confirm-for-Payment), where it's
+   genuinely needed because of the 9-column stage-aware width. */
+table .actions, table th.actions { min-width: 130px; }
+table .cp-actions,
+table thead th.cp-actions {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 6px -4px rgba(0,0,0,0.08);
+  padding-right: 20px;
+}
+table thead th.cp-actions { background: #f8fafc; z-index: 3; }
+/* hidden for Y so rounded corners still clip the table; auto for X so
+   wide tables get a horizontal scrollbar instead of squashing cells. */
+.table-wrapper { overflow: hidden; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-wrapper > table { min-width: 1100px; }
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+.modal-overlay.active { display: flex; }
+/* Modal: fixed viewport — header sticky on top, footer sticky on bottom,
+   body is the only scroll surface so action buttons remain visible. */
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 1100px;
+  max-height: 92vh;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;          /* sub-elements scroll, not modal itself */
+  box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+}
+.modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  /* Subtle amber tint so modals feel like part of the Keel product */
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+  flex-shrink: 0;
+  z-index: 2;
+}
+.modal-header h3 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 24px;
+  cursor: pointer;
+  transition: color .15s;
+}
+.modal-close:hover { color: var(--keel-amber-dark); }
+.modal-body {
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.2fr);
+  gap: 24px;
+  flex: 1;                   /* take all remaining space */
+  overflow-y: auto;          /* scrollable region between sticky header + footer */
+  min-height: 0;             /* flex item needs this to actually scroll */
+}
+@media (max-width: 880px) {
+  .modal-body { grid-template-columns: 1fr; }
+}
+.modal-preview {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.modal-preview img { max-width: 100%; max-height: 500px; object-fit: contain; }
+.modal-preview embed { width: 100%; height: 500px; }
+.modal-details h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+.modal-details h4:first-child { margin-top: 0; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.detail-grid .key { color: var(--muted); }
+.detail-grid .val { color: var(--text); word-break: break-word; }
+
+/* Proposed codes */
+.code-option {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.code-option:hover { border-color: var(--accent); }
+.code-option.selected { border-color: var(--accent); background: var(--brand-light); }
+.code-option .code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.code-option .code-name { font-weight: 600; font-size: 14px; color: var(--text); }
+.code-option .reasoning { font-size: 12px; color: var(--muted); }
+
+/* Modal actions — sticky footer, ALWAYS visible (Rita feedback) */
+.modal-actions {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  background: #f8fafc;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;            /* never collapse, always at bottom */
+  flex-wrap: wrap;
+  z-index: 2;
+  box-shadow: 0 -4px 12px rgba(15,23,42,0.04);
+}
+.modal-actions label {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.modal-actions input[type="checkbox"] { accent-color: var(--accent); }
+.modal-actions button {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Edit fields in modal */
+.edit-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.edit-row select, .edit-row input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.edit-row select { flex: 1; }
+.edit-row input { width: 100px; }
+
+/* === Unified modern dropdown / button styles (Phase 5 polish) === */
+.fio-select,
+.modal-actions select,
+.edit-row select,
+.edit-row input,
+.alloc-grid select,
+.alloc-grid input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px;
+  padding-right: 28px;
+}
+.fio-select,
+.modal-actions select,
+.modal-actions input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 30px 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s;
+  min-width: 0;
+}
+.fio-select:hover,
+.modal-actions select:hover { border-color: #94a3b8; }
+.fio-select:focus,
+.modal-actions select:focus,
+.modal-actions input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.fio-select:disabled,
+.modal-actions select:disabled,
+.modal-actions input:disabled {
+  background-color: #f1f5f9;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* === Export-toolbar (Accounting tab) — modern button look === */
+.export-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.export-toolbar select {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 28px 6px 10px;
+  font-size: 12px;
+  background-color: #fff;
+  cursor: pointer;
+  min-width: 130px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
+}
+.export-toolbar select:focus {
+  outline: none;
+  border-color: var(--keel-amber);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.btn-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, transform .05s;
+}
+.btn-export:hover { background: var(--brand-light); border-color: var(--accent); color: var(--accent2); }
+.btn-export:active { transform: scale(0.97); }
+.btn-export-icon { font-size: 14px; line-height: 1; }
+.btn-export-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-export-primary:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+/* Modal action-bar Save / Approve / Reject — unified */
+.modal-actions .btn,
+.modal-actions button.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .05s;
+}
+.modal-actions .btn:hover { background: var(--brand-light); border-color: var(--accent); }
+.modal-actions .btn:active { transform: scale(0.98); }
+.modal-actions .btn:disabled { opacity: .5; cursor: not-allowed; }
+.modal-actions .btn-success { background: var(--green); color: #fff; border-color: var(--green); }
+.modal-actions .btn-success:hover { background: #047857; border-color: #047857; }
+.modal-actions .btn-danger { background: #fff; color: var(--red); border-color: var(--red); }
+.modal-actions .btn-danger:hover { background: var(--red); color: #fff; }
+
+/* Modal action-bar layout: dropdowns + buttons single row, wraps on small screens */
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
+}
+.modal-actions > div { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; min-width: 0; }
+
+/* Cost-allocation table (Phase 3.5) — same look-and-feel as .edit-row controls */
+.alloc-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.alloc-wrap .alloc-intro {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+.alloc-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.alloc-grid thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.alloc-grid thead th.num { text-align: right; }
+.alloc-grid tbody td { padding: 6px 6px; vertical-align: middle; }
+.alloc-grid select, .alloc-grid input[type="number"], .alloc-grid input[type="text"] {
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.alloc-grid select:focus, .alloc-grid input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+}
+.alloc-grid input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; }
+.alloc-grid .col-pc    { width: 26%; }
+.alloc-grid .col-code  { width: 22%; }
+.alloc-grid .col-pct   { width: 14%; }
+.alloc-grid .col-amt   { width: 18%; }
+.alloc-grid .col-note  { width: 16%; }
+.alloc-grid .col-x     { width: 4%; text-align: center; }
+.alloc-grid .row-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+}
+.alloc-grid .row-remove:hover { color: var(--red); background: rgba(220,38,38,0.08); }
+.alloc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.alloc-totals {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.alloc-totals b { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.alloc-totals .ok  { color: var(--green); }
+.alloc-totals .bad { color: var(--red); }
+.alloc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.alloc-toggle-btn:hover { background: var(--brand-light); border-color: var(--accent); }
+
+/* Reject modal */
+.reject-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  margin-top: 8px;
+}
+
+/* Feedback buttons */
+.feedback-btns { display: inline-flex; gap: 4px; margin-left: 6px; }
+.feedback-btns button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.feedback-btns button:hover { background: #f1f5f9; }
+.feedback-btns button.active-up { background: rgba(5,150,105,0.15); border-color: var(--green); }
+.feedback-btns button.active-down { background: rgba(220,38,38,0.15); border-color: var(--red); }
+
+/* Feedback modal overlay */
+.feedback-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 3000;
+  display: none;
+  justify-content: center;
+  align-items: center;
+}
+.feedback-modal.active { display: flex; }
+.feedback-modal-content {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.feedback-modal-content h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+.feedback-modal-content label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text); margin-bottom: 8px; cursor: pointer;
+}
+.feedback-modal-content label input[type="checkbox"] { accent-color: var(--red); }
+.feedback-modal-content textarea {
+  width: 100%; background: #f8fafc; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); padding: 8px; font-size: 13px;
+  font-family: inherit; margin-top: 8px; min-height: 60px; resize: vertical;
+}
+.feedback-modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+/* Policy warning badges */
+.policy-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.policy-green { background: rgba(5,150,105,0.1); color: var(--green); }
+.policy-yellow { background: rgba(217,119,6,0.1); color: var(--yellow); }
+.policy-red { background: rgba(220,38,38,0.1); color: var(--red); }
+
+/* Enhanced detail header */
+.detail-header {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.detail-header .vendor-name {
+  font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px;
+}
+.detail-header .vat-number {
+  font-size: 13px; color: var(--muted); font-family: monospace;
+}
+.detail-header .amount-big {
+  font-size: 28px; font-weight: 700; color: var(--green); margin-top: 12px;
+}
+.detail-header .amount-breakdown {
+  font-size: 12px; color: var(--muted); margin-top: 4px;
+}
+
+/* Line item with translation */
+.line-item-row { padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+.line-item-original { font-size: 11px; color: var(--muted); }
+.line-item-en { font-size: 13px; color: var(--text); font-weight: 500; }
+.line-item-amount { float: right; font-weight: 600; color: var(--text); }
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 14px;
+  z-index: 2000;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  color: var(--text);
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { border-color: var(--green); }
+.toast.error { border-color: var(--red); }
+
+/* ---- Panel 2: Approve ---- */
+.approve-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.approve-header .stream-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stream-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.approve-stats {
+  display: flex;
+  gap: 24px;
+  font-size: 14px;
+}
+.approve-stats .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.approve-stats .stat-num {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+/* Document thumbnail in approve table */
+.doc-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.doc-thumb:hover { transform: scale(1.1); }
+.doc-thumb-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.doc-thumb-placeholder:hover { transform: scale(1.1); }
+
+/* ---- Panel 3: Accounting ---- */
+.stream-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stream-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  border-top: 3px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.stream-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+.stream-card.active-stream {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.stream-card .stream-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.stream-card .stream-total {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--green);
+  margin: 8px 0;
+}
+.stream-card .stream-counts {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.stream-card .stream-top-cats {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.pnl-section {
+  margin-bottom: 24px;
+}
+.pnl-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.section-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.section-card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-card-header .back-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: inherit;
+  font-weight: 600;
+}
+.section-card-header .back-btn:hover { background: #f8fafc; }
+
+.pnl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pnl-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+.pnl-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.pnl-table tr:hover { background: #f8fafc; }
+.pnl-table .subtotal-row {
+  font-weight: 700;
+  background: var(--brand-light);
+  border-top: 1px solid var(--border);
+}
+.pnl-table .subtotal-row td { border-bottom: 1px solid var(--border); }
+.pnl-table .positive { color: var(--green); }
+.pnl-table .negative { color: var(--red); }
+.pnl-table .clickable-row { cursor: pointer; }
+.pnl-table .clickable-row:hover { background: var(--brand-light); }
+.pnl-table .stmt-header-row td {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #f8fafc;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.pnl-table .stmt-header-row:hover td { background: #eef2f7; }
+.pnl-table .stmt-header-row .stmt-arrow {
+  display: inline-block;
+  transition: transform 0.2s;
+  margin-right: 6px;
+  font-size: 10px;
+}
+.pnl-table .stmt-header-row.collapsed .stmt-arrow { transform: rotate(-90deg); }
+.pnl-table .stmt-subtotal-row td {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+}
+.pnl-table .gm-row td {
+  background: rgba(5,150,105,0.06);
+  font-weight: 700;
+  color: var(--green);
+  border-top: 2px solid var(--green);
+  border-bottom: 2px solid var(--green);
+}
+.pnl-table .ebitda-row td {
+  background: rgba(26,86,219,0.06);
+  font-weight: 700;
+  color: var(--accent);
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+/* Drill-down document list */
+.drilldown-docs {
+  background: #f8fafc;
+  border-top: 1px solid var(--border);
+}
+.drilldown-docs td {
+  padding: 8px 12px 8px 36px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.drilldown-docs:hover { background: #f1f5f9; }
+.drilldown-docs .doc-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.accounting-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.accounting-toolbar h2 { font-size: 18px; font-weight: 700; color: var(--text); }
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.audit-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+.audit-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.audit-table tr:hover { background: #f8fafc; }
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fio-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(245,158,11,0.45); }
+  70%  { box-shadow: 0 0 0 8px rgba(245,158,11,0);    }
+  100% { box-shadow: 0 0 0 0   rgba(245,158,11,0);    }
+}
+
+@media (max-width: 768px) {
+  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  .modal-body { grid-template-columns: 1fr; }
+  .container { padding: 16px; }
+  .stream-cards-grid { grid-template-columns: 1fr; }
+  .header-left { flex-direction: column; gap: 8px; align-items: flex-start; }
+  .tab-bar { padding: 0 16px; }
+  .tab-btn { padding: 12px 16px; font-size: 13px; }
+}
+
+/* --- Card Audit component styles (moved from inline block) --- */
+    .ca-row { display:grid; grid-template-columns: 100px 1fr 140px 130px 110px 90px 88px; gap:8px; padding:9px 14px; border-bottom:1px solid var(--border); align-items:center; font-size:12px; }
+    .ca-row:hover { background:#f8fafc; }
+    .ca-row .date { color:var(--muted); font-variant-numeric:tabular-nums; }
+    .ca-row .desc { font-weight:500; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ca-row .desc .sub { color:var(--muted); font-size:11px; font-weight:400; }
+    .ca-row .amount { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+    .ca-row .amount .ccy { color:var(--muted); font-weight:400; font-size:10px; margin-left:3px; }
+    .ca-row .holder { font-size:11px; color:var(--muted); }
+    .ca-row .holder b { color:var(--text); font-weight:600; }
+    .ca-row .actions { display:flex; gap:4px; justify-content:flex-end; }
+    .ca-row .actions button { padding:4px 8px; font-size:11px; border-radius:5px; border:1px solid var(--border); background:#fff; cursor:pointer; }
+    .ca-row .actions button:hover { background:var(--brand-light); border-color:var(--accent); }
+    .ca-row .conf { font-size:11px; color:var(--muted); }
+    .ca-row .conf .pill { display:inline-block; padding:1px 6px; border-radius:8px; background:#f1f5f9; font-weight:600; }
+    .ca-row.is-out .amount { color:var(--red); }
+    .ca-row.is-in  .amount { color:var(--green); }
+    .ca-emptystate { padding:20px 14px; text-align:center; color:var(--muted); font-size:13px; }
+    .hidden { display:none; }
+    .ca-dept-card { display:inline-block; margin:4px; padding:8px 12px; background:#f8fafc; border:1px solid var(--border); border-radius:8px; font-size:12px; min-width:170px; }
+    .ca-dept-card .name { font-weight:600; color:var(--text); margin-bottom:4px; }
+    .ca-dept-card .stat { color:var(--muted); }
+    .ca-dept-card .stat b { font-variant-numeric:tabular-nums; }
+    .ca-dept-card .bar { display:flex; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-top:5px; }
+    .ca-dept-card .bar .seg-matched { background:#10b981; }
+    .ca-dept-card .bar .seg-suggested { background:#f59e0b; }
+    .ca-dept-card .bar .seg-unmatched { background:#dc2626; }
