@@ -182,20 +182,44 @@ _EDITABLE_FIELDS = {
     "kind", "profit_center", "customer", "customer_vat", "legal_entity",
     "invoice_number", "issue_date", "due_date", "amount", "amount_eur",
     "currency", "description", "ledger_code", "status", "notes",
-    "file_path", "file_type",   # 2026-06-24 FB-A — attach invoice file
+    # 2026-07-08 (C5) — file_path/file_type were PATCH-editable, so any
+    # write-role user could set file_path="/app/data/fio.db" then GET
+    # /revenue/<id>/file to exfiltrate the database (or .env). These are
+    # set ONLY by the upload handler now, never via the generic PATCH.
 }
 
 
-def update_doc(doc_id: str, patch: Dict[str, Any], *, by: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def update_doc(doc_id: str, patch: Dict[str, Any], *, by: Optional[str] = None,
+               allow_file_fields: bool = False) -> Optional[Dict[str, Any]]:
+    """Patch a revenue doc.
+
+    2026-07-08 (C5) — file_path/file_type are NOT in _EDITABLE_FIELDS (a
+    PATCH-set path was an arbitrary-file-read vector). The upload handler
+    passes allow_file_fields=True and we accept file_path ONLY when it
+    resolves under UPLOAD_FOLDER/revenue, so a caller can never point it
+    at the database or .env.
+    """
     existing = get_doc(doc_id)
     if not existing:
         return None
     _validate_payload(patch, partial=True)
     if "profit_center" in patch and patch["profit_center"]:
         patch["profit_center"] = pc_codes.to_canonical(patch["profit_center"]) or patch["profit_center"]
+    _allowed = set(_EDITABLE_FIELDS)
+    if allow_file_fields:
+        import os as _os
+        import config as _cfg
+        safe_root = _os.path.realpath(_os.path.join(_cfg.UPLOAD_FOLDER, "revenue"))
+        fp = patch.get("file_path")
+        if fp and _os.path.realpath(str(fp)).startswith(safe_root + _os.sep):
+            _allowed = _allowed | {"file_path", "file_type"}
+        else:
+            # Reject an out-of-tree path outright instead of silently dropping it.
+            patch.pop("file_path", None)
+            patch.pop("file_type", None)
     cols, vals = [], []
     for k, v in patch.items():
-        if k in _EDITABLE_FIELDS:
+        if k in _allowed:
             cols.append(f"{k} = ?")
             vals.append(v)
     if not cols:

@@ -124,10 +124,18 @@ def revenue_get_file(doc_id: str) -> Any:
                                     "file. Upload one via the Add Revenue "
                                     "modal."}), 404
     import os as _os
+    import config as _cfg
     from flask import send_file as _send_file
-    if not _os.path.isfile(file_path):
-        return jsonify({"error": "file_missing_on_disk",
-                        "expected_path": file_path}), 404
+    # 2026-07-08 (C5) — defence in depth: even though file_path is no
+    # longer PATCH-editable, a legacy row could still hold an arbitrary
+    # path. Refuse to serve anything outside UPLOAD_FOLDER/revenue.
+    _safe_root = _os.path.realpath(_os.path.join(_cfg.UPLOAD_FOLDER, "revenue"))
+    _resolved = _os.path.realpath(str(file_path))
+    if not _resolved.startswith(_safe_root + _os.sep):
+        return jsonify({"error": "file_outside_allowed_dir"}), 403
+    if not _os.path.isfile(_resolved):
+        return jsonify({"error": "file_missing_on_disk"}), 404
+    file_path = _resolved
     ext = (doc.get("file_type") or "").lower()
     mime = {
         "pdf":  "application/pdf",
@@ -180,7 +188,7 @@ def create_revenue() -> Any:
             rev_svc.update_doc(doc["id"], {
                 "file_path": file_path,
                 "file_type": ext.lstrip("."),
-            }, by=_user())
+            }, by=_user(), allow_file_fields=True)  # C5: containment-checked
         except Exception:  # noqa: BLE001
             pass
         doc = rev_svc.get_doc(doc["id"])

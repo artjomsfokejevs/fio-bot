@@ -24,11 +24,42 @@ from flask import Blueprint, Response, jsonify, request
 
 import config as _cfg
 from services import db, card_audit, bt4you_sync as bts
+from services import roles as _roles
+from markupsafe import escape as _html_escape
 from services.http_helpers import content_disposition as _content_disposition
 
 logger = logging.getLogger(__name__)
 
 card_audit_bp = Blueprint("card_audit", __name__, url_prefix="/api/card-audit")
+
+# 2026-07-08 (C3) — the entire Bank Statement Audit blueprint was
+# unauthenticated: any user past the shared Basic-Auth gate could import
+# or DELETE bank transactions, trigger Asana chase tasks (spending API
+# quota + leaking matched-invoice files), or export the full card ledger
+# CSV. A single before_request hook gates every route in the blueprint:
+# read access for the finance roles, write access (POST/DELETE/PATCH)
+# restricted to admin + bookkeeper.
+_CA_READ_ROLES = ("admin", "holding_ceo", "bookkeeper", "stream_owner")
+_CA_WRITE_ROLES = ("admin", "bookkeeper")
+
+
+@card_audit_bp.before_request
+def _card_audit_authz():
+    user = (request.headers.get("X-FIO-User") or "").strip() or None
+    role = _roles.get_role(user)
+    if role not in _CA_READ_ROLES:
+        return jsonify({
+            "error": "forbidden",
+            "message": "Bank Statement Audit requires a finance role.",
+            "you": user, "your_role": role,
+        }), 403
+    if request.method not in ("GET", "HEAD", "OPTIONS") and role not in _CA_WRITE_ROLES:
+        return jsonify({
+            "error": "forbidden",
+            "message": "This action requires the admin or bookkeeper role.",
+            "you": user, "your_role": role,
+        }), 403
+    return None
 
 
 @card_audit_bp.route("/import", methods=["POST"])
@@ -1063,9 +1094,13 @@ def card_audit_print_non_matching() -> Any:
         date_s = (r.get("posted_at") or "")[:10]
         amt = "{:,.2f}".format(float(r.get("amount") or 0))
         amt_eur = "{:,.2f}".format(float(r.get("amount_eur") or 0))
-        desc = (r.get("description") or "")[:160]
-        cpty = (r.get("counterparty") or "")[:120]
-        ccy = (r.get("currency") or "EUR")
+        # 2026-07-08 (C10) — description/counterparty come straight from an
+        # uploaded bank CSV and were interpolated into HTML unescaped, so a
+        # crafted counterparty like <script>…</script> executed in the
+        # bookkeeper's session. Escape every free-text field.
+        desc = _html_escape((r.get("description") or "")[:160])
+        cpty = _html_escape((r.get("counterparty") or "")[:120])
+        ccy = _html_escape((r.get("currency") or "EUR"))
         table_rows.append(
             "<tr>"
             f"<td>{date_s}</td>"

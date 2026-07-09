@@ -1024,12 +1024,31 @@ def travel_per_diem_defaults():
 @app.route("/api/documents/<doc_id>", methods=["DELETE"])
 def delete_doc(doc_id: str):
     """Delete a document by ID, removing from DB, disk, AND actuals."""
+    # 2026-07-08 (C2) — deletion mutates the ledger (_subtract_from_actuals
+    # rewrites accounting_actuals.json). It was completely unauthenticated:
+    # anyone past the shared Basic-Auth gate could delete a paid invoice.
+    # Require admin/bookkeeper + PC scope, and refuse to delete an
+    # executed payment unless the caller explicitly passes ?force=1.
+    err = _require_role(roles_svc.ROLE_ADMIN, roles_svc.ROLE_BOOKKEEPER)
+    if err:
+        return err
     doc = db.get_document(doc_id)
     if not doc:
         return jsonify({"error": "Not found"}), 404
+    err = _require_pc_scope(doc.get("profit_center"))
+    if err:
+        return err
+    force = (request.args.get("force") or "").strip() in ("1", "true", "yes")
+    if doc.get("status") == "paid" and not force:
+        return jsonify({
+            "error": "refuse_delete_paid",
+            "message": ("Document is paid — deleting it rewrites the ledger. "
+                        "Re-send with ?force=1 if you are sure."),
+            "current_status": doc.get("status"),
+        }), 409
 
     # If document was posted, subtract from actuals (handles split allocations too)
-    if doc.get("status") == "posted":
+    if doc.get("status") in ("posted", "paid", "confirmed_to_pay"):
         _subtract_from_actuals(doc)
 
     # Delete from DB

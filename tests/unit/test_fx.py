@@ -15,16 +15,29 @@ def test_eur_returns_identity():
     assert source in ("identity", "EUR", "ecb", "fallback")
 
 
-def test_unknown_currency_falls_back_safely():
-    """Error path: unknown currency must NOT crash; must return tuple shape.
-
-    NOTE: real finding — fx.py defaults to 1.0 with a 'DANGER' warning for
-    unknown codes. This is documented behaviour, but should be tightened
-    in a follow-up. Test pins the contract.
+def test_unknown_currency_returns_none_not_one(monkeypatch):
+    """C7 (2026-07-08): an unknown currency with no live rate AND no
+    static fallback must return rate=None / source='unavailable', never a
+    silent 1.0 (which booked a 10,000 AED invoice as EUR 10,000).
     """
+    # Force the live ECB fetch to fail so we exercise the no-fallback path.
+    import urllib.request
+    def _boom(*a, **k):
+        raise OSError("network disabled in test")
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
     rate, date, source = fx.get_rate("ZZZ")
-    assert isinstance(rate, float)
-    assert source in ("fallback", "ecb", "identity")
+    assert rate is None
+    assert source == "unavailable"
+
+
+def test_convert_unknown_currency_flags_manual_fx(monkeypatch):
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no net")))
+    out = fx.convert_to_eur(10000.0, "ZZZ")
+    assert out["amount_eur"] is None
+    assert out["needs_manual_fx"] is True
+    assert out["amount_orig"] == 10000.0
 
 
 def test_get_rate_returns_three_tuple():
