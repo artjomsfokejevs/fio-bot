@@ -8,11 +8,25 @@
   ],
   "_b32_comment": "B32 detector — SPA uses X-FIO-User header (set by the fetch wrapper). Any browser navigation (window.location/window.open/location.assign) to /api/ must wrap the URL in _withIdentity so the GET-only ?as= shortcut survives. See PRODUCT_BUILDER 2026-06-29 retro V129.",
   "auth_header_scheme": "X-FIO-User",
-  "identity_url_helpers": ["_withIdentity"],
+  "identity_url_helpers": [
+    "_withIdentity"
+  ],
   "_b33_comment": "B33 detector — HTML/JS <option value='X'> lists that reference SOME but not ALL codes from a canonical set are drifted hardcoded dropdowns. Source of truth is services/pc_codes.CANONICAL. See PRODUCT_BUILDER 2026-06-30 retro AA150.",
   "canonical_code_sets": {
-    "profit_center": ["AA", "AG", "AH", "AL", "CF", "MN", "MT", "RR", "SP"]
+    "profit_center": [
+      "AA",
+      "AG",
+      "AH",
+      "AL",
+      "CF",
+      "MN",
+      "MT",
+      "RR",
+      "SP"
+    ]
   },
   "_b34_comment": "B34 detector — inline Content-Disposition literals with an interpolated filename will 502 the moment the filename contains a non-ASCII byte (h11 rejects it). Route through the RFC 5987 helper _content_disposition() instead. See PRODUCT_BUILDER 2026-07-01 retro AA153.",
-  "content_disposition_helper": "_content_disposition"
+  "content_disposition_helper": "_content_disposition",
+  "_b35_comment": "B35 detector — any sqlite3.connect() factory must set PRAGMA journal_mode=WAL + busy_timeout, else concurrent gunicorn workers hit 'database is locked' → random 500s. services/db.get_connection() sets both. See PRODUCT_BUILDER 2026-07-09 retro.",
+  "sqlite_wal_check": true
 }
