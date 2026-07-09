@@ -104,8 +104,8 @@ def test_apply_match_refuses_double_apply():
             "VALUES ('test_h2_tx','mercury','b',?, '2026-07-01','2026-07',500,'EUR',500,'unmatched')",
             (now,))
         conn.execute(
-            "INSERT INTO revenue_documents (id, kind, status, amount, currency, created_at) "
-            "VALUES ('test_h2_doc','invoice','sent',500,'EUR',?)", (now,))
+            "INSERT INTO revenue_documents (id, kind, profit_center, status, amount, currency, uploaded_at) "
+            "VALUES ('test_h2_doc','invoice','AA','sent',500,'EUR',?)", (now,))
         conn.commit()
     finally:
         conn.close()
