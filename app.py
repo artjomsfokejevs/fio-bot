@@ -856,12 +856,21 @@ def revenue_parse_preview():
 @app.route("/api/email-in/invoice", methods=["POST"])
 def email_in_invoice():
     import base64
+    import hmac
+    # 2026-07-08 (H8) — this endpoint runs a paid Claude parse per
+    # attachment and can auto-post the parsed invoice to actuals. The old
+    # `if secret:` meant that when FIO_EMAIL_IN_SECRET was NOT configured,
+    # the endpoint accepted ANY payload from anyone — a forged-invoice
+    # auto-post vector. Refuse to operate unless the secret is set, and
+    # compare in constant time.
     secret = os.getenv("FIO_EMAIL_IN_SECRET", "").strip()
-    if secret:
-        provided = (request.headers.get("X-Email-Secret")
-                    or request.args.get("secret") or "").strip()
-        if provided != secret:
-            return jsonify({"error": "unauthorized"}), 401
+    if not secret:
+        return jsonify({"error": "email_in_disabled",
+                        "message": "FIO_EMAIL_IN_SECRET is not configured on the server."}), 503
+    provided = (request.headers.get("X-Email-Secret")
+                or request.args.get("secret") or "").strip()
+    if not hmac.compare_digest(provided, secret):
+        return jsonify({"error": "unauthorized"}), 401
 
     payload = request.get_json(silent=True) or {}
     sender = (payload.get("From") or payload.get("from") or "email-in").strip()

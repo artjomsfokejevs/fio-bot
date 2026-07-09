@@ -251,8 +251,10 @@ def fire_if_overrun(*, doc_id: str, triggering_action: str,
             email_status=email_status, asana_task_url=asana_url,
         )
 
-        # In-app notification (always)
-        try:
+        # In-app notification -- only on the first alarm of the dedup
+        # window; the bell would otherwise spam on every batch approval.
+        if not existing:
+          try:
             notif.create(
                 kind="budget_alarm",
                 title="🚨 X-alarm: %s %s — €%.2f over (%.1f%%)" % (
@@ -279,7 +281,7 @@ def fire_if_overrun(*, doc_id: str, triggering_action: str,
                 severity="urgent",
                 created_by=actor or "system",
             )
-        except Exception:  # noqa: BLE001
+          except Exception:  # noqa: BLE001
             logger.exception("xalarm in-app notif create failed")
 
         # Audit log
