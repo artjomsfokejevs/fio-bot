@@ -4722,12 +4722,20 @@ function renderPCBadgesForDoc(doc) {
   '</div>';
 }
 
+var _uploadTableSig = null;
 function renderUploadTable(docs) {
   var tbody = document.getElementById('upload-table-body');
   if (!docs.length) {
+    _uploadTableSig = '';
     tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No documents yet. Upload files to begin.</td></tr>';
     return;
   }
+  // 2026-07-09 (Phase 4) — diff-guard: skip rebuild (and re-fetching every
+  // thumbnail <img>) when the polled data is byte-identical to last render.
+  var _sig = _docsSig(docs, ['id', 'status', 'amount', 'vendor', 'vat_number',
+                             'uploaded_by', 'vies_verified', 'needs_manual_input']);
+  if (_sig === _uploadTableSig && tbody.children.length) return;
+  _uploadTableSig = _sig;
   tbody.innerHTML = docs.map(function(doc) {
     var amount = doc.amount ? (doc.currency || 'EUR') + ' ' + Number(doc.amount).toLocaleString('en', {minimumFractionDigits: 2}) : '-';
     var uploaded = doc.uploaded_at ? doc.uploaded_at.replace('T', ' ').substring(0, 16) : '-';
@@ -6805,12 +6813,19 @@ function loadApprovePanel() {
   });
 }
 
+var _approveTableSig = null;
 function renderApproveTable(docs) {
   var tbody = document.getElementById('approve-table-body');
   if (!docs.length) {
+    _approveTableSig = '';
     tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No documents found for this stream.</td></tr>';
     return;
   }
+  // 2026-07-09 (Phase 4) — diff-guard: skip the full rebuild when the poll
+  // returned identical data (preserves text selection + in-flight clicks).
+  var _sig = _docsSig(docs);
+  if (_sig === _approveTableSig && tbody.children.length) return;
+  _approveTableSig = _sig;
 
   tbody.innerHTML = docs.map(function(doc) {
     var conf = doc.confidence || 0;
@@ -9922,6 +9937,21 @@ function safeUrl(u) {
 function truncate(s, n) {
   if (!s) return '';
   return s.length > n ? s.substring(0, n) + '...' : s;
+}
+
+// 2026-07-09 (Phase 4) — cheap content signature for diff-guarding a
+// polled table render. A full innerHTML rebuild every 15s drops any
+// in-progress text selection, kills a click landing mid-swap, and
+// recreates every <img> thumbnail. If the signature is unchanged since
+// the last render we skip the rebuild. Include every field the row shows
+// that can change between polls.
+function _docsSig(docs, fields) {
+  fields = fields || ['id', 'status', 'amount', 'confidence',
+                      'profit_center', 'ledger_code', 'approved_by',
+                      'payment_state', 'vendor'];
+  return (docs || []).map(function(d) {
+    return fields.map(function(f) { return d[f]; }).join('|');
+  }).join('~');
 }
 
 function row(k, v) {

@@ -1,8 +1,15 @@
-flask==3.1.0
-anthropic>=0.40.0
-pypdf>=4.0.0
-openpyxl>=3.1.0
-python-dotenv>=1.0.0
-gunicorn>=22.0.0
-# 2026-06-26 FB-K (C) — PDF report generation for Bank Statement archive
-reportlab>=4.0.0
+# 2026-07-09 (Phase 4) — pinned to the exact versions the test suite runs
+# against (278/278 passing). The old `>=` floors let every Docker build
+# silently resolve to whatever was latest that day (e.g. anthropic could
+# jump a major), so prod could drift from what was tested. Bump
+# deliberately, re-run tests, then re-pin.
+flask==3.1.3
+anthropic==0.105.2
+pypdf==6.12.2
+openpyxl==3.1.5
+python-dotenv==1.2.2
+gunicorn==26.0.0
+# PDF report generation for Bank Statement archive (FB-K, 2026-06-26)
+reportlab==4.5.1
+# Used directly for HTML-escaping the Bank Statement print report (C10, 2026-07-08)
+markupsafe==3.0.3

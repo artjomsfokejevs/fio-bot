@@ -3836,6 +3836,25 @@ def _current_user_name() -> Optional[str]:
     return name or None
 
 
+def _json_error(code: str, message: str, status: int = 400, **extra):
+    """Canonical API error envelope (2026-07-09, Phase 4).
+
+    The codebase grew four different error shapes ({error:msg},
+    {error:code,message}, {status:...,error}, ...), forcing the frontend
+    to special-case each. This is the one true shape:
+
+        {"error": "<machine_code>", "message": "<human text>", ...extra}
+
+    `error` is always a stable machine-readable slug; `message` is the
+    human sentence. Returns a (response, status) tuple ready to return
+    from a Flask view. New routes should use this; old ones migrate
+    opportunistically.
+    """
+    body = {"error": code, "message": message}
+    body.update(extra)
+    return jsonify(body), status
+
+
 def _require_role(*allowed_roles: str):
     """Decorator-style guard for admin-only endpoints.
 
