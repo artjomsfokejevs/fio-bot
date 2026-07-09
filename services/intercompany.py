@@ -35,10 +35,12 @@ __all__ = [
 ]
 
 
-# Statuses that count as "real cost" for elimination — same set used by
-# the existing analytics service.
-_PAID_STATUSES = ("paid", "confirmed_to_pay", "budget_validated",
-                  "approved", "posted")
+# 2026-07-08 (H10/H15) — use the canonical POSTED set (posted, paid) from
+# db.py instead of a private, drifted copy that also string-interpolated
+# `str(tuple)` into SQL (which would emit invalid `IN ('paid',)` for a
+# single-element tuple). One source of truth; parameterised placeholders.
+_PAID_STATUSES = db.POSTED_STATUSES
+_STATUS_PLACEHOLDERS = ",".join("?" for _ in _PAID_STATUSES)
 
 
 def _period_clause(period: Optional[str]) -> tuple[str, list]:
@@ -63,12 +65,12 @@ def by_pair(period: Optional[str] = None) -> List[Dict[str, Any]]:
             "FROM documents "
             "WHERE counterparty_pc IS NOT NULL AND counterparty_pc != '' "
             "AND profit_center IS NOT NULL AND profit_center != '' "
-            "AND status IN " + str(_PAID_STATUSES)
+            "AND status IN (" + _STATUS_PLACEHOLDERS + ")"
         )
         clause, params = _period_clause(period)
         sql += clause + " GROUP BY counterparty_pc, profit_center "
         sql += "ORDER BY amount_eur DESC"
-        rows = conn.execute(sql, tuple(params)).fetchall()
+        rows = conn.execute(sql, tuple(_PAID_STATUSES) + tuple(params)).fetchall()
         # Translate to canonical PC for display consistency
         out = []
         for r in rows:
@@ -133,9 +135,9 @@ def consolidated_pnl(period: Optional[str] = None,
             "       SUM(CASE WHEN counterparty_pc IS NOT NULL AND counterparty_pc != '' "
             "                THEN COALESCE(amount, 0) ELSE 0 END) AS eliminated "
             "FROM documents "
-            "WHERE status IN " + str(_PAID_STATUSES) +
+            "WHERE status IN (" + _STATUS_PLACEHOLDERS + ")" +
             period_clause + pc_filter + " GROUP BY profit_center, ledger_code",
-            tuple(period_params + pc_params),
+            tuple(_PAID_STATUSES) + tuple(period_params + pc_params),
         ).fetchall()
         # ── 2. Raw revenue from revenue_receipts (cash basis) ──
         rev_pc_filter, rev_pc_params = "", []

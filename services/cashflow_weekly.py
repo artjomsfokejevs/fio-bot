@@ -360,25 +360,47 @@ def upsert_row(*, week_start: str, row_type: str,
             "SELECT id FROM cashflow_weekly WHERE week_start = ? AND row_type = ?",
             (week_start, row_type),
         ).fetchone()
-        params = {
-            "week_start": week_start,
-            "week_label": week_label,
-            "row_type":   row_type,
-            "note":       note,
-            "source":     source or "manual",
-            "updated_at": now,
-            "updated_by": by,
-            **{f: cleaned_fields.get(f) for f in _ALL_NUMERIC_FIELDS},
-        }
         if existing:
-            set_clause = ", ".join(f"{k} = :{k}" for k in params if k != "row_type" and k != "week_start")
-            params["_id"] = existing["id"]
+            # 2026-07-08 (H4) — the old UPDATE always SET all 17 numeric
+            # columns (cleaned_fields.get(f) -> None for omitted keys), so
+            # editing a single field wiped the other 16. Only SET the keys
+            # actually supplied this call, plus metadata. Numeric columns
+            # not in `fields` keep their stored value.
+            update_params: Dict[str, Any] = {
+                "row_type_v":  row_type,
+                "source":      source or "manual",
+                "updated_at":  now,
+                "updated_by":  by,
+            }
+            set_parts = ["row_type = :row_type_v", "source = :source",
+                         "updated_at = :updated_at", "updated_by = :updated_by"]
+            # week_label / note: update only when explicitly provided.
+            if week_label is not None:
+                update_params["week_label"] = week_label
+                set_parts.append("week_label = :week_label")
+            if note is not None:
+                update_params["note"] = note
+                set_parts.append("note = :note")
+            for f in cleaned_fields:  # only the numeric keys the caller sent
+                update_params[f] = cleaned_fields[f]
+                set_parts.append(f"{f} = :{f}")
+            update_params["_id"] = existing["id"]
             conn.execute(
-                f"UPDATE cashflow_weekly SET {set_clause} WHERE id = :_id",
-                params,
+                "UPDATE cashflow_weekly SET " + ", ".join(set_parts) + " WHERE id = :_id",
+                update_params,
             )
             row_id = existing["id"]
         else:
+            params = {
+                "week_start": week_start,
+                "week_label": week_label,
+                "row_type":   row_type,
+                "note":       note,
+                "source":     source or "manual",
+                "updated_at": now,
+                "updated_by": by,
+                **{f: cleaned_fields.get(f) for f in _ALL_NUMERIC_FIELDS},
+            }
             cols = ", ".join(params.keys())
             slots = ", ".join(f":{k}" for k in params.keys())
             cur = conn.execute(
@@ -716,7 +738,8 @@ def import_tsv(text: str, *,
 # tent: each call DELETEs prior 'actual' rows in the window and rebuilds.
 # ────────────────────────────────────────────────────────────────────────
 
-_PAID_EXPENSE_STATUSES = ("paid", "posted")
+# 2026-07-08 (H10) — canonical POSTED set (posted, paid) from db.py.
+_PAID_EXPENSE_STATUSES = db.POSTED_STATUSES
 
 
 def derive_actuals(weeks_before: int = 26,
@@ -758,10 +781,10 @@ def derive_actuals(weeks_before: int = 26,
             "SELECT payment_executed_at, amount, profit_center "
             "FROM documents "
             "WHERE payment_executed_at IS NOT NULL "
-            "AND status IN " + str(_PAID_EXPENSE_STATUSES) + " "
+            "AND status IN (" + ",".join("?" for _ in _PAID_EXPENSE_STATUSES) + ") "
             "AND substr(payment_executed_at, 1, 10) >= ? "
             "AND substr(payment_executed_at, 1, 10) <= ?",
-            (start_s, end_s),
+            tuple(_PAID_EXPENSE_STATUSES) + (start_s, end_s),
         ).fetchall()
 
         # Latest bank balance per week (for balance_eop_eur)

@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from services import db
+from services import pc_codes
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,10 @@ __all__ = [
     "is_over",
 ]
 
-# Document statuses that count toward "money committed this period"
-_COMMITTED_STATUSES = ("confirmed_to_pay", "paid", "archived",
-                       "payment_executed", "budget_validated")
+# 2026-07-08 (H10) — canonical committed set from db.py. The old private
+# copy listed phantom statuses ("archived", "payment_executed") that no
+# document ever has, so they silently matched nothing.
+_COMMITTED_STATUSES = db.COMMITTED_STATUSES
 
 
 def list_budgets(period: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -133,21 +135,59 @@ def history_for(pc: Optional[str] = None, period: Optional[str] = None,
 
 
 def actuals_for(pc: str, period: str) -> float:
-    """Sum of EUR-equivalent for docs in this (pc, period) that count
-    toward the spend. Uses amount_eur when present, else amount when
-    currency=EUR, else 0 (skipped)."""
-    # NOTE: `documents.amount` is EUR after parser FX-conversion (since
-    # Phase 2.1 — original currency lives in amount_orig/currency_orig).
-    # No separate amount_eur column. Just sum amount.
+    """Sum of EUR committed spend for this (pc, period).
+
+    2026-07-08 (H6) — two prior gaps fixed:
+      * Legacy PC codes (e.g. SR spend) never counted against the new
+        canonical budget (SP). We now match the canonical code AND all
+        its historical aliases.
+      * Split-allocated docs (allocations_json) charged 100% to the
+        PRIMARY profit_center and 0% to the others, so a stream that
+        only ever received allocation shares looked like it spent
+        nothing. We now add each doc's allocation share for this PC.
+
+    `documents.amount` is already EUR (parser FX-converts on ingest;
+    original currency lives in amount_orig/currency_orig).
+    """
+    canonical = pc_codes.to_canonical(pc) or pc
+    aliases = pc_codes.legacy_aliases_of(canonical) or [canonical]
+    if canonical not in aliases:
+        aliases = list(aliases) + [canonical]
+    status_ph = ",".join("?" for _ in _COMMITTED_STATUSES)
+    alias_ph = ",".join("?" for _ in aliases)
     conn = db.get_connection()
     try:
-        rows = conn.execute(
+        # (a) Direct (non-split) docs whose own PC is this stream.
+        direct_rows = conn.execute(
             "SELECT amount FROM documents "
-            "WHERE profit_center = ? AND period = ? AND status IN (%s)" %
-            ",".join("?" for _ in _COMMITTED_STATUSES),
-            (pc, period) + _COMMITTED_STATUSES,
+            "WHERE profit_center IN (%s) AND period = ? AND status IN (%s) "
+            "AND (allocations_json IS NULL OR allocations_json = '')" % (alias_ph, status_ph),
+            tuple(aliases) + (period,) + tuple(_COMMITTED_STATUSES),
         ).fetchall()
-        total = sum(float(r["amount"] or 0) for r in rows)
+        total = sum(float(r["amount"] or 0) for r in direct_rows)
+
+        # (b) Split docs in this period — add THIS stream's allocation share.
+        split_rows = conn.execute(
+            "SELECT amount, allocations_json FROM documents "
+            "WHERE period = ? AND status IN (%s) "
+            "AND allocations_json IS NOT NULL AND allocations_json != ''" % status_ph,
+            (period,) + tuple(_COMMITTED_STATUSES),
+        ).fetchall()
+        alias_set = {a for a in aliases}
+        for r in split_rows:
+            try:
+                allocs = json.loads(r["allocations_json"]) or []
+            except (ValueError, TypeError):
+                continue
+            doc_total = float(r["amount"] or 0)
+            for row in allocs:
+                row_pc = pc_codes.to_canonical(row.get("profit_center") or "") or (row.get("profit_center") or "")
+                if row_pc != canonical and (row.get("profit_center") not in alias_set):
+                    continue
+                share = row.get("amount")
+                if share is None and row.get("percentage") is not None and doc_total:
+                    share = doc_total * float(row["percentage"]) / 100.0
+                total += float(share or 0)
         return round(total, 2)
     finally:
         conn.close()

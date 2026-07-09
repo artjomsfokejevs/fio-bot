@@ -12,7 +12,30 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# ── Canonical document-status groupings (2026-07-08, H10) ────────────────
+# A document's lifecycle is:
+#   pending -> parsed -> classified -> approved -> posted
+#            -> budget_validated -> confirmed_to_pay -> paid
+# (rejected / cancelled / needs_review are off the happy path)
+#
+# Three modules previously each hardcoded their OWN status set — including
+# phantom values ("archived", "payment_executed") that are not real
+# document statuses — so X-alarm, consolidated P&L, and weekly actuals
+# reported three different "actuals" for the same month. These two
+# constants are the single source of truth; import them, never re-list.
+#
+# COMMITTED_STATUSES — money committed against a stream's budget (the
+#   forward-looking view that drives X-alarm / budget actuals): once the
+#   bookkeeper budget-validates, the money is spoken for.
+COMMITTED_STATUSES = ("budget_validated", "confirmed_to_pay", "paid")
+#
+# POSTED_STATUSES — money actually booked to the ledger / P&L (the
+#   backward-looking view for consolidated P&L and weekly cash actuals).
+POSTED_STATUSES = ("posted", "paid")
+
 __all__ = [
+    "COMMITTED_STATUSES",
+    "POSTED_STATUSES",
     "init_db",
     "insert_document",
     "update_document",
