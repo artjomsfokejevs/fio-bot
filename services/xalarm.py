@@ -223,12 +223,18 @@ def fire_if_overrun(*, doc_id: str, triggering_action: str,
             actor=actor, action=triggering_action,
             history_rows=sb.history_for(pc=pc, period=period, limit=5),
         )
-        email_res = email_send.send(to=recipients, subject=subject, body_text=body)
-        email_status = str(email_res.get("status") or "unknown")
-
-        # Asana auto-task (best-effort)
+        # 2026-07-08 (H5) -- 24h dedup must actually suppress duplicate
+        # emails/Asana. The old code computed `existing` but sent anyway,
+        # so every approval on an over-budget stream re-emailed the whole
+        # list (spam storm during batch approval). Send the noisy channels
+        # only on the FIRST alarm of the window.
         asana_url = None
-        try:
+        if existing:
+            email_status = "deduped"
+        else:
+          email_res = email_send.send(to=recipients, subject=subject, body_text=body)
+          email_status = str(email_res.get("status") or "unknown")
+          try:
             from services import asana_sync as _asn
             res = _asn.create_task(
                 name=subject,
@@ -236,7 +242,7 @@ def fire_if_overrun(*, doc_id: str, triggering_action: str,
             )
             if isinstance(res, dict):
                 asana_url = res.get("permalink_url") or res.get("url")
-        except Exception:  # noqa: BLE001 — graceful when ASANA_PAT absent
+          except Exception:  # noqa: BLE001 — graceful when ASANA_PAT absent
             logger.debug("xalarm asana task skipped (likely not configured)")
 
         xid = _upsert_log(

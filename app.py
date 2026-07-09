@@ -1697,12 +1697,30 @@ def approve_doc(doc_id: str):
     if err:
         return err
 
+    # 2026-07-08 (C1) — idempotency guard. post_to_actuals() does a blind
+    # `current + amount` into the actuals JSON, so a second approve (double
+    # click, retried request, two tabs) double-counts the invoice in P&L
+    # and regresses a paid/posted doc back to `approved`. Only allow the
+    # forward transition from a pre-approval status.
+    _APPROVABLE = ("pending", "parsed", "classified", "needs_review")
+    current_status = (doc.get("status") or "").strip()
+    if current_status not in _APPROVABLE:
+        return jsonify({
+            "error": "already_processed",
+            "message": ("Document is '%s' — already approved/posted. Re-approving "
+                        "would double-post to P&L." % current_status),
+            "current_status": current_status,
+        }), 409
+
     body = request.get_json(silent=True) or {}
     now = datetime.utcnow().isoformat()
 
+    # 2026-07-08 (H14) — stamp actor from the authenticated identity, not a
+    # client-supplied body field (which would let anyone forge the approver).
+    approver = _current_user_name() or body.get("approved_by") or "user"
     update_fields: Dict[str, Any] = {
         "status": "approved",
-        "approved_by": body.get("approved_by", "user"),
+        "approved_by": approver,
         "approved_at": now,
     }
 
@@ -1721,7 +1739,7 @@ def approve_doc(doc_id: str):
         update_fields["cost_reason"] = body["cost_reason"]
 
     db.update_document(doc_id, update_fields)
-    db.insert_audit_log(doc_id, "approved", {"overrides": body})
+    db.insert_audit_log(doc_id, "approved", {"overrides": body, "by": approver})
 
     # Post to actuals
     doc = db.get_document(doc_id)

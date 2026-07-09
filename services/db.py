@@ -481,10 +481,31 @@ CREATE INDEX IF NOT EXISTS ix_pva_doc ON policy_violation_approvals(doc_id);
 
 
 def get_connection() -> sqlite3.Connection:
-    """Return a new SQLite connection with row factory enabled."""
+    """Return a new SQLite connection with row factory enabled.
+
+    2026-07-08 (C9) — under 2 gunicorn workers, concurrent writes (a CSV
+    import overlapping a bookkeeper approval) raised
+    ``sqlite3.OperationalError: database is locked`` and 500'd the
+    request mid-transaction. Three PRAGMAs fix it:
+
+      * WAL journal mode — readers no longer block a writer and vice
+        versa; a single writer + many readers run concurrently.
+      * busy_timeout=5000 — a second writer waits up to 5 s for the
+        lock instead of failing instantly.
+      * foreign_keys=ON — SQLite ships FKs OFF per-connection; several
+        tables declare ``ON DELETE CASCADE`` (covenant_checks, …) that
+        silently did nothing until now.
+
+    WAL is a database-level setting persisted on first use, but the
+    busy_timeout / foreign_keys pragmas are per-connection, so they must
+    be re-applied on every connection.
+    """
     os.makedirs(os.path.dirname(config.DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(config.DB_PATH)
+    conn = sqlite3.connect(config.DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 

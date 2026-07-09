@@ -234,22 +234,12 @@ def _pick_column(row: Dict[str, Any], candidates: List[str]) -> Optional[str]:
 
 
 def _parse_amount(s: Optional[str]) -> Optional[float]:
-    if s is None:
-        return None
-    s = str(s).strip()
-    if not s:
-        return None
-    # Strip currency symbols + thousands separators
-    s = re.sub(r"[€$£₽\s]", "", s)
-    s = s.replace(",", ".")  # EU decimal
-    # If multiple dots, treat all but last as thousand sep
-    if s.count(".") > 1:
-        parts = s.split(".")
-        s = "".join(parts[:-1]) + "." + parts[-1]
-    try:
-        return float(s)
-    except ValueError:
-        return None
+    # 2026-07-08 (C8) -- delegate to the shared money parser which
+    # correctly distinguishes US/EU thousands vs decimal separators.
+    # The old `s.replace(",", ".")` turned "1,500" into 1.5 (a EUR 1,500
+    # card charge imported as EUR 1.50). See services/money.parse_money.
+    from services.money import parse_money
+    return parse_money(s)
 
 
 def _parse_date(s: Optional[str]) -> Optional[str]:

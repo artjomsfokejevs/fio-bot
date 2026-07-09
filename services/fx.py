@@ -73,11 +73,13 @@ def _previous_business_day(d: date) -> date:
     return d
 
 
-def get_rate(from_currency: str, on_date: Optional[str] = None) -> Tuple[float, str, str]:
+def get_rate(from_currency: str, on_date: Optional[str] = None) -> Tuple[Optional[float], str, str]:
     """Get 1 unit of `from_currency` in EUR on `on_date` (YYYY-MM-DD).
 
     Returns (rate_eur_per_unit, effective_date, source).
-    source: 'ecb' | 'ecb-cache' | 'fallback' | 'identity'
+    source: 'ecb' | 'ecb-cache' | 'fallback' | 'identity' | 'unavailable'
+    rate is None when source is 'unavailable' (no live rate, no static
+    fallback) -- callers must treat this as needs-manual-FX, never as 1.0.
     """
     fc = (from_currency or "EUR").upper().strip()
     if fc in ("EUR", "€", ""):
@@ -128,8 +130,12 @@ def get_rate(from_currency: str, on_date: Optional[str] = None) -> Tuple[float, 
     per_eur_fb = _FALLBACK.get(fc)
     if per_eur_fb:
         return (1.0 / per_eur_fb, eff_date, "fallback")
-    logger.error("No FX rate available for %s — defaulting to 1.0 (DANGER)", fc)
-    return (1.0, eff_date, "fallback")
+    # 2026-07-08 (C7) — no live rate AND no static fallback. The old code
+    # returned 1.0, which booked a 10,000 AED invoice as €10,000 (~4x
+    # real) with only a log line. Return rate=None so convert_to_eur can
+    # flag the doc as needs-manual-FX instead of silently 1:1-ing it.
+    logger.error("No FX rate available for %s — flagging for manual entry", fc)
+    return (None, eff_date, "unavailable")
 
 
 def convert_to_eur(
@@ -154,6 +160,25 @@ def convert_to_eur(
             "fx_rate": None, "fx_date": None, "fx_source": None,
         }
     rate, eff_date, source = get_rate(from_currency, on_date)
+    # 2026-07-08 (C7) — no rate available for this currency: do NOT invent
+    # a 1:1 EUR amount. Leave amount_eur=None + needs_manual_fx so the
+    # upload pipeline / UI blocks the doc until an operator enters a rate.
+    if rate is None:
+        return {
+            "amount_orig": round(float(amount), 2),
+            "currency_orig": (from_currency or "EUR").upper(),
+            "amount_eur": None,
+            "currency_eur": "EUR",
+            "fx_rate": None,
+            "fx_date": eff_date,
+            "fx_source": "unavailable",
+            "needs_manual_fx": True,
+            "fx_warning": (
+                "No FX rate available for %s — EUR amount must be entered "
+                "manually before this document can be posted."
+                % (from_currency or "").upper()
+            ),
+        }
     amount_eur = round(float(amount) * rate, 2)
     out: Dict[str, object] = {
         "amount_orig": round(float(amount), 2),

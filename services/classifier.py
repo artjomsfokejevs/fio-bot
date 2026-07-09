@@ -440,7 +440,19 @@ def check_expense_policy(parsed: Dict[str, Any], classification: Dict[str, Any])
     warnings: List[Dict[str, Any]] = []
     description = _build_description(parsed).lower()
     money = parsed.get("money", {})
-    total = money.get("total_amount", 0.0) or 0.0
+    # 2026-07-08 (C6) — policy thresholds are all denominated in EUR, but
+    # `total_amount` is the invoice's ORIGINAL currency. A 22,500 AMD
+    # (~€53) lunch tripped the "Exceeds €500" RED; a 400 GBP (~€470)
+    # dinner passed the €200 cap. Compare against the FX-enriched
+    # amount_eur when present, falling back to total_amount only for
+    # EUR-native / not-yet-converted docs.
+    total = (money.get("amount_eur")
+             if money.get("amount_eur") not in (None, "")
+             else money.get("total_amount", 0.0)) or 0.0
+    try:
+        total = float(total)
+    except (TypeError, ValueError):
+        total = 0.0
 
     policies = _resolve_policies()
     matched_policy: Optional[str] = None
