@@ -3786,7 +3786,8 @@ var STREAM_NAMES = {
 
 var STREAM_PC_MAP = {
   'alps2alps': 'AA', 'skibookers': 'BK', 'skipasser': 'SR',
-  'mountly': 'AH', 'mypeak_finance': 'CF', 'alveda': 'AL'
+  'mountly': 'AH', 'mypeak_finance': 'CF', 'alveda': 'AL',
+  'amitours_group': 'AG'
 };
 
 var PC_TO_STREAM = {
@@ -3794,6 +3795,14 @@ var PC_TO_STREAM = {
   'AH': 'mountly', 'MT': 'mountly', 'CF': 'mypeak_finance',
   'PK': 'mypeak_finance', 'AL': 'alveda'
 };
+
+// 2026-07-09 (Phase 4b, finding #18) — ONE source of truth for which
+// stream cards render, in what order. Both renderStreamCards() and the
+// active-card highlight read this, so they can never drift (the old code
+// duplicated the list in two places and highlighted by array index,
+// which picked the wrong card the moment the rendered set differed).
+var STREAM_CARD_KEYS = ['alps2alps', 'skipasser', 'mountly',
+                        'mypeak_finance', 'alveda', 'amitours_group'];
 
 var STATEMENT_ORDER = ['REVENUE', 'COGS', 'MARKETING', 'ADMIN', 'OPERATIONAL'];
 
@@ -5891,15 +5900,28 @@ function fmtDelta(a, b) {
   return Math.round(diffH / 24) + 'd';
 }
 
+var _cpRowsSig = null;
 function renderCPRows(docs) {
   var tbody = document.getElementById('cp-rows');
   if (!docs.length) {
+    _cpRowsSig = '';
     var theadEmpty = document.getElementById('cp-thead');
     if (theadEmpty) theadEmpty.innerHTML = '<tr>' + _cpColumnHeaders().map(function(h){return '<th class="' + (h.cls||'') + '">' + h.label + '</th>';}).join('') + '</tr>';
     var totalCols = _cpColumnHeaders().length;
     tbody.innerHTML = '<tr><td colspan="' + totalCols + '" class="empty-state">No documents in this stage.</td></tr>';
     return;
   }
+
+  // 2026-07-09 (Phase 4b, finding #17) — diff-guard. This table has
+  // editable comment textareas; a full thead+tbody rebuild on every 15s
+  // poll or micro-save destroyed an unblurred edit in another row. Skip
+  // the rebuild when the stage + row data are byte-identical to last time.
+  var _sig = CP_STAGE + '::' + _docsSig(docs, ['id', 'status', 'amount', 'vendor',
+    'confirmed_to_pay_at', 'confirmed_to_pay_by', 'budget_validated_at',
+    'payment_state', 'payment_executed_at', 'partial_total_paid',
+    'partial_remaining', 'desired_payment_date']);
+  if (_sig === _cpRowsSig && tbody.children.length) return;
+  _cpRowsSig = _sig;
 
   // Render stage-aware header (so the columns reflect what's relevant now)
   var headers = _cpColumnHeaders();
@@ -7000,7 +7022,7 @@ function renderStreamCards(actuals, streamStats) {
   var grid = document.getElementById('stream-cards-grid');
   var streams = actuals.streams || {};
 
-  var streamKeys = ['alps2alps', 'skibookers', 'skipasser', 'mountly', 'mypeak_finance', 'alveda'];
+  var streamKeys = STREAM_CARD_KEYS;
   var pcAlts = { 'mountly': ['AH', 'MT'], 'mypeak_finance': ['CF', 'PK'] };
 
   var html = '';
@@ -7032,7 +7054,7 @@ function renderStreamCards(actuals, streamStats) {
 
     var isActive = activeStream === key ? ' active-stream' : '';
 
-    html += '<div class="stream-card' + isActive + '" style="border-top-color:' + color + ';" onclick="showStreamPnl(\'' + key + '\',\'' + pc + '\')">';
+    html += '<div class="stream-card' + isActive + '" data-stream="' + esc(key) + '" style="border-top-color:' + color + ';" onclick="showStreamPnl(\'' + jsAttr(key) + '\',\'' + jsAttr(pc) + '\')">';
     html += '<div class="stream-title" style="color:' + color + ';">' + esc(name) + '</div>';
     html += '<div class="stream-total">€' + Math.abs(total).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>';
     html += '<div class="stream-counts">';
@@ -7054,12 +7076,11 @@ function showStreamPnl(streamId, profitCenter) {
   activeStream = streamId;
   expandedCostRow = null;
 
-  // Highlight active card
-  document.querySelectorAll('.stream-card').forEach(function(c) { c.classList.remove('active-stream'); });
-  var cards = document.querySelectorAll('.stream-card');
-  var streamKeys = ['alps2alps', 'skibookers', 'skipasser', 'mountly', 'mypeak_finance', 'alveda'];
-  var idx = streamKeys.indexOf(streamId);
-  if (idx >= 0 && cards[idx]) cards[idx].classList.add('active-stream');
+  // Highlight active card by its data-stream attribute (not array index,
+  // which mis-fired whenever the rendered set differed from a hardcoded list).
+  document.querySelectorAll('.stream-card').forEach(function(c) {
+    c.classList.toggle('active-stream', c.getAttribute('data-stream') === streamId);
+  });
 
   var section = document.getElementById('pnl-section');
   section.style.display = 'block';
