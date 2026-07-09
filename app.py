@@ -1782,6 +1782,31 @@ def approve_doc(doc_id: str):
     return jsonify({"status": "approved"})
 
 
+@app.route("/api/documents/<doc_id>/governance", methods=["GET"])
+def document_governance(doc_id: str):
+    """SOP Procedure-4 governance signals for one doc (read-only).
+
+    Returns invoice-splitting detection + vendor bank-detail change so the
+    approve / confirm UI can surface a warning before money moves.
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        return jsonify({"error": "Not found"}), 404
+    from services import governance as _gov
+    split = _gov.detect_split(
+        doc.get("vendor"), doc.get("legal_entity"),
+        float(doc.get("amount") or 0), exclude_doc_id=doc_id,
+    )
+    bank = _gov.check_vendor_bank_change(doc)
+    return jsonify({
+        "doc_id": doc_id,
+        "split": split,
+        "vendor_bank": bank,
+        "vendor_verified_at": doc.get("vendor_verified_at"),
+        "sod_mode": _gov.sod_mode(),
+    })
+
+
 # ════════════════════════════════════════════════════════════════
 # Phase 3.5 — Multi-stream cost allocation (Katia case)
 # ════════════════════════════════════════════════════════════════
@@ -2086,6 +2111,12 @@ def confirm_payment(doc_id: str):
     body = request.get_json(silent=True) or {}
     confirmed_by = body.get("confirmed_by") or _current_user_name() or "user"
     now = datetime.utcnow().isoformat()
+    # 2026-07-09 (SOP G2) — two-person control: the CEO confirming must not
+    # be the person who budget-validated. Mode 'enforce' blocks; 'warn'
+    # records + surfaces but proceeds (MVP where one person wears hats).
+    _sod = _governance_check_sod(doc, "confirm_payment", confirmed_by)
+    if _sod.get("blocked"):
+        return jsonify(_sod["response"]), 409
     db.update_document(doc_id, {
         "status": "confirmed_to_pay",
         "confirmed_to_pay_at": now,
@@ -2186,6 +2217,14 @@ def bulk_confirm_payment():
                             "error": "not budget-validated",
                             "current_status": doc.get("status")})
             continue
+        # 2026-07-09 (SOP G2) — SoD also applies to bulk confirm, so it
+        # can't be used to bypass the single-doc check. In 'enforce' mode a
+        # conflicting doc is skipped (reported in failed[]); 'warn' logs.
+        _sod = _governance_check_sod(doc, "confirm_payment", confirmed_by)
+        if _sod.get("blocked"):
+            failed.append({"doc_id": doc_id, "error": "sod_violation",
+                            "conflict_stage": _sod["response"].get("conflict_stage")})
+            continue
 
         db.update_document(doc_id, {
             "status": "confirmed_to_pay",
@@ -2283,6 +2322,31 @@ def mark_paid(doc_id: str):
     paid_by = body.get("paid_by") or _current_user_name() or "user"
     now = datetime.utcnow().isoformat()
 
+    # 2026-07-09 (SOP G2) — SoD: the person marking paid must not be the
+    # budget-validator or the CEO who confirmed. 'enforce' blocks; 'warn'
+    # records + proceeds.
+    _sod = _governance_check_sod(doc, "mark_paid", paid_by)
+    if _sod.get("blocked"):
+        return jsonify(_sod["response"]), 409
+    # 2026-07-09 (SOP G3) — vendor bank-detail change control: if this
+    # vendor's IBAN differs from the one on record and no human has
+    # re-verified since, block the payment (BEC-fraud guard).
+    try:
+        from services import governance as _gov
+        _bank = _gov.check_vendor_bank_change(doc)
+        if _bank.get("changed") and not doc.get("vendor_verified_at"):
+            return jsonify({
+                "error": "vendor_bank_changed",
+                "message": ("This vendor's bank IBAN differs from the one on "
+                            "record. Re-verify the bank details with the vendor "
+                            "(a known contact, not the invoice) before paying, "
+                            "then mark verified."),
+                "current_iban": _bank.get("current_iban"),
+                "known_ibans": _bank.get("known_ibans"),
+            }), 409
+    except Exception:  # noqa: BLE001 — never block payment on a checker bug
+        logger.exception("vendor bank-change check failed (non-blocking)")
+
     update = {
         "status": "paid",
         "payment_state": "paid",     # P2.2 — keep state machine in sync
@@ -2308,6 +2372,14 @@ def mark_paid(doc_id: str):
                 pass
 
     db.update_document(doc_id, update)
+    # 2026-07-09 (SOP G3) — establish/refresh the vendor's known IBAN at
+    # the moment of payment. First payment to a vendor records the baseline
+    # (so it always proceeds); later payments compared against it above.
+    try:
+        from services import governance as _gov
+        _gov.record_vendor_bank(doc, by=paid_by)
+    except Exception:  # noqa: BLE001
+        logger.exception("record_vendor_bank failed (non-blocking)")
     db.insert_audit_log(doc_id, "marked_paid", {
         "by": paid_by,
         "at": now,
@@ -3834,6 +3906,45 @@ def _current_user_name() -> Optional[str]:
     if not name and request.method == "GET":
         name = (request.args.get("as") or "").strip()
     return name or None
+
+
+def _governance_check_sod(doc, action, actor):
+    """SOP G2 two-person control. Returns {blocked: bool, response: dict|None}.
+
+    In 'enforce' mode a conflict blocks (caller returns 409 with response).
+    In 'warn' mode (default) it records an audit entry + a governance flag
+    on the doc and lets the action proceed. 'off' disables entirely.
+    """
+    try:
+        from services import governance as _gov
+        mode = _gov.sod_mode()
+        if mode == "off":
+            return {"blocked": False, "response": None}
+        conflict = _gov.sod_conflict(doc, action, actor)
+        if not conflict:
+            return {"blocked": False, "response": None}
+        prior_stage = {
+            "budget_validated_by": "budget validation",
+            "confirmed_to_pay_by": "CEO confirmation",
+        }.get(conflict, conflict)
+        msg = ("Segregation of duties: '%s' also performed the %s on this "
+               "invoice. A different person must do this step." % (actor, prior_stage))
+        try:
+            db.insert_audit_log(doc.get("id"), "sod_conflict", {
+                "action": action, "actor": actor, "conflict_stage": conflict,
+                "mode": mode,
+            }, performed_by=actor)
+        except Exception:  # noqa: BLE001
+            logger.exception("sod audit log failed (non-blocking)")
+        if mode == "enforce":
+            return {"blocked": True, "response": {
+                "error": "sod_violation", "message": msg,
+                "conflict_stage": conflict,
+            }}
+        return {"blocked": False, "response": None}  # warn: proceed
+    except Exception:  # noqa: BLE001 — never block a payment on a checker bug
+        logger.exception("SoD check failed (non-blocking)")
+        return {"blocked": False, "response": None}
 
 
 def _json_error(code: str, message: str, status: int = 400, **extra):

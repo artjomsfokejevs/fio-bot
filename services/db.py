@@ -190,6 +190,21 @@ CREATE TABLE IF NOT EXISTS fio_settings (
     updated_by  TEXT
 );
 
+-- 2026-07-09 (SOP Procedure 4, G3) — vendor bank-detail change control.
+-- First IBAN seen per vendor is remembered; a later invoice from the same
+-- vendor with a different IBAN is flagged and payment is blocked until a
+-- human re-verifies (guards against vendor-impersonation / BEC fraud).
+CREATE TABLE IF NOT EXISTS vendor_bank_details (
+    vendor_key   TEXT NOT NULL,      -- 'vat:LV…' or 'name:<lowercased>'
+    iban         TEXT NOT NULL,
+    first_seen   TEXT NOT NULL,
+    last_seen    TEXT NOT NULL,
+    first_doc_id TEXT,
+    recorded_by  TEXT,
+    PRIMARY KEY (vendor_key, iban)
+);
+CREATE INDEX IF NOT EXISTS ix_vbd_vendor ON vendor_bank_details(vendor_key);
+
 -- 2026-06-16 Phase 1 P1.2 — Editable policy rules.
 -- Replaces hardcoded EXPENSE_POLICIES in classifier.py. Each row is one
 -- threshold ("office_supplies > 500 EUR per item → RED"). Admin/CEO edit

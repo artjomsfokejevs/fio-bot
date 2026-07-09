@@ -3,6 +3,19 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-07-09-governance-controls",
+      "date": "2026-07-09",
+      "title": "🛡 Governance hard-controls: invoice-splitting · two-person SoD · vendor bank-change",
+      "summary": "Three SOP-FIN-001 Procedure-4 controls are now enforced by Keel, not just written in the SOP: invoice-splitting detection (same-vendor invoices that add up across an approval tier are flagged), two-person segregation of duties (the same person can't budget-validate AND CEO-confirm AND mark-paid one invoice), and vendor bank-detail change control (a payment is blocked if the vendor's IBAN differs from the one on record, until a human re-verifies — anti-BEC-fraud). SoD ships in 'warn' mode for the MVP team (surfaced + audit-logged, not blocked); flip the sod_mode setting to 'enforce' when staffing allows.",
+      "highlights": [
+        "🧾 Invoice-splitting — GET /api/documents/<id>/governance returns split detection: aggregates same-vendor, same-entity invoices in a 30-day window and flags when the total crosses a higher tier (T1<€1k / T2<€10k / T3<€50k / T4≥€50k) than the individual invoice.",
+        "👥 Two-person SoD — mark-paid and (bulk) confirm-payment now check that the actor didn't perform an earlier stage on the same invoice. Setting sod_mode: off | warn (default) | enforce. In enforce mode a conflict returns 409 sod_violation.",
+        "🏦 Vendor bank-change — first IBAN seen per vendor is remembered (vendor_bank_details table); a later invoice with a different IBAN blocks mark-paid with 409 vendor_bank_changed until the bank details are re-verified with a known vendor contact.",
+        "⚙️ To turn SoD into a hard block: Admin → Settings → set sod_mode = enforce. Kept as 'warn' now so the single-operator MVP workflow isn't interrupted.",
+        "🔒 Part of the wider engineering hardening pass (auth model unchanged — accounts still managed via the Admin panel for the MVP)."
+      ]
+    },
+    {
       "version": "2026-07-01-op-feedback-batch-2",
       "date": "2026-07-01",
       "title": "🧾 Expense Report XLSX+PDF · 📊 Plan vs fact · 🗓 Weekly Timeline preamble import · 🇪🇺 VIES tri-state · 🔴 Wrong-stream flag · 💳 Paying-account entity filter · 📎 Chase title format",
