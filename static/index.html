@@ -5881,8 +5881,14 @@ function closeOverlay() {
 // CEO-urgent Slack button (2026-06-16 Phase 2)
 // ───────────────────────────────────────────────────────────────────
 function sendCeoUrgent(docId) {
-  var reason = prompt('Why is this urgent? (one line, sent to CEO via Slack + bell)');
-  if (reason === null) return;
+  promptModal({title: 'Send to CEO — urgent',
+              label: 'Why is this urgent? (one line, sent to CEO via Slack + bell)'})
+    .then(function(reason) {
+      if (reason === null) return;  // cancelled
+      _sendCeoUrgent(docId, reason);
+    });
+}
+function _sendCeoUrgent(docId, reason) {
   api('POST', '/api/documents/' + docId + '/send-ceo-urgent', { reason: reason })
     .then(function(r) {
       var slack = (r && r.slack) || {};
@@ -7596,13 +7602,15 @@ function quickApprove(docId) {
 }
 
 function quickReject(docId) {
-  var reason = prompt('Reason for rejection:');
-  if (reason === null) return;
-  api('POST', '/api/documents/' + docId + '/reject', { reason: reason }).then(function() {
-    showToast('Document rejected', 'success');
-    loadStats();
-    loadApprovePanel();
-  });
+  promptModal({title: 'Reject document', label: 'Reason for rejection', multiline: true})
+    .then(function(reason) {
+      if (reason === null) return;  // cancelled
+      api('POST', '/api/documents/' + docId + '/reject', { reason: reason }).then(function() {
+        showToast('Document rejected', 'success');
+        loadStats();
+        loadApprovePanel();
+      });
+    });
 }
 
 // Phase 2.5 — per-line split helpers
@@ -8180,15 +8188,18 @@ function approveFromModal() {
 
 function rejectFromModal() {
   if (!currentDoc) return;
-  var reason = prompt('Reason for rejection:');
-  if (reason === null) return;
-  api('POST', '/api/documents/' + currentDoc.id + '/reject', { reason: reason }).then(function() {
-    showToast('Document rejected', 'success');
-    closeModal();
-    loadStats();
-    loadApprovePanel();
-    loadUploadTable();
-  });
+  var _docId = currentDoc.id;
+  promptModal({title: 'Reject document', label: 'Reason for rejection', multiline: true})
+    .then(function(reason) {
+      if (reason === null) return;  // cancelled
+      api('POST', '/api/documents/' + _docId + '/reject', { reason: reason }).then(function() {
+        showToast('Document rejected', 'success');
+        closeModal();
+        loadStats();
+        loadApprovePanel();
+        loadUploadTable();
+      });
+    });
 }
 
 // ---------------------------------------------------------------------------
