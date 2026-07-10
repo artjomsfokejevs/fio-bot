@@ -3,6 +3,19 @@
   "_seed_date": "2026-06-11",
   "entries": [
     {
+      "version": "2026-07-10-bank-formats",
+      "date": "2026-07-10",
+      "title": "🏦 Bank statements: Narvi + PayPal now import, and every upload auto-detects its company",
+      "summary": "Two statement formats that used to import 0 rows and stall month-close now work: Narvi Payments (money column is 'Transaction amount') and PayPal (money column is 'Gross'/'Net'). All six formats — Narvi, Revolut Business, Finom, PayPal, Mercury, Airwallex — are recognised automatically, and each upload now auto-detects the owning legal entity from the statement's account (IBAN / account number / holder), shown as a badge on import. Date parsing was hardened across every format (ISO with time/zone, 30 Jun 2026, 01/05/2026, 2-digit years). A PDF whose layout can't be read now says so and names the detected company, instead of silently importing nothing.",
+      "highlights": [
+        "🆕 Narvi + PayPal CSV — both parse cleanly now (were 0 rows → month-close blocked).",
+        "🏢 Auto legal-entity — the statement's account is matched against data/bank_accounts.json and the owning company is stamped on every row (Narvi→Amitours Holding, Revolut→Amitours London, Airwallex→Amitours Group SA, Mercury→Amitours Corp). Edit that file to onboard a new account — no code change.",
+        "📅 Robust dates — ISO+time/zone, '30 Jun 2026 EEST', '01/05/2026', 'Jun 16 2025', 2-digit years all parse; a bad date no longer silently drops a real transaction.",
+        "🔎 Louder diagnostics — a 0-row import now shows exactly which rows/columns failed; a PDF whose layout isn't readable asks for the CSV export and names the detected company.",
+        "🧾 Narvi counterparty — incoming payments show the sender (not our own name); outgoing show the recipient."
+      ]
+    },
+    {
       "version": "2026-07-09-governance-controls",
       "date": "2026-07-09",
       "title": "🛡 Governance hard-controls: invoice-splitting · two-person SoD · vendor bank-change",
