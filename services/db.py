@@ -134,7 +134,6 @@ CREATE TABLE IF NOT EXISTS card_transactions (
     legal_entity    TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_ct_period      ON card_transactions(period);
-CREATE INDEX IF NOT EXISTS ix_ct_legalent    ON card_transactions(legal_entity);
 CREATE INDEX IF NOT EXISTS ix_ct_department  ON card_transactions(department);
 CREATE INDEX IF NOT EXISTS ix_ct_match       ON card_transactions(match_status);
 CREATE INDEX IF NOT EXISTS ix_ct_holder      ON card_transactions(card_holder);
@@ -607,6 +606,14 @@ def init_db() -> None:
                 logger.info("Migrated: added card_transactions.legal_entity")
             except sqlite3.OperationalError as exc:
                 logger.warning("card_transactions.legal_entity migration skipped: %s", exc)
+        # Index the column once it definitely exists (runs after the ALTER so a
+        # pre-existing DB without the column never DDLs an index on a ghost col).
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_ct_legalent "
+                         "ON card_transactions(legal_entity)")
+            conn.commit()
+        except sqlite3.OperationalError as exc:
+            logger.warning("ix_ct_legalent create skipped: %s", exc)
         # Migration: add uploaded_by column if missing (for existing databases)
         try:
             conn.execute("SELECT uploaded_by FROM documents LIMIT 1")

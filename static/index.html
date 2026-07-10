@@ -8467,8 +8467,10 @@ async function uploadCardCsv(files) {
         'amount_column_not_found':'Amount column wasn\'t recognised. Format detected: ' + esc(r.source_label || r.source) + '. The CSV columns probably don\'t match this bank format.',
         'all_duplicate':          'Every row was already imported in a previous batch — nothing new to add.',
         'format_mismatch':        'CSV format mismatch. Detected: ' + esc(r.source_label || r.source) + '. Try the Source override dropdown or re-export.',
+        'pdf_layout_unsupported': 'This PDF\'s transaction layout couldn\'t be read automatically. Please upload the CSV/XLSX export of the same statement — it imports cleanly.',
       };
-      var dmsg = diagMap[r.diagnosis] || ('Diagnosis: ' + r.diagnosis);
+      // Backend hint (a full sentence, may name the detected account) wins over the generic map.
+      var dmsg = (r.hint ? esc(r.hint) : (diagMap[r.diagnosis] || ('Diagnosis: ' + r.diagnosis)));
       var hdrPreview = (r.headers_seen || []).slice(0, 6).join(', ');
       resultEl.innerHTML =
         '<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;">' +
@@ -8479,6 +8481,13 @@ async function uploadCardCsv(files) {
       return;
     }
     var msg = '<b style="color:var(--green);">✓ Imported ' + r.inserted + ' rows</b> from ' + esc(r.source_label || r.source);
+    // Auto-detected owning company (from the statement's account IBAN/holder).
+    if (r.account && r.account.label) {
+      msg += ' · <span title="Auto-detected from the statement account" style="background:#eef2ff;color:#3730a3;border-radius:4px;padding:1px 6px;font-size:11px;">🏢 ' + esc(r.account.label) + '</span>';
+      if (r.profit_center_stamped) {
+        msg += ' <span title="Profit center pre-set for this single-stream account" style="background:#ecfdf5;color:#065f46;border-radius:4px;padding:1px 6px;font-size:11px;">PC ' + esc(r.profit_center_stamped) + '</span>';
+      }
+    }
     if (r.skipped) {
       var sr = r.skip_reasons || {};
       var reasonParts = [];

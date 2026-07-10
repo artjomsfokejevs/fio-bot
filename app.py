@@ -131,7 +131,7 @@ def _seed_data_volume() -> None:
     os.makedirs(target_dir, exist_ok=True)
     # Files seeded only on FIRST boot (preserve user-edited content thereafter).
     for name in ("ledger_schema.json", "accounting_rules.json",
-                 "legal_entities.json"):
+                 "legal_entities.json", "bank_accounts.json"):
         seed = os.path.join(seed_dir, name)
         target = os.path.join(target_dir, name)
         if os.path.exists(seed) and not os.path.exists(target):

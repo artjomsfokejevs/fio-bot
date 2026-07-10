@@ -19,7 +19,9 @@ if os.path.exists(_env_path):
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "data", "intake")
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "fio.db")
+# 2026-07-10 — honor FIO_DB_PATH so tests (conftest) and alt deployments
+# can point SQLite elsewhere instead of writing the operator's data/fio.db.
+DB_PATH = os.environ.get("FIO_DB_PATH") or os.path.join(os.path.dirname(__file__), "data", "fio.db")
 RULES_FILE = os.path.join(os.path.dirname(__file__), "data", "accounting_rules.json")
 ACTUALS_FILE = os.path.join(os.path.dirname(__file__), "data", "accounting_actuals.json")
 LEDGER_FILE = os.path.join(os.path.dirname(__file__), "data", "ledger_schema.json")

@@ -287,8 +287,15 @@ _BANK_ACCOUNTS_CACHE: Dict[str, Any] = {"mtime": None, "accounts": []}
 
 
 def _bank_accounts_path() -> str:
+    """Prefer the live data/ dir next to the DB (prod volume, admin-edited);
+    fall back to the repo-baked data/bank_accounts.json (tests / first boot
+    before the seed copy runs)."""
     import os
-    return os.path.join(os.path.dirname(config.DB_PATH), "bank_accounts.json")
+    primary = os.path.join(os.path.dirname(config.DB_PATH), "bank_accounts.json")
+    if os.path.exists(primary):
+        return primary
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "bank_accounts.json")
 
 
 def _load_bank_accounts() -> List[Dict[str, Any]]:
@@ -804,7 +811,7 @@ def import_csv(
             diagnosis = "date_column_not_found"
         elif skip_reasons["no_amount"] == skipped and skipped > 0:
             diagnosis = "amount_column_not_found"
-        elif skip_reasons["duplicate"] == skipped:
+        elif skip_reasons["duplicate"] == skipped and skip_reasons["duplicate"] > 0:
             diagnosis = "all_duplicate"
         else:
             diagnosis = "format_mismatch"   # mix of reasons → format spec wrong
