@@ -179,6 +179,64 @@ _FORMAT_SPECS: List[Dict[str, Any]] = [
         "amount_sign": "natural",
     },
     {
+        # 2026-07-10 — Narvi Payments (Estonian EMI, narvi.com). Real export
+        # header (operator statement 2026-06): Transaction Id, Transaction
+        # date, Transaction type, Currency, Transaction amount, Fee Amount,
+        # Net credited amount, Net debited amount, Transaction description,
+        # Sender IBAN/BIC/name/address…, Recipient IBAN/BIC/name/address…
+        # Before this spec the file fell through to Generic and every row was
+        # dropped as "no_amount" (Narvi's money column is "Transaction amount",
+        # not bare "amount"), i.e. a 0-row import that stalled month-close.
+        # "Transaction amount" is ALREADY signed: Credit is +, Debit/Fee is -.
+        "id": "narvi",
+        "label": "Narvi Payments",
+        "signature": {"transaction date", "transaction amount", "transaction type"},
+        "extra_signature_any": {"net credited amount", "net debited amount",
+                                "sender iban", "recipient iban", "transaction id",
+                                "narvi"},
+        "fields": {
+            "date":        ["transaction date", "date"],
+            "description": ["transaction description", "description", "reference"],
+            "amount":      ["transaction amount", "amount"],
+            "currency":    ["currency"],
+            "counterparty":["recipient name", "sender name", "transaction description"],
+            "reference":   ["transaction id", "reference"],
+        },
+        # For a money-IN row the counterparty is the SENDER; for money-OUT it
+        # is the RECIPIENT (the holder sits on the other side). Picking by sign
+        # avoids labelling an incoming invoice payment with our own name.
+        "counterparty_by_sign": {"in": ["sender name"], "out": ["recipient name"]},
+        "default_currency": "EUR",
+        "amount_sign": "natural",
+    },
+    {
+        # 2026-07-10 — PayPal activity CSV (the "CSR" download from
+        # paypal.com → Reports → Activity). Real header: Date, Time, Time
+        # Zone, Description, Currency, Gross, Fee, Net, Balance, Transaction
+        # ID, From Email Address, Name, Bank Name, Bank account, Postage…,
+        # VAT, Invoice ID, Reference Txn ID. One file mixes currencies
+        # (EUR + GBP rows) — per-row `Currency` drives FX. Before this spec
+        # PayPal fell through to Generic and every row dropped as "no_amount"
+        # (the value column is "Gross"/"Net", never bare "amount").
+        # "Gross" is the transaction value (already signed: outflow -, inflow +);
+        # "Net" = Gross minus PayPal's fee. We match on Gross (= invoice value).
+        "id": "paypal",
+        "label": "PayPal",
+        "signature": {"gross", "net", "transaction id"},
+        "extra_signature_any": {"from email address", "time zone", "balance",
+                                "invoice id", "reference txn id", "paypal"},
+        "fields": {
+            "date":        ["date"],
+            "description": ["description", "name"],
+            "amount":      ["gross", "net", "amount"],
+            "currency":    ["currency"],
+            "counterparty":["name", "from email address", "description"],
+            "reference":   ["transaction id", "invoice id"],
+        },
+        "default_currency": "EUR",
+        "amount_sign": "natural",
+    },
+    {
         "id": "generic",
         "label": "Generic CSV",
         "signature": set(),  # last-resort fallback
@@ -217,6 +275,73 @@ def detect_format(headers: List[str]) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────────────────────────
+# Account → legal-entity / profit-center attribution
+# ─────────────────────────────────────────────────────────────────
+# Which company does this statement belong to? We answer it by scanning the
+# raw statement text for an IBAN / account number / BIC / holder-name token
+# registered in data/bank_accounts.json. This is what lets upload be
+# "automatic": the operator no longer has to remember that the Narvi export
+# is Amitours Holding and the Airwallex export is Amitours Group SA.
+
+_BANK_ACCOUNTS_CACHE: Dict[str, Any] = {"mtime": None, "accounts": []}
+
+
+def _bank_accounts_path() -> str:
+    import os
+    return os.path.join(os.path.dirname(config.DB_PATH), "bank_accounts.json")
+
+
+def _load_bank_accounts() -> List[Dict[str, Any]]:
+    """Load + cache the account registry (mtime-invalidated so admin edits
+    to data/bank_accounts.json take effect without a restart)."""
+    import os
+    path = _bank_accounts_path()
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return []
+    if _BANK_ACCOUNTS_CACHE["mtime"] == mtime:
+        return _BANK_ACCOUNTS_CACHE["accounts"]
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        accounts = data.get("accounts") or []
+    except (OSError, json.JSONDecodeError, AttributeError) as exc:
+        logger.warning("bank_accounts.json load failed: %s", exc)
+        accounts = []
+    _BANK_ACCOUNTS_CACHE["mtime"] = mtime
+    _BANK_ACCOUNTS_CACHE["accounts"] = accounts
+    return accounts
+
+
+def detect_account(raw_text: str) -> Optional[Dict[str, Any]]:
+    """Scan statement text for a registered account token. First match wins
+    (registry is ordered most-specific-first). Returns
+    {id, label, legal_entity, profit_center, matched_on} or None.
+
+    Match is a whitespace-insensitive, case-insensitive substring test so an
+    IBAN printed with spaces ("GB51 REVO 0099…") still matches "GB51REVO0099…".
+    """
+    if not raw_text:
+        return None
+    haystack = re.sub(r"\s+", "", raw_text).lower()
+    for acct in _load_bank_accounts():
+        for token in acct.get("match", []):
+            if not token:
+                continue
+            needle = re.sub(r"\s+", "", str(token)).lower()
+            if needle and needle in haystack:
+                return {
+                    "id":            acct.get("id"),
+                    "label":         acct.get("label"),
+                    "legal_entity":  acct.get("legal_entity"),
+                    "profit_center": acct.get("profit_center"),
+                    "matched_on":    token,
+                }
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────
 
@@ -242,21 +367,64 @@ def _parse_amount(s: Optional[str]) -> Optional[float]:
     return parse_money(s)
 
 
+# Month-name lookup so "30 Jun 2026" / "Jun 16 2025" parse without locale deps.
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
 def _parse_date(s: Optional[str]) -> Optional[str]:
-    """Return ISO YYYY-MM-DD or None."""
+    """Return ISO YYYY-MM-DD or None. Bank exports are a zoo of formats, so
+    this is deliberately forgiving:
+      • ISO with a time/zone suffix   2026-06-27T09:53:00Z / +03:00
+      • EU / US numeric               27.06.2026 · 27/06/2026 · 06/27/2026
+      • month-name, either order      30 Jun 2026 EEST · Jun 16 2025
+      • 2-digit years                 27/06/26
+    A row whose date won't parse is dropped as `no_date`, so a too-strict
+    parser silently eats real transactions — hence the wide net."""
     if not s:
         return None
     s = str(s).strip()
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
-                "%d/%m/%Y", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d",
-                "%d-%m-%Y", "%d %b %Y"):
+
+    # 1. ISO prefix (optionally followed by T/space + time + tz). Most banks.
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+
+    # 2. Month-name forms: "30 Jun 2026", "Jun 16 2025", "30-Jun-2026".
+    mn = re.search(r"(?:(\d{1,2})[ /\-]+([A-Za-z]{3,})|([A-Za-z]{3,})[ /\-]+(\d{1,2}))[ /,\-]+(\d{4})", s)
+    if mn:
+        if mn.group(1):
+            day, mon_name, year = mn.group(1), mn.group(2), mn.group(5)
+        else:
+            day, mon_name, year = mn.group(4), mn.group(3), mn.group(5)
+        mon = _MONTHS.get(mon_name[:3].lower())
+        if mon:
+            try:
+                return datetime(int(year), mon, int(day)).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+
+    # 3. Numeric d/m/y or m/d/y or d.m.y, 2- or 4-digit year. Take the
+    #    leading date token only (ignore any trailing time).
+    tok = re.match(r"^(\d{1,2})[./\-](\d{1,2})[./\-](\d{2,4})", s)
+    if tok:
+        a, b, y = int(tok.group(1)), int(tok.group(2)), int(tok.group(3))
+        if y < 100:
+            y += 2000
+        # Disambiguate day vs month: if the first field can't be a month
+        # (>12) it's a day (EU order); else assume EU (d/m/y) which is what
+        # every non-US bank in this holding uses (Narvi/Revolut/Finom/PayPal).
+        if a > 12 and b <= 12:
+            day, mon = a, b
+        elif b > 12 and a <= 12:
+            day, mon = b, a           # US m/d/y (e.g. Mercury)
+        else:
+            day, mon = a, b           # ambiguous → EU default
         try:
-            return datetime.strptime(s[:len(fmt) + 3], fmt).strftime("%Y-%m-%d")
+            return datetime(y, mon, day).strftime("%Y-%m-%d")
         except ValueError:
-            continue
-    # Try ISO prefix
-    if len(s) >= 10 and re.match(r"^\d{4}-\d{2}-\d{2}", s):
-        return s[:10]
+            return None
     return None
 
 
@@ -292,36 +460,77 @@ def import_statement(
     tagged with `profit_center` so the stakeholder's own stream is pre-set.
     """
     name_low = (filename or "").lower()
+    # Text used ONLY for account (legal-entity) detection — we want the full
+    # original content incl. IBANs/holder, which the PDF→CSV reduction drops.
+    account_text = ""
     if name_low.endswith(".xlsx") or name_low.endswith(".xls"):
         try:
             csv_bytes = _xlsx_to_csv_bytes(file_bytes)
         except Exception as exc:
             raise ValueError("Failed to parse XLSX: %s" % exc)
+        account_text = csv_bytes.decode("utf-8", "ignore")
     elif name_low.endswith(".pdf"):
+        try:
+            account_text = _pdf_extract_text(file_bytes)
+        except Exception:  # noqa: BLE001 — detection is best-effort; never block import
+            account_text = ""
         try:
             csv_bytes = _pdf_to_csv_bytes(file_bytes)
         except Exception as exc:
             raise ValueError("Failed to parse PDF: %s" % exc)
     else:
         csv_bytes = file_bytes  # assume CSV / TSV
+        try:
+            account_text = file_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            account_text = file_bytes.decode("latin-1", "ignore")
+
+    # Which company owns this statement? (Narvi→Holding, Airwallex→Group SA…)
+    account = detect_account(account_text)
+    legal_entity = account.get("legal_entity") if account else None
 
     result = import_csv(csv_bytes, filename, imported_by=imported_by,
-                        source_override=source_override)
+                        source_override=source_override,
+                        legal_entity=legal_entity)
 
-    # If the stakeholder pre-set a profit center, stamp the newly inserted rows.
-    if profit_center:
+    # Profit-center precedence: explicit operator choice > registry default
+    # (only set for single-stream accounts). Multi-stream accounts leave it
+    # to per-row vendor heuristics, so we never blanket-stamp a wrong PC.
+    pc = None
+    if profit_center and profit_center.strip():
         pc = profit_center.strip().upper()[:4]
-        if pc:
-            conn = db.get_connection()
-            try:
-                conn.execute(
-                    "UPDATE card_transactions SET profit_center = ? WHERE batch_id = ?",
-                    (pc, result["batch_id"]),
-                )
-                conn.commit()
-            finally:
-                conn.close()
-            result["profit_center_stamped"] = pc
+        result["profit_center_source"] = "operator"
+    elif account and account.get("profit_center"):
+        pc = str(account["profit_center"]).strip().upper()[:4]
+        result["profit_center_source"] = "account_registry"
+    if pc:
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                "UPDATE card_transactions SET profit_center = ? WHERE batch_id = ?",
+                (pc, result["batch_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result["profit_center_stamped"] = pc
+
+    # Surface the detected account so the UI can confirm / correct the entity.
+    result["account"] = account
+    result["legal_entity"] = legal_entity
+    # A PDF whose layout the line-heuristic can't read yields 0 rows. Say so
+    # explicitly (and name the detected entity) so the operator knows to grab
+    # the CSV export instead of staring at a silent success.
+    if name_low.endswith(".pdf") and result.get("inserted", 0) == 0:
+        result["diagnosis"] = "pdf_layout_unsupported"
+        ent = (account or {}).get("label") or "this account"
+        result["hint"] = (
+            "This PDF's transaction layout couldn't be read automatically. "
+            f"Recognised the account as {ent}. Please upload the CSV/XLSX "
+            "export of the same statement — every bank here (Narvi, Revolut, "
+            "Finom, PayPal, Mercury, Airwallex) offers one, and CSV imports "
+            "cleanly."
+        )
     return result
 
 
@@ -353,6 +562,21 @@ _PDF_AMOUNT_RE = re.compile(
 )
 
 
+def _pdf_extract_text(pdf_bytes: bytes) -> str:
+    """Return the full text of a PDF (all pages joined). One damaged page is
+    swallowed rather than aborting the whole extract. Shared by account
+    detection (needs the IBAN/holder) and the transaction heuristic."""
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    parts = []
+    for page in reader.pages:
+        try:
+            parts.append(page.extract_text() or "")
+        except Exception:  # noqa: BLE001 — pypdf raises many types on damaged pages
+            parts.append("")
+    return "\n".join(parts)
+
+
 def _pdf_to_csv_bytes(pdf_bytes: bytes) -> bytes:
     """Extract transactions from a bank-statement PDF into CSV bytes.
 
@@ -362,17 +586,16 @@ def _pdf_to_csv_bytes(pdf_bytes: bytes) -> bytes:
 
     Output columns match the 'generic' format spec so detect_format() can
     consume it: posted_at, amount, currency, description.
+
+    NOTE: this line-based heuristic handles one-transaction-per-line PDFs.
+    Statements that split a transaction across several lines (Mercury,
+    Airwallex, Narvi PDF) may yield few/zero rows — in that case the CSV
+    export is the reliable path, and import_csv() emits a loud
+    diagnosis="no_rows_parsed" rather than a silent success. Account
+    (legal-entity) detection still works on such PDFs because it runs on the
+    full extracted text, not this reduced CSV.
     """
-    from pypdf import PdfReader
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    all_text = []
-    for page in reader.pages:
-        try:
-            t = page.extract_text() or ""
-        except Exception:  # noqa: BLE001 — pypdf raises a zoo of types on damaged pages; one bad page must not abort the import
-            t = ""
-        all_text.append(t)
-    text = "\n".join(all_text)
+    text = _pdf_extract_text(pdf_bytes)
 
     rows: List[Tuple[str, str, str, str]] = []  # (date, amount, currency, description)
     for raw_line in text.split("\n"):
@@ -426,6 +649,7 @@ def import_csv(
     filename: str,
     imported_by: str = "user",
     source_override: Optional[str] = None,
+    legal_entity: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Parse a CSV statement, persist into card_transactions, dedupe by UNIQUE key.
 
@@ -461,6 +685,17 @@ def import_csv(
     # "your CSV format wasn't recognised" instead of silently importing 0 rows
     skip_reasons: Dict[str, int] = {"no_date": 0, "no_amount": 0, "zero_amount": 0,
                                      "duplicate": 0, "other": 0}
+    # 2026-07-10 — keep a few concrete skipped rows (not just tallies) so the
+    # UI can show the operator EXACTLY which line + which columns failed,
+    # instead of a silent "0 imported". Cap at 5 to bound the payload.
+    skipped_samples: List[Dict[str, Any]] = []
+    def _note_skip(reason: str, ridx: int, raw: Dict[str, Any]) -> None:
+        if len(skipped_samples) < 5:
+            skipped_samples.append({
+                "row": ridx, "reason": reason,
+                "date_seen": _pick_column(raw, spec["fields"]["date"]),
+                "amount_seen": _pick_column(raw, spec["fields"]["amount"]),
+            })
 
     conn = db.get_connection()
     try:
@@ -476,11 +711,19 @@ def import_csv(
                 posted = _parse_date(date_s)
                 amount = _parse_amount(amount_s)
                 if posted is None:
-                    skipped += 1; skip_reasons["no_date"] += 1; continue
+                    skipped += 1; skip_reasons["no_date"] += 1; _note_skip("no_date", row_idx, raw_row); continue
                 if amount is None:
-                    skipped += 1; skip_reasons["no_amount"] += 1; continue
+                    skipped += 1; skip_reasons["no_amount"] += 1; _note_skip("no_amount", row_idx, raw_row); continue
                 if amount == 0:
                     skipped += 1; skip_reasons["zero_amount"] += 1; continue
+
+                # Sign-aware counterparty (e.g. Narvi: inflow→sender, outflow→recipient)
+                cbs = spec.get("counterparty_by_sign")
+                if cbs:
+                    cols = cbs.get("in" if amount > 0 else "out") or []
+                    cp = _pick_column(raw_row, cols)
+                    if cp:
+                        counterparty = cp
 
                 # FX → EUR
                 fx_data = fx.convert_to_eur(amount, ccy.upper(), posted)
@@ -503,6 +746,7 @@ def import_csv(
                     "card_holder":    None,
                     "department":     None,
                     "profit_center":  None,
+                    "legal_entity":   legal_entity,
                     "matched_invoice_id": None,
                     "match_status":   "unmatched",
                     "match_confidence": 0,
@@ -519,14 +763,14 @@ def import_csv(
                            (id, source, batch_id, imported_at, imported_by, posted_at,
                             period, amount, currency, amount_eur, fx_rate, fx_date,
                             description, counterparty, reference, card_holder,
-                            department, profit_center, matched_invoice_id,
+                            department, profit_center, legal_entity, matched_invoice_id,
                             match_status, match_confidence, match_reason, notes, raw_row,
                             row_seq)
                            VALUES (:id, :source, :batch_id, :imported_at, :imported_by,
                                    :posted_at, :period, :amount, :currency, :amount_eur,
                                    :fx_rate, :fx_date, :description, :counterparty,
                                    :reference, :card_holder, :department, :profit_center,
-                                   :matched_invoice_id, :match_status, :match_confidence,
+                                   :legal_entity, :matched_invoice_id, :match_status, :match_confidence,
                                    :match_reason, :notes, :raw_row, :row_seq)""",
                         row,
                     )
@@ -576,6 +820,7 @@ def import_csv(
         "skip_reasons": skip_reasons,
         "errors":      errors[:10],
         "sample":      sample_rows,
+        "skipped_samples": skipped_samples,
         "headers_seen": headers,
         "diagnosis":   diagnosis,
     }

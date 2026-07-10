@@ -1,0 +1,40 @@
+{
+  "_comment": "Bank-account registry for Keel. detect_account() scans a bank statement's raw text (CSV or extracted-PDF) for any 'match' token — IBAN, account number, BIC, or holder name — and returns the owning legal_entity (+ an optional default profit_center). This is what makes statement upload 'know' which company it belongs to without the operator picking it every time. Rules: (1) match tokens are compared case-insensitively as substrings, whitespace-stripped; (2) list the most specific accounts first — first match wins; (3) set profit_center ONLY for accounts that fund a single stream. Multi-stream accounts (e.g. the main Revolut, which pays Finboo/Alps2Alps/DMS/salaries) leave profit_center null so per-row vendor heuristics decide, never a blanket wrong PC. legal_entity codes come from data/legal_entities.json; profit_center codes from services/pc_codes.CANONICAL. Edit this file to onboard a new account — no code change needed.",
+  "accounts": [
+    {
+      "id": "narvi_holding",
+      "label": "Narvi · Amitours Holding OÜ",
+      "match": ["FI6579600107718890", "NARYFIH2"],
+      "legal_entity": "AMITOURS_HOLDING",
+      "profit_center": null
+    },
+    {
+      "id": "revolut_london",
+      "label": "Revolut Business · Amitours London",
+      "match": ["GB51REVO00996977416879"],
+      "legal_entity": "AMITOURS_LONDON",
+      "profit_center": null
+    },
+    {
+      "id": "airwallex_group_sa",
+      "label": "Airwallex · Amitours Group SA",
+      "match": ["NL13AINH7433463759", "CH1300768300137786001"],
+      "legal_entity": "AMITOURS_GROUP_SA",
+      "profit_center": "AG"
+    },
+    {
+      "id": "mercury_corp",
+      "label": "Mercury · Amitours Corp",
+      "match": ["912956359515692", "Amitours Corp"],
+      "legal_entity": "AMITOURS_CORP",
+      "profit_center": null
+    },
+    {
+      "id": "finom_amitours",
+      "label": "Finom · (confirm entity)",
+      "match": ["FNOM"],
+      "legal_entity": null,
+      "profit_center": null
+    }
+  ]
+}

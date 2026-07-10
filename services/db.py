@@ -127,9 +127,14 @@ CREATE TABLE IF NOT EXISTS card_transactions (
     -- primary-key `id` now folds in the row's position within its import
     -- file, so re-importing the same file stays idempotent while two
     -- identical rows in one file both survive. No 4-col UNIQUE needed.
-    row_seq         INTEGER DEFAULT 0
+    row_seq         INTEGER DEFAULT 0,
+    -- 2026-07-10 — owning legal entity, auto-detected from the statement's
+    -- account (IBAN / account number / holder) via data/bank_accounts.json.
+    -- Lets Accounting group card rows by the paying company, same as invoices.
+    legal_entity    TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_ct_period      ON card_transactions(period);
+CREATE INDEX IF NOT EXISTS ix_ct_legalent    ON card_transactions(legal_entity);
 CREATE INDEX IF NOT EXISTS ix_ct_department  ON card_transactions(department);
 CREATE INDEX IF NOT EXISTS ix_ct_match       ON card_transactions(match_status);
 CREATE INDEX IF NOT EXISTS ix_ct_holder      ON card_transactions(card_holder);
@@ -591,6 +596,17 @@ def init_db() -> None:
                 logger.info("card_transactions migration complete")
         except sqlite3.OperationalError as exc:
             logger.warning("card_transactions H1 migration skipped: %s", exc)
+        # 2026-07-10 — additive: legal_entity on card_transactions (auto-detected
+        # from the statement's bank account). Safe no-op if the column exists.
+        try:
+            conn.execute("SELECT legal_entity FROM card_transactions LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                conn.execute("ALTER TABLE card_transactions ADD COLUMN legal_entity TEXT")
+                conn.commit()
+                logger.info("Migrated: added card_transactions.legal_entity")
+            except sqlite3.OperationalError as exc:
+                logger.warning("card_transactions.legal_entity migration skipped: %s", exc)
         # Migration: add uploaded_by column if missing (for existing databases)
         try:
             conn.execute("SELECT uploaded_by FROM documents LIMIT 1")
